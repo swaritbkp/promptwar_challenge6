@@ -54,6 +54,12 @@ class ValidationFailedError(AppError):
     code, status_code = ErrorCode.VALIDATION_ERROR, 422
 
 
+class NotFoundError(AppError):
+    """Requested entity does not exist."""
+
+    code, status_code = ErrorCode.NOT_FOUND, 404
+
+
 class UpstreamUnavailableError(AppError):
     """A Google API failed and no degraded path could serve the request."""
 

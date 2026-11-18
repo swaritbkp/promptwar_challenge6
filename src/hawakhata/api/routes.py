@@ -12,9 +12,11 @@ from hawakhata.api.schemas import (
     Envelope,
     ForecastRequest,
     PassbookRequest,
+    PlanRequest,
 )
 from hawakhata.integrations.air_quality import AirQualityClient
 from hawakhata.services.passbook_service import compute_family_passbook
+from hawakhata.services.planner_service import compute_optimized_plan
 
 api_router = APIRouter(prefix="/api/v1")
 AqClientDep = Annotated[AirQualityClient, Depends(get_aq_client)]
@@ -45,5 +47,25 @@ async def post_passbook(
     series = await aq_client.get_hourly_forecast(lat=loc.lat, lng=loc.lng, hours=24)
     pm25_series = [pt.pm25_ug_m3 for pt in series.points]
     result = compute_family_passbook(req.profile, pm25_series)
+    meta = make_meta(request, data_mode=series.data_mode)
+    return Envelope(data=asdict(result), meta=meta)
+
+
+@api_router.post("/plan", response_model=Envelope[dict[str, Any]], tags=["plan"])
+async def post_plan(
+    req: PlanRequest,
+    request: Request,
+    aq_client: AqClientDep,
+) -> Envelope[dict[str, Any]]:
+    """Optimise member routines into clean forecast windows."""
+    loc = req.profile.location
+    series = await aq_client.get_hourly_forecast(lat=loc.lat, lng=loc.lng, hours=24)
+    pm25_series = [pt.pm25_ug_m3 for pt in series.points]
+    result = compute_optimized_plan(
+        profile=req.profile,
+        member_id=req.member_id,
+        flexible_activities=req.flexible_activities,
+        outdoor_pm25_series=pm25_series,
+    )
     meta = make_meta(request, data_mode=series.data_mode)
     return Envelope(data=asdict(result), meta=meta)
