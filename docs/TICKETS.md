@@ -30,7 +30,7 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | ENG-09 | Compute emissions, swap deltas and community scaling | ENG-03, ENG-05 | Must | Done |
 | INT-01 | Google Air Quality client with cache, breaker, fixture fallback | FND-03 | Must | Done |
 | API-01 | Request/response schemas and envelope | ENG-04 | Must | Done |
-| API-02 | Passbook endpoint | API-01, INT-01 | Must | Not started |
+| API-02 | Passbook endpoint | API-01, INT-01 | Must | Done |
 | API-03 | Plan endpoint | API-02, ENG-08 | Must | Not started |
 | API-04 | Indoor simulate endpoint | API-02, ENG-06 | Must | Not started |
 | API-05 | Swaps impact endpoint | API-02, ENG-09 | Must | Not started |

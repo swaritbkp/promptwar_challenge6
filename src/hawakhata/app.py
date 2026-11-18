@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 
 from hawakhata import version
+from hawakhata.api.routes import api_router
 from hawakhata.config import Settings, get_settings
 from hawakhata.core.cache import build_cache
 from hawakhata.core.errors import register_exception_handlers
@@ -68,6 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestContextMiddleware)
     register_exception_handlers(app)
+    app.include_router(api_router)
 
     @app.get("/healthz", tags=["system"])
     async def healthz() -> dict[str, str]:
