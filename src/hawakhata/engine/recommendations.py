@@ -227,9 +227,9 @@ def rank_indoor_hacks(
         _run(
             "hack_no_mosquito_coil",
             "Switch from mosquito coil to bed nets or vaporiser",
-            "A mosquito coil burning overnight emits PM2.5 equivalent to 75-100 cigarettes.",
+            "A mosquito coil emits PM2.5 equivalent to 75-100 cigarettes.",
             "Liu et al. (2003)",
-            "delta_pm25 = Base_Mean - Sim_Without_Coil",
+            "delta_pm25 = Base - Sim_No_Coil",
             ev=[e for e in baseline_events if e.kind != "src_mosquito_coil"],
         )
 
@@ -237,9 +237,9 @@ def rank_indoor_hacks(
         _run(
             "hack_no_incense",
             "Pause burning incense sticks indoors on smoggy days",
-            "Incense sticks emit fine particulate bursts of over 100 mg/h per stick.",
+            "Incense sticks emit fine particulate bursts over 100 mg/h.",
             "Lin et al. (2008)",
-            "delta_pm25 = Base_Mean - Sim_Without_Incense",
+            "delta_pm25 = Base - Sim_No_Incense",
             ev=[e for e in baseline_events if e.kind != "src_incense_stick"],
         )
 
@@ -255,7 +255,7 @@ def rank_indoor_hacks(
             "Turn on kitchen exhaust and lid pans during tadka/frying",
             "Kitchen exhaust captures ~70% of frying aerosols.",
             "Buonanno et al. (2009)",
-            "delta_pm25 = Base_Mean - Sim_With_Exhaust",
+            "delta_pm25 = Base - Sim_Exhaust",
             ev=reduced,
         )
 
@@ -265,9 +265,9 @@ def rank_indoor_hacks(
         _run(
             "hack_close_peak_windows",
             "Keep windows shut during morning and evening smog peaks",
-            "Inversions trap severe pollution near the ground during peak hours.",
+            "Inversions trap severe pollution near ground during peaks.",
             "Goel et al. (2015)",
-            "delta_pm25 = Base_Mean - Sim_Closed_Peaks",
+            "delta_pm25 = Base - Sim_Closed_Peaks",
             win=w_hours - bad_windows,
         )
 
@@ -277,9 +277,9 @@ def rank_indoor_hacks(
         _run(
             "hack_night_purifier",
             "Run air purifier continuously in the bedroom during sleep",
-            "People spend ~8h in bedroom; clean night air cuts daily dose.",
+            "Clean bedroom air cuts overnight exposure.",
             "US EPA Guide to Air Cleaners",
-            "delta_pm25 = Base_Mean - Sim_Night_Purifier",
+            "delta_pm25 = Base - Sim_Night_Purifier",
             cadr=effective_cadr,
             p_h=p_hours.union(sleep_hours),
         )

@@ -8,10 +8,12 @@ import httpx
 from fastapi import Request
 
 from hawakhata import version
+from hawakhata.agent.agent import HawaKhataAgent
 from hawakhata.api.schemas import ResponseMeta
 from hawakhata.config import Settings
 from hawakhata.core.cache import CacheBackend
 from hawakhata.integrations.air_quality import AirQualityClient
+from hawakhata.integrations.gemini import GeminiCascadeClient
 
 
 def get_settings(request: Request) -> Settings:
@@ -41,6 +43,25 @@ def get_aq_client(request: Request) -> AirQualityClient:
         )
         request.app.state.aq_client = client
     return client
+
+
+def get_gemini_client(request: Request) -> GeminiCascadeClient:
+    """Retrieve or construct the GeminiCascadeClient from request app state."""
+    client = getattr(request.app.state, "gemini_client", None)
+    if client is None:
+        client = GeminiCascadeClient(request.app.state.settings)
+        request.app.state.gemini_client = client
+    return client
+
+
+def get_agent(request: Request) -> HawaKhataAgent:
+    """Retrieve or construct the singleton HawaKhataAgent from request app state."""
+    agent = getattr(request.app.state, "agent", None)
+    if agent is None:
+        gemini_client = get_gemini_client(request)
+        agent = HawaKhataAgent(gemini_client)
+        request.app.state.agent = agent
+    return agent
 
 
 def make_meta(

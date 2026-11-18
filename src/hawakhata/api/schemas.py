@@ -224,6 +224,20 @@ class ChatRequest(StrictBaseModel):
     data_source: Literal["auto", "fixture"] = "auto"
 
 
+class ChatResponse(StrictBaseModel):
+    """Response payload for Ask HawaKhata chat endpoint."""
+
+    session_id: str = Field(max_length=64)
+    reply: str = Field(max_length=5000)
+    language: str = Field(default="en", max_length=5)
+    numbers_used: list[float] = Field(default_factory=list)
+    tool_calls: list[str] = Field(default_factory=list)
+    follow_up: str | None = Field(default=None, max_length=500)
+    chips: list[str] = Field(default_factory=list, max_length=10)
+    grounded: bool = True
+    degraded: bool = False
+
+
 class MetaResponse(StrictBaseModel):
     """System version and runtime metadata."""
 

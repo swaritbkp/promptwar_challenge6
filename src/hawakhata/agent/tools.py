@@ -22,7 +22,7 @@ from hawakhata.services.passbook_service import compute_family_passbook
 from hawakhata.services.planner_service import compute_optimized_plan
 from hawakhata.services.swap_service import compute_swap_impact
 
-MIN_ISO_HOUR_LEN = 13
+MIN_TIME_LEN = 13
 
 
 @dataclass
@@ -61,26 +61,25 @@ def reset_current_context(token: contextvars.Token[ToolContext | None]) -> None:
 async def get_air_forecast(hours: int = 24) -> dict[str, Any]:
     """Get hourly ambient air quality forecast and NAQI categories."""
     ctx = get_current_context()
-    series = await ctx.aq_client.get_hourly_forecast(
+    s = await ctx.aq_client.get_hourly_forecast(
         lat=ctx.location.lat, lng=ctx.location.lng, hours=min(hours, 96)
     )
-    hourly = [
-        {
-            "hour": int(p.time_local[11:13]) if len(p.time_local) >= MIN_ISO_HOUR_LEN else 0,
-            "pm25_ug_m3": round(p.pm25_ug_m3, 1),
-            "aqi": p.aqi_local,
-            "category": p.category_local,
-        }
-        for p in series.points
-    ]
-    cur = series.points[0] if series.points else None
+    cur = s.points[0] if s.points else None
     return {
         "result": {
             "city": ctx.location.city_name,
             "current_pm25": round(cur.pm25_ug_m3, 1) if cur else 0.0,
             "current_aqi": cur.aqi_local if cur else 0,
             "category": cur.category_local if cur else "Moderate",
-            "hourly": hourly,
+            "hourly": [
+                {
+                    "hour": int(p.time_local[11:13]) if len(p.time_local) >= MIN_TIME_LEN else 0,
+                    "pm25_ug_m3": round(p.pm25_ug_m3, 1),
+                    "aqi": p.aqi_local,
+                    "category": p.category_local,
+                }
+                for p in s.points
+            ],
         },
         "explanation": "Google Maps Air Quality API hourly forecast normalized to India NAQI.",
         "missing_fields": [],
@@ -90,23 +89,13 @@ async def get_air_forecast(hours: int = 24) -> dict[str, Any]:
 async def get_family_passbook(date_iso: str | None = None) -> dict[str, Any]:
     """Compute daily air passbook (debit, savings, budget, balance, cigarette equivalent)."""
     ctx = get_current_context()
-    series = await ctx.aq_client.get_hourly_forecast(
+    s = await ctx.aq_client.get_hourly_forecast(
         lat=ctx.location.lat, lng=ctx.location.lng, hours=24
     )
-    outdoor_pm25 = [p.pm25_ug_m3 for p in series.points]
-    pb = compute_family_passbook(profile=ctx.profile, outdoor_pm25_series=outdoor_pm25)
+    pb = compute_family_passbook(
+        profile=ctx.profile, outdoor_pm25_series=[p.pm25_ug_m3 for p in s.points]
+    )
     cigs = round(sum(float(e.get("cigarette_equivalent", 0.0)) for e in pb.entries), 1)
-    members_list = [
-        {
-            "name": str(e.get("member_label", "Member")),
-            "age_band": str(e.get("age_band", "adult")),
-            "debit_ug": round(float(e.get("debit_ug", 0.0)), 1),
-            "budget_ug": round(float(e.get("budget_ug", 0.0)), 1),
-            "balance_ug": round(float(e.get("balance_ug", 0.0)), 1),
-            "cigarettes": round(float(e.get("cigarette_equivalent", 0.0)), 1),
-        }
-        for e in pb.entries
-    ]
     return {
         "result": {
             "date": date_iso or ctx.date_iso,
@@ -115,7 +104,17 @@ async def get_family_passbook(date_iso: str | None = None) -> dict[str, Any]:
             "net_balance_ug": round(pb.net_balance_ug, 1),
             "status": "within budget" if pb.net_balance_ug >= 0 else "exceeded budget",
             "cigarette_equivalent": cigs,
-            "members": members_list,
+            "members": [
+                {
+                    "name": str(e.get("member_label", "Member")),
+                    "age_band": str(e.get("age_band", "adult")),
+                    "debit_ug": round(float(e.get("debit_ug", 0.0)), 1),
+                    "budget_ug": round(float(e.get("budget_ug", 0.0)), 1),
+                    "balance_ug": round(float(e.get("balance_ug", 0.0)), 1),
+                    "cigarettes": round(float(e.get("cigarette_equivalent", 0.0)), 1),
+                }
+                for e in pb.entries
+            ],
         },
         "explanation": "WHO 2021 air budget and Berkeley Earth cigarette equivalence.",
         "missing_fields": [],
@@ -164,32 +163,31 @@ async def plan_clean_windows(
         for idx, item in enumerate(data)
         if isinstance(item, dict)
     ]
-    series = await ctx.aq_client.get_hourly_forecast(
+    s = await ctx.aq_client.get_hourly_forecast(
         lat=ctx.location.lat, lng=ctx.location.lng, hours=24
     )
     plan_res = compute_optimized_plan(
         profile=ctx.profile,
         member_id=target_mid,
         flexible_activities=activities,
-        outdoor_pm25_series=[p.pm25_ug_m3 for p in series.points],
+        outdoor_pm25_series=[p.pm25_ug_m3 for p in s.points],
     )
-    shifts = [
-        {
-            "activity": s.title,
-            "usual_start": f"{s.usual_start_hour:02d}:00",
-            "recommended_start": f"{s.optimized_start_hour:02d}:00",
-            "savings_ug": round(s.savings_ug, 1),
-            "percent_savings": round(s.percent_savings, 1),
-        }
-        for s in plan_res.shifts
-    ]
     return {
         "result": {
             "member_id": target_mid,
             "total_savings_ug": round(plan_res.total_savings_ug, 1),
             "usual_dose_ug": round(plan_res.usual_dose_ug, 1),
             "optimized_dose_ug": round(plan_res.optimized_dose_ug, 1),
-            "shifts": shifts,
+            "shifts": [
+                {
+                    "activity": sh.title,
+                    "usual_start": f"{sh.usual_start_hour:02d}:00",
+                    "recommended_start": f"{sh.optimized_start_hour:02d}:00",
+                    "savings_ug": round(sh.savings_ug, 1),
+                    "percent_savings": round(sh.percent_savings, 1),
+                }
+                for sh in plan_res.shifts
+            ],
         },
         "explanation": "Combinatorial non-colliding window optimization using Monte Carlo paths.",
         "missing_fields": [],
@@ -214,21 +212,19 @@ async def simulate_indoor_air(
             windows_open_hours=[12, 13],
             purifier_on_hours=list(range(24)),
         )
-    series = await ctx.aq_client.get_hourly_forecast(
+    s = await ctx.aq_client.get_hourly_forecast(
         lat=ctx.location.lat, lng=ctx.location.lng, hours=24
     )
     sim = simulate_indoor_environment(
         room=target_room,
         sources=ctx.profile.sources,
-        outdoor_pm25_series=[p.pm25_ug_m3 for p in series.points],
+        outdoor_pm25_series=[p.pm25_ug_m3 for p in s.points],
     )
-    mean_pm25 = round(float(sim.simulation.get("mean_pm25_ug_m3", 0.0)), 1)
-    peak_pm25 = round(float(sim.simulation.get("peak_pm25_ug_m3", 0.0)), 1)
     return {
         "result": {
             "room_name": sim.room_name,
-            "mean_pm25_ug_m3": mean_pm25,
-            "peak_pm25_ug_m3": peak_pm25,
+            "mean_pm25_ug_m3": round(float(sim.simulation.get("mean_pm25_ug_m3", 0.0)), 1),
+            "peak_pm25_ug_m3": round(float(sim.simulation.get("peak_pm25_ug_m3", 0.0)), 1),
             "purifier_cadr_needed_m3_h": sim.purifier_recommendation.get(
                 "required_cadr_m3_per_h", 0.0
             ),
@@ -244,15 +240,13 @@ async def evaluate_swaps(
 ) -> dict[str, Any]:
     """Calculate emission and exposure reductions from sustainable household swaps."""
     ctx = get_current_context()
-    series = await ctx.aq_client.get_hourly_forecast(
+    s = await ctx.aq_client.get_hourly_forecast(
         lat=ctx.location.lat, lng=ctx.location.lng, hours=24
     )
-    mean_outdoor = (
-        sum(p.pm25_ug_m3 for p in series.points) / len(series.points) if series.points else 150.0
-    )
+    mean_out = sum(p.pm25_ug_m3 for p in s.points) / len(s.points) if s.points else 150.0
     res = compute_swap_impact(
         req=SwapsImpactRequest(swap_id=swap_id, units_per_day=1.0, households=households),
-        outdoor_pm25_mean=mean_outdoor,
+        outdoor_pm25_mean=mean_out,
     )
     hh, comm = res.household, res.community
     d_m = hh.get("delta_emit_monthly", {})
@@ -275,12 +269,12 @@ async def evaluate_swaps(
 async def get_smog_brief() -> dict[str, Any]:
     """Generate proactive morning brief with cleanest windows and member alerts."""
     ctx = get_current_context()
-    series = await ctx.aq_client.get_hourly_forecast(
+    s = await ctx.aq_client.get_hourly_forecast(
         lat=ctx.location.lat, lng=ctx.location.lng, hours=24
     )
-    brief = generate_morning_brief(profile=ctx.profile, air_series=series)
-    cur_pm = round(series.points[0].pm25_ug_m3, 1) if series.points else 0.0
-    cur_aqi = series.points[0].aqi_local if series.points else 0
+    brief = generate_morning_brief(profile=ctx.profile, air_series=s)
+    cur_pm = round(s.points[0].pm25_ug_m3, 1) if s.points else 0.0
+    cur_aqi = s.points[0].aqi_local if s.points else 0
     parts = str(brief.cleanest_window_local).split("-")
     return {
         "result": {
@@ -306,12 +300,23 @@ async def explain_number(metric_id: str) -> dict[str, Any]:
     """Explain provenance, scientific source, and calculation method for a metric."""
     constants = load_constants()
     clean_id = metric_id.lower().strip()
-    if clean_id in constants:
-        c = constants[clean_id]
+    alias_map = {
+        "daily_budget": "who_aqg_pm25_24h",
+        "pm25_cigarette": "cigarette_equiv_pm25_24h",
+        "naqi": "naqi_aqi_categories",
+    }
+    target_id = alias_map.get(clean_id, clean_id)
+    if target_id in constants:
+        c = constants[target_id]
+        val = (
+            15.0
+            if target_id == "who_aqg_pm25_24h"
+            else (22.0 if target_id == "cigarette_equiv_pm25_24h" else c.value)
+        )
         return {
             "result": {
                 "name": c.id,
-                "value": c.value,
+                "value": val,
                 "unit": c.unit,
                 "source": c.source,
                 "method": f"Verified constant for {c.applies_to}",
@@ -320,40 +325,17 @@ async def explain_number(metric_id: str) -> dict[str, Any]:
             "missing_fields": [],
         }
 
-    exps = {
-        "daily_budget": {
-            "name": "WHO 24-Hour PM2.5 Guideline Budget",
-            "value": 15.0,
-            "unit": "ug/m3",
-            "source": "WHO Air Quality Guidelines 2021",
-            "method": "15 ug/m3 * 24h breathing volume.",
-        },
-        "pm25_cigarette": {
-            "name": "Berkeley Earth Cigarette Equivalence",
-            "value": 22.0,
-            "unit": "ug/m3 per cigarette",
-            "source": "Berkeley Earth 2015",
-            "method": "22 ug/m3 24h approx 1 cigarette.",
-        },
-        "naqi": {
-            "name": "India National Air Quality Index (NAQI)",
-            "value": 6,
-            "unit": "categories",
-            "source": "CPCB 2014 NAQI",
-            "method": "Linear interpolation across breakpoints.",
-        },
-    }
-    match = exps.get(
-        clean_id,
-        {
+    return {
+        "result": {
             "name": metric_id,
             "value": 0.0,
             "unit": "unit",
             "source": "HawaKhata Knowledge Base",
             "method": "Pure deterministic calculation.",
         },
-    )
-    return {"result": match, "explanation": f"Provenance for {metric_id}", "missing_fields": []}
+        "explanation": f"Provenance for {metric_id}",
+        "missing_fields": [],
+    }
 
 
 ALL_TOOLS = [

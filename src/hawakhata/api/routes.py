@@ -2,21 +2,30 @@
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 
-from hawakhata.api.dependencies import get_aq_client, make_meta
+from hawakhata.agent.agent import HawaKhataAgent
+from hawakhata.api.dependencies import get_agent, get_aq_client, make_meta
 from hawakhata.api.schemas import (
     BriefAction,
     BriefRequest,
     BriefResponse,
+    ChatRequest,
+    ChatResponse,
     Envelope,
+    FamilyProfileInput,
     ForecastRequest,
     IndoorSimulateRequest,
+    LocationInput,
+    MemberInput,
     PassbookRequest,
     PlanRequest,
+    RoomInput,
+    ScheduleBlockInput,
     SensitiveAlert,
     SwapsImpactRequest,
 )
@@ -31,6 +40,7 @@ from hawakhata.services.swap_service import compute_swap_impact, list_available_
 
 api_router = APIRouter(prefix="/api/v1")
 AqClientDep = Annotated[AirQualityClient, Depends(get_aq_client)]
+AgentDep = Annotated[HawaKhataAgent, Depends(get_agent)]
 
 
 @api_router.post("/air/forecast", response_model=Envelope[dict[str, Any]], tags=["air"])
@@ -178,3 +188,72 @@ async def get_story_tour(story_id: str, request: Request) -> Envelope[dict[str, 
     story_data = load_story(story_id)
     meta = make_meta(request, data_mode="fixture")
     return Envelope(data=story_data, meta=meta)
+
+
+def _default_profile() -> FamilyProfileInput:
+    return FamilyProfileInput(
+        id="fam_default",
+        name="Delhi Household",
+        location=LocationInput(lat=28.4595, lng=77.0266),
+        rooms=[RoomInput(name="Living Room", volume_m3=60.0)],
+        sources=[],
+        members=[
+            MemberInput(
+                id="m1",
+                name="Family Member",
+                age_band="31_41",
+                sensitivities=[],
+                schedule_blocks=[
+                    ScheduleBlockInput(
+                        start_hour=0,
+                        end_hour=24,
+                        micro_env="indoor_home",
+                        activity="sedentary",
+                    )
+                ],
+            )
+        ],
+    )
+
+
+@api_router.post("/chat", response_model=Envelope[ChatResponse], tags=["chat"])
+async def post_chat(
+    req: ChatRequest,
+    request: Request,
+    agent: AgentDep,
+    aq_client: AqClientDep,
+) -> Envelope[ChatResponse]:
+    """Execute conversational turn with tools, grounding gate, and fallback."""
+    client_ip = getattr(getattr(request, "client", None), "host", "127.0.0.1")
+    session_id = req.session_id or f"sess_{uuid.uuid4().hex[:12]}"
+    profile = req.profile or _default_profile()
+    location = profile.location
+    date_iso = (req.now or get_settings().demo_clock_iso or "2026-11-18")[:10]
+
+    result = await agent.run_turn(
+        session_id=session_id,
+        user_message=req.message,
+        profile=profile,
+        location=location,
+        aq_client=aq_client,
+        client_ip=client_ip,
+        date_iso=date_iso,
+    )
+
+    data = ChatResponse(
+        session_id=session_id,
+        reply=result.reply,
+        language=result.language,
+        numbers_used=result.numbers_used,
+        tool_calls=result.tool_calls,
+        follow_up=result.follow_up.question if result.follow_up else None,
+        chips=result.follow_up.chips if result.follow_up else [],
+        grounded=result.grounded,
+        degraded=result.fallback_used,
+    )
+    meta = make_meta(
+        request,
+        data_mode="fixture" if result.fallback_used else "live",
+        degraded=result.fallback_used,
+    )
+    return Envelope(data=data, meta=meta)

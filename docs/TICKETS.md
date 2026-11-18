@@ -42,7 +42,7 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | AGT-04 | Gemini client: cascade, timeouts, AI quota | AGT-03 | Must | Done |
 | AGT-05 | ADK agent with tools, sessions and follow-ups | AGT-02, AGT-04, API-06 | Must | Done |
 | AGT-06 | Deterministic fallback router and composer | AGT-05 | Must | Done |
-| AGT-07 | Chat endpoint | AGT-06 | Must | Not started |
+| AGT-07 | Chat endpoint | AGT-06 | Must | Done |
 | AGT-08 | Evaluation harness | AGT-07 | Must | Not started |
 | UI-00 | Design screens in Stitch | — | Must | Not started |
 | UI-01 | Design tokens, base layout, navigation, icons, i18n | UI-00, API-07 | Must | Not started |
