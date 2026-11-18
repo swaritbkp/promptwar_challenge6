@@ -25,7 +25,7 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | ENG-04 | Compute the daily air budget and passbook entry | ENG-03 | Must | Done |
 | ENG-05 | Simulate indoor PM2.5 with the mass-balance model | ENG-01 | Must | Done |
 | ENG-06 | Rank indoor hacks, ventilation hours, purifier sizing | ENG-05 | Must | Done |
-| ENG-07 | Sample forecast uncertainty (seeded) | ENG-01 | Must | Not started |
+| ENG-07 | Sample forecast uncertainty (seeded) | ENG-01 | Must | Done |
 | ENG-08 | Optimise the day plan (robust clean windows) | ENG-03, ENG-07 | Must | Not started |
 | ENG-09 | Compute emissions, swap deltas and community scaling | ENG-03, ENG-05 | Must | Not started |
 | INT-01 | Google Air Quality client with cache, breaker, fixture fallback | FND-03 | Must | Not started |
