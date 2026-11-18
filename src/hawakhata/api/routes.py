@@ -9,14 +9,20 @@ from fastapi import APIRouter, Depends, Request
 
 from hawakhata.api.dependencies import get_aq_client, make_meta
 from hawakhata.api.schemas import (
+    BriefAction,
+    BriefRequest,
+    BriefResponse,
     Envelope,
     ForecastRequest,
     IndoorSimulateRequest,
     PassbookRequest,
     PlanRequest,
+    SensitiveAlert,
     SwapsImpactRequest,
 )
+from hawakhata.config import get_settings
 from hawakhata.integrations.air_quality import AirQualityClient
+from hawakhata.services.brief_service import generate_morning_brief
 from hawakhata.services.indoor_service import simulate_indoor_environment
 from hawakhata.services.passbook_service import compute_family_passbook
 from hawakhata.services.planner_service import compute_optimized_plan
@@ -121,3 +127,37 @@ async def post_swaps_impact(
     result = compute_swap_impact(req, outdoor_pm25_mean=mean_pm25)
     meta = make_meta(request, data_mode=data_mode)
     return Envelope(data=asdict(result), meta=meta)
+
+
+@api_router.post("/brief", response_model=Envelope[BriefResponse], tags=["brief"])
+async def post_morning_brief(
+    req: BriefRequest,
+    request: Request,
+    aq_client: AqClientDep,
+) -> Envelope[BriefResponse]:
+    """Generate proactive morning brief with forecast-shift detection and recommendations."""
+    lat, lng = 28.459, 77.026
+    if req.profile.location:
+        lat, lng = req.profile.location.lat, req.profile.location.lng
+    series = await aq_client.get_hourly_forecast(lat=lat, lng=lng, hours=24)
+    brief = generate_morning_brief(
+        profile=req.profile,
+        air_series=series,
+        cached_yesterday_series=req.previous_forecast_pm25,
+        threshold_ug_m3=get_settings().forecast_shift_replan_threshold_ug_m3,
+    )
+    meta = make_meta(request, data_mode=series.data_mode)
+    data = BriefResponse(
+        headline=brief.headline,
+        worst_hour_local=brief.worst_hour_local,
+        worst_pm25=brief.worst_pm25,
+        cleanest_window_local=brief.cleanest_window_local,
+        cleanest_pm25=brief.cleanest_pm25,
+        sensitive_member_alerts=[
+            SensitiveAlert(**asdict(a)) for a in brief.sensitive_member_alerts
+        ],
+        top_actions=[BriefAction(**asdict(a)) for a in brief.top_actions],
+        forecast_shift=brief.forecast_shift,
+        explanation=brief.explanation.to_dict(),
+    )
+    return Envelope(data=data, meta=meta)

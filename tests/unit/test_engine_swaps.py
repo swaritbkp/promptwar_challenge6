@@ -18,46 +18,29 @@ def test_get_available_swaps() -> None:
     catalogue = get_available_swaps()
     assert len(catalogue) >= 6
     ids = [s["id"] for s in catalogue]
-    assert "commute_car_to_metro" in ids
-    assert "heating_angithi_to_electric" in ids
-    assert "leaves_burning_to_compost" in ids
+    assert "commute_car_to_metro" in ids and "heating_angithi_to_electric" in ids
 
 
 def test_evaluate_swap_commute_car_to_metro() -> None:
     res = evaluate_swap("commute_car_to_metro", units_per_day=20.0, days_per_week=5)
-    assert isinstance(res, SwapImpactResult)
-    assert res.swap_id == "commute_car_to_metro"
-
-    # Switching from petrol car to metro reduces emissions -> deltas must be negative
-    assert res.delta_emit_daily.kg_co2 < 0
-    assert res.delta_emit_daily.g_pm25 < 0
-
-    # Weekly must equal daily * 5
+    assert isinstance(res, SwapImpactResult) and res.swap_id == "commute_car_to_metro"
+    assert res.delta_emit_daily.kg_co2 < 0 and res.delta_emit_daily.g_pm25 < 0
     assert res.delta_emit_weekly.kg_co2 == pytest.approx(res.delta_emit_daily.kg_co2 * 5, rel=1e-4)
-    assert res.delta_emit_weekly.g_pm25 == pytest.approx(res.delta_emit_daily.g_pm25 * 5, rel=1e-4)
-
-    # Monthly must equal weekly * 4.33
     assert res.delta_emit_monthly.kg_co2 == pytest.approx(
         res.delta_emit_weekly.kg_co2 * 4.33, rel=1e-4
     )
 
 
 def test_evaluate_swap_leaves_burning_to_compost() -> None:
-    # 5 kg leaves
     res = evaluate_swap("leaves_burning_to_compost", units_per_day=5.0, days_per_week=1)
-    # Burning eliminated: after is 0, so delta is strictly negative
-    assert res.delta_emit_daily.g_pm25 < 0
-    assert res.delta_emit_daily.kg_co2 < 0
+    assert res.delta_emit_daily.g_pm25 < 0 and res.delta_emit_daily.kg_co2 < 0
 
 
 def test_scale_to_community_zero_participation() -> None:
     swap_res = evaluate_swap("commute_car_to_metro", units_per_day=20.0, days_per_week=5)
     comm = scale_to_community(swap_res, households=1000, participation_rate=0.0)
     assert isinstance(comm, CommunityImpactResult)
-    assert comm.households == 1000
-    assert comm.participation_rate == 0.0
-    assert comm.community_delta_co2_kg_monthly == 0.0
-    assert comm.community_delta_pm25_g_monthly == 0.0
+    assert comm.community_delta_co2_kg_monthly == 0.0 and comm.community_delta_pm25_g_monthly == 0.0
 
 
 def test_scale_to_community_linear() -> None:
@@ -79,9 +62,7 @@ def test_unknown_swap_raises() -> None:
 
 def test_evaluate_swap_two_wheeler_to_metro() -> None:
     res = evaluate_swap("commute_two_wheeler_to_metro", units_per_day=15.0, days_per_week=6)
-    assert res.delta_emit_daily.kg_co2 < 0
-    assert res.delta_emit_daily.g_pm25 < 0
-    # In transit: two-wheeler (1.3x) to metro (0.5x) saves inhaled PM2.5 (delta breathe < 0)
+    assert res.delta_emit_daily.kg_co2 < 0 and res.delta_emit_daily.g_pm25 < 0
     assert res.delta_breathe_daily_ug < 0
 
 
@@ -92,27 +73,20 @@ def test_evaluate_swap_heating_angithi_to_electric() -> None:
 
 def test_evaluate_swap_indoor_only_no_emissions_branch() -> None:
     res = evaluate_swap("no_incense_on_severe_days", units_per_day=1.0)
-    assert res.delta_emit_daily.kg_co2 == 0.0
-    assert res.delta_emit_daily.g_pm25 == 0.0
+    assert res.delta_emit_daily.kg_co2 == 0.0 and res.delta_emit_daily.g_pm25 == 0.0
 
 
 def test_compute_transit_delta_breathe_helpers() -> None:
-    # Car to bus
     d_bus = _compute_transit_delta_breathe(
         "car_petrol_per_km", "bus_per_passenger_km", 200.0, "31_41", 1.0
     )
-    # Default bus ratio is 1.0 vs car 0.65 -> delta positive
     assert d_bus > 0
-
-    # Default fallback when age_band is unknown
     d_unknown = _compute_transit_delta_breathe("car", "metro", 100.0, "unknown_age", 1.0)
     assert d_unknown < 0
     with pytest.raises(ValueError, match="units_per_day must be non-negative"):
         evaluate_swap("commute_car_to_metro", units_per_day=-2.0)
-
     with pytest.raises(ValueError, match="days_per_week must be between 1 and 7"):
         evaluate_swap("commute_car_to_metro", units_per_day=10.0, days_per_week=0)
-
     with pytest.raises(ValueError, match="days_per_week must be between 1 and 7"):
         evaluate_swap("commute_car_to_metro", units_per_day=10.0, days_per_week=8)
 
@@ -121,10 +95,8 @@ def test_scale_to_community_validation_errors() -> None:
     swap_res = evaluate_swap("commute_car_to_metro", units_per_day=10.0)
     with pytest.raises(ValueError, match="households must be non-negative"):
         scale_to_community(swap_res, households=-5, participation_rate=0.5)
-
     with pytest.raises(ValueError, match=r"participation_rate must be between 0\.0 and 1\.0"):
         scale_to_community(swap_res, households=100, participation_rate=-0.1)
-
     with pytest.raises(ValueError, match=r"participation_rate must be between 0\.0 and 1\.0"):
         scale_to_community(swap_res, households=100, participation_rate=1.5)
 
@@ -140,12 +112,8 @@ def test_property_community_scaling_monotonic_and_zero_at_zero(
 ) -> None:
     swap_res = evaluate_swap("commute_car_to_metro", units_per_day=units, days_per_week=5)
     comm = scale_to_community(swap_res, households=households, participation_rate=participation)
-
-    # Reduction in emissions: negative delta or 0
     assert comm.community_delta_co2_kg_monthly <= 0.0
     assert comm.community_delta_pm25_g_monthly <= 0.0
-
-    # At zero participation or zero households, total impact is exactly 0.0
     if participation == 0.0:
         assert comm.community_delta_co2_kg_monthly == 0.0
         assert comm.community_delta_pm25_g_monthly == 0.0

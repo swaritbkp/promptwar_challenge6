@@ -9,7 +9,7 @@ Rules:
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,6 +55,9 @@ class ScheduleBlockInput(StrictBaseModel):
     micro_env: str = Field(max_length=50)
     activity: str = Field(max_length=50)
     label: str = Field(default="", max_length=100)
+    flexible: bool = False
+    earliest_start: int | None = Field(default=None, ge=0, le=23)
+    latest_end: int | None = Field(default=None, ge=1, le=24)
 
 
 class MemberInput(StrictBaseModel):
@@ -63,6 +66,7 @@ class MemberInput(StrictBaseModel):
     id: str = Field(max_length=50)
     name: str = Field(max_length=100)
     age_band: str = Field(max_length=20)
+    sensitivities: list[str] = Field(default_factory=list, max_length=10)
     schedule_blocks: list[ScheduleBlockInput] = Field(default_factory=list, max_length=24)
 
 
@@ -162,10 +166,52 @@ class SwapsImpactRequest(StrictBaseModel):
     now: str | None = Field(default=None, max_length=35)
 
 
+class BriefAction(StrictBaseModel):
+    """Actionable recommendation with quantified exposure savings."""
+
+    title: str = Field(max_length=120)
+    description: str = Field(max_length=300)
+    ug_saved: float = Field(ge=0.0)
+    action_type: Literal["indoor_hack", "planner_window", "swap"]
+
+
+class SensitiveAlert(StrictBaseModel):
+    """Targeted alert for a vulnerable or sensitive family member."""
+
+    member_id: str = Field(max_length=64)
+    name: str = Field(max_length=80)
+    alert_text: str = Field(max_length=300)
+    severity: Literal["advisory", "warning", "critical"]
+
+
+class ForecastShiftInfo(StrictBaseModel):
+    """Detection outcome when comparing previous forecast against current."""
+
+    shifted: bool
+    delta_max_pm25: float
+    replanned: bool
+    note: str = Field(max_length=300)
+
+
+class BriefResponse(StrictBaseModel):
+    """Proactive morning brief response."""
+
+    headline: str = Field(max_length=200)
+    worst_hour_local: str = Field(max_length=10)
+    worst_pm25: float
+    cleanest_window_local: str = Field(max_length=20)
+    cleanest_pm25: float
+    sensitive_member_alerts: list[SensitiveAlert]
+    top_actions: list[BriefAction]
+    forecast_shift: ForecastShiftInfo | None = None
+    explanation: dict[str, Any]
+
+
 class BriefRequest(StrictBaseModel):
     """Request payload for morning proactive brief and forecast shift detection."""
 
     profile: FamilyProfileInput
+    previous_forecast_pm25: list[float] | None = Field(default=None, max_length=96)
     now: str | None = Field(default=None, max_length=35)
     data_source: Literal["auto", "fixture"] = "auto"
 

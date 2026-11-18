@@ -22,43 +22,17 @@ async def test_live_api_mock_transport_success() -> None:
                 "indexes": [
                     {
                         "code": "ind_cpcb",
-                        "displayName": "CPCB NAQI",
                         "aqi": 340,
                         "category": "VERY_POOR",
                         "dominantPollutant": "pm25",
-                        "color": {"red": 0.8, "green": 0.1, "blue": 0.1},
                     },
-                    {
-                        "code": "uaqi",
-                        "displayName": "Universal AQI",
-                        "aqi": 42,
-                        "category": "Poor air quality",
-                        "dominantPollutant": "pm25",
-                    },
+                    {"code": "uaqi", "aqi": 42},
                 ],
                 "pollutants": [
-                    {
-                        "code": "pm25",
-                        "displayName": "PM2.5",
-                        "concentration": {
-                            "value": 185.4,
-                            "units": "MICROGRAMS_PER_CUBIC_METER",
-                        },
-                    },
-                    {
-                        "code": "pm10",
-                        "displayName": "PM10",
-                        "concentration": {
-                            "value": 290.0,
-                            "units": "MICROGRAMS_PER_CUBIC_METER",
-                        },
-                    },
+                    {"code": "pm25", "concentration": {"value": 185.4}},
+                    {"code": "pm10", "concentration": {"value": 290.0}},
                 ],
-                "healthRecommendations": {
-                    "generalPopulation": "Avoid prolonged outdoor exposure.",
-                    "elderly": "Remain indoors with air filtration.",
-                    "children": "Avoid outdoor play activities.",
-                },
+                "healthRecommendations": {"generalPopulation": "Avoid"},
             }
         ]
     }

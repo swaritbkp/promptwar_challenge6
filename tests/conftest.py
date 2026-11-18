@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,3 +37,33 @@ def settings() -> Settings:
 def client(settings: Settings) -> Iterator[TestClient]:
     with TestClient(create_app(settings)) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def sample_profile_data() -> dict[str, Any]:
+    return {
+        "id": "fam_delhi",
+        "name": "Delhi Household",
+        "location": {"lat": 28.46, "lng": 77.03},
+        "rooms": [{"name": "Living Room", "volume_m3": 50.0}],
+        "sources": [],
+        "members": [
+            {
+                "id": "m1",
+                "name": "Arjun",
+                "age_band": "adult",
+                "sensitivities": ["asthma"],
+                "schedule_blocks": [
+                    {
+                        "start_hour": 7,
+                        "end_hour": 8,
+                        "micro_env": "outdoor",
+                        "activity": "walk",
+                        "flexible": True,
+                        "earliest_start": 6,
+                        "latest_end": 18,
+                    }
+                ],
+            }
+        ],
+    }

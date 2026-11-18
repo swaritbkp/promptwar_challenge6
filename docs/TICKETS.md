@@ -34,7 +34,7 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | API-03 | Plan endpoint | API-02, ENG-08 | Must | Done |
 | API-04 | Indoor simulate endpoint | API-02, ENG-06 | Must | Done |
 | API-05 | Swaps impact endpoint | API-02, ENG-09 | Must | Done |
-| API-06 | Brief endpoint with forecast-shift re-plan | API-03 | Must | Not started |
+| API-06 | Brief endpoint with forecast-shift re-plan | API-03 | Must | Done |
 | API-07 | Demo profiles and story endpoints | API-02 | Must | Not started |
 | AGT-01 | Input/output guardrails | API-01 | Must | Not started |
 | AGT-02 | Numeric grounding gate | AGT-01 | Must | Not started |
