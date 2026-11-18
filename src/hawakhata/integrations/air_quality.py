@@ -24,14 +24,13 @@ if TYPE_CHECKING:
     from hawakhata.core.cache import CacheBackend
 
 logger = get_logger(__name__)
-
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "data" / "fixtures"
 AQ_API_BASE = "https://airquality.googleapis.com/v1"
 DELHI_NCR_COORDS = (28.4595, 77.0266)
 CHANDIGARH_COORDS = (30.7333, 76.7794)
-MIN_ISO_TIME_LEN: int = 16
-HTTP_OK: int = 200
-MAX_RETRY_ATTEMPTS: int = 2
+MIN_ISO_TIME_LEN = 16
+HTTP_OK = 200
+MAX_RETRY_ATTEMPTS = 2
 
 
 def round_coordinates(lat: float, lng: float) -> tuple[float, float]:
@@ -41,14 +40,12 @@ def round_coordinates(lat: float, lng: float) -> tuple[float, float]:
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Calculate great circle distance between two points in km."""
-    radius_km = 6371.0
-    d_lat = math.radians(lat2 - lat1)
-    d_lon = math.radians(lon2 - lon1)
+    d_lat, d_lon = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
     a = (
         math.sin(d_lat / 2.0) ** 2
         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(d_lon / 2.0) ** 2
     )
-    return radius_km * (2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a)))
+    return 6371.0 * (2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a)))
 
 
 class CircuitState(StrEnum):
@@ -69,19 +66,19 @@ class CircuitBreaker:
         clock: Callable[[], float] | None = None,
     ) -> None:
         """Initialize circuit breaker with threshold and recovery time."""
-        self._failure_threshold = failure_threshold
-        self._recovery_time_s = recovery_time_s
+        self._threshold = failure_threshold
+        self._recovery_s = recovery_time_s
         self._clock = clock or time.monotonic
         self._state = CircuitState.CLOSED
-        self._failure_count = 0
-        self._last_failure_time = 0.0
+        self._failures = 0
+        self._last_failure = 0.0
 
     @property
     def state(self) -> CircuitState:
         """Current operational state."""
         if (
             self._state == CircuitState.OPEN
-            and (self._clock() - self._last_failure_time) >= self._recovery_time_s
+            and (self._clock() - self._last_failure) >= self._recovery_s
         ):
             self._state = CircuitState.HALF_OPEN
         return self._state
@@ -92,16 +89,15 @@ class CircuitBreaker:
 
     def record_success(self) -> None:
         """Reset failures upon successful response."""
-        self._failure_count = 0
-        self._state = CircuitState.CLOSED
+        self._failures, self._state = 0, CircuitState.CLOSED
 
     def record_failure(self) -> None:
         """Register a network failure or 5xx response."""
-        self._failure_count += 1
-        self._last_failure_time = self._clock()
-        if self._failure_count >= self._failure_threshold:
+        self._failures += 1
+        self._last_failure = self._clock()
+        if self._failures >= self._threshold:
             self._state = CircuitState.OPEN
-            logger.warning("AQ circuit breaker OPENED after %d failures", self._failure_count)
+            logger.warning("AQ circuit breaker OPENED after %d failures", self._failures)
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,104 +127,59 @@ class HourlyAirSeries:
 
 def _normalise_raw_forecast_point(raw: dict[str, Any]) -> HourlyAirPoint:
     """Transform Google Maps AQ forecast point into normalized HourlyAirPoint."""
-    date_time = str(raw.get("dateTime", ""))
-    indexes = raw.get("indexes", [])
-    pollutants = raw.get("pollutants", [])
-    health_recs = raw.get("healthRecommendations", {})
-
-    aqi_local: int | None = None
-    category_local = "MODERATE"
-    dominant_pollutant = "pm25"
-    aqi_universal: int | None = None
-
-    for idx in indexes:
+    dt = str(raw.get("dateTime", ""))
+    aqi_l, cat_l, dom, aqi_u = None, "MODERATE", "pm25", None
+    for idx in raw.get("indexes", []):
         code = str(idx.get("code", "")).lower()
         if code in ("ind_cpcb", "cpcb"):
-            aqi_local = idx.get("aqi")
-            category_local = str(idx.get("category", "MODERATE"))
-            dominant_pollutant = str(idx.get("dominantPollutant", dominant_pollutant))
+            aqi_l, cat_l = idx.get("aqi"), str(idx.get("category", "MODERATE"))
+            dom = str(idx.get("dominantPollutant", dom))
         elif code == "uaqi":
-            aqi_universal = idx.get("aqi")
+            aqi_u = idx.get("aqi")
 
-    pm25_ug = 0.0
-    pm10_ug: float | None = None
-    for p in pollutants:
-        p_code = str(p.get("code", "")).lower()
-        val = p.get("concentration", {}).get("value")
+    pm25, pm10 = 0.0, None
+    for p in raw.get("pollutants", []):
+        c, val = str(p.get("code", "")).lower(), p.get("concentration", {}).get("value")
         if val is not None:
-            if p_code == "pm25":
-                pm25_ug = float(val)
-            elif p_code == "pm10":
-                pm10_ug = float(val)
+            if c == "pm25":
+                pm25 = float(val)
+            elif c == "pm10":
+                pm10 = float(val)
 
-    recs: dict[str, str] = (
-        {k: v for k, v in health_recs.items() if isinstance(v, str)}
-        if isinstance(health_recs, dict)
-        else {}
-    )
-    time_local = date_time[11:16] if len(date_time) >= MIN_ISO_TIME_LEN else date_time
-
-    return HourlyAirPoint(
-        time_utc=date_time,
-        time_local=time_local,
-        pm25_ug_m3=pm25_ug,
-        pm10_ug_m3=pm10_ug,
-        aqi_local=aqi_local,
-        aqi_universal=aqi_universal,
-        category_local=category_local,
-        dominant_pollutant=dominant_pollutant,
-        health_recs=recs,
-    )
+    recs = {k: v for k, v in raw.get("healthRecommendations", {}).items() if isinstance(v, str)}
+    t_loc = dt[11:16] if len(dt) >= MIN_ISO_TIME_LEN else dt
+    return HourlyAirPoint(dt, t_loc, pm25, pm10, aqi_l, aqi_u, cat_l, dom, recs)
 
 
 def _load_nearest_fixture(
-    lat: float,
-    lng: float,
-    hours: int,
-    demo_clock_iso: str | None = None,
+    lat: float, lng: float, hours: int, demo_clock_iso: str | None = None
 ) -> HourlyAirSeries:
     """Load and time-shift geographically closest winter fixture."""
-    d_ncr = _haversine_km(lat, lng, DELHI_NCR_COORDS[0], DELHI_NCR_COORDS[1])
-    d_chd = _haversine_km(lat, lng, CHANDIGARH_COORDS[0], CHANDIGARH_COORDS[1])
-    fixture_name = (
-        "chandigarh_mohali_winter.json" if d_chd < d_ncr else "delhi_gurugram_winter.json"
-    )
-    fixture_path = DATA_ROOT / fixture_name
-
-    with fixture_path.open(encoding="utf-8") as f:
-        payload = json.load(f)
-
-    raw_forecasts = payload.get("hourlyForecasts", [])
+    d_n = _haversine_km(lat, lng, DELHI_NCR_COORDS[0], DELHI_NCR_COORDS[1])
+    d_c = _haversine_km(lat, lng, CHANDIGARH_COORDS[0], CHANDIGARH_COORDS[1])
+    p = DATA_ROOT / ("chandigarh_mohali_winter.json" if d_c < d_n else "delhi_gurugram_winter.json")
+    payload = json.loads(p.read_text("utf-8"))
+    raw = payload.get("hourlyForecasts", [])
     now_dt = datetime.now(UTC)
     if demo_clock_iso:
         with contextlib.suppress(ValueError):
             now_dt = datetime.fromisoformat(demo_clock_iso.replace("Z", "+00:00"))
 
-    points: list[HourlyAirPoint] = []
-    max_h = min(hours, len(raw_forecasts))
-    for i in range(max_h):
-        pt = _normalise_raw_forecast_point(raw_forecasts[i])
-        hour_val = (now_dt.hour + i) % 24
-        points.append(
-            HourlyAirPoint(
-                time_utc=pt.time_utc,
-                time_local=f"{hour_val:02d}:00",
-                pm25_ug_m3=pt.pm25_ug_m3,
-                pm10_ug_m3=pt.pm10_ug_m3,
-                aqi_local=pt.aqi_local,
-                aqi_universal=pt.aqi_universal,
-                category_local=pt.category_local,
-                dominant_pollutant=pt.dominant_pollutant,
-                health_recs=pt.health_recs,
-            )
+    pts = [
+        HourlyAirPoint(
+            pt.time_utc,
+            f"{(now_dt.hour + i) % 24:02d}:00",
+            pt.pm25_ug_m3,
+            pt.pm10_ug_m3,
+            pt.aqi_local,
+            pt.aqi_universal,
+            pt.category_local,
+            pt.dominant_pollutant,
+            pt.health_recs,
         )
-
-    return HourlyAirSeries(
-        points=points,
-        location_cell=f"{lat:.2f},{lng:.2f}",
-        data_mode="fixture",
-        fetched_at=now_dt.isoformat(),
-    )
+        for i, pt in enumerate(_normalise_raw_forecast_point(rf) for rf in raw[:hours])
+    ]
+    return HourlyAirSeries(pts, f"{lat:.2f},{lng:.2f}", "fixture", now_dt.isoformat())
 
 
 class AirQualityClient:
@@ -242,9 +193,7 @@ class AirQualityClient:
         breaker: CircuitBreaker | None = None,
     ) -> None:
         """Initialize AirQualityClient with settings, cache, and HTTP client."""
-        self._settings = settings
-        self._cache = cache
-        self._http = http_client
+        self._settings, self._cache, self._http = settings, cache, http_client
         self._breaker = breaker or CircuitBreaker()
 
     async def _save_cache(self, key: str, series: HourlyAirSeries) -> None:
@@ -260,11 +209,7 @@ class AirQualityClient:
         )
 
     async def get_hourly_forecast(
-        self,
-        lat: float,
-        lng: float,
-        hours: int = 24,
-        language_code: str = "en",
+        self, lat: float, lng: float, hours: int = 24, language_code: str = "en"
     ) -> HourlyAirSeries:
         """Retrieve hourly air quality forecast with caching, retries, and fallback."""
         r_lat, r_lng = round_coordinates(lat, lng)
@@ -283,10 +228,10 @@ class AirQualityClient:
                 "live" if cached.get("data_mode") == "live" else "fixture"
             )
             return HourlyAirSeries(
-                points=points,
-                location_cell=str(cached.get("location_cell", f"{r_lat},{r_lng}")),
-                data_mode=data_mode,
-                fetched_at=str(cached.get("fetched_at", "")),
+                points,
+                str(cached.get("location_cell", f"{r_lat},{r_lng}")),
+                data_mode,
+                str(cached.get("fetched_at", "")),
             )
 
         api_key = (
@@ -294,13 +239,12 @@ class AirQualityClient:
             if self._settings.google_maps_api_key
             else None
         )
-
         if not api_key or not self._breaker.can_execute():
-            series = _load_nearest_fixture(
+            s = _load_nearest_fixture(
                 r_lat, r_lng, hours, demo_clock_iso=self._settings.demo_clock_iso
             )
-            await self._save_cache(cache_key, series)
-            return series
+            await self._save_cache(cache_key, s)
+            return s
 
         headers = {"Content-Type": "application/json", "X-Goog-Api-Key": api_key}
         body = {
@@ -324,16 +268,15 @@ class AirQualityClient:
                 )
                 if resp.status_code == HTTP_OK:
                     self._breaker.record_success()
-                    raw_forecasts = resp.json().get("hourlyForecasts", [])
-                    series = HourlyAirSeries(
-                        points=[_normalise_raw_forecast_point(rf) for rf in raw_forecasts[:hours]],
-                        location_cell=f"{r_lat:.2f},{r_lng:.2f}",
-                        data_mode="live",
-                        fetched_at=datetime.now(UTC).isoformat(),
+                    raw = resp.json().get("hourlyForecasts", [])
+                    s = HourlyAirSeries(
+                        [_normalise_raw_forecast_point(rf) for rf in raw[:hours]],
+                        f"{r_lat:.2f},{r_lng:.2f}",
+                        "live",
+                        datetime.now(UTC).isoformat(),
                     )
-                    await self._save_cache(cache_key, series)
-                    return series
-
+                    await self._save_cache(cache_key, s)
+                    return s
                 if resp.status_code in (429, 500, 502, 503, 504) and attempt < MAX_RETRY_ATTEMPTS:
                     await asyncio.sleep(0.1 + random.uniform(0.05, 0.15))  # noqa: S311
                     continue
@@ -346,30 +289,17 @@ class AirQualityClient:
                 self._breaker.record_failure()
                 break
 
-        series = _load_nearest_fixture(
-            r_lat, r_lng, hours, demo_clock_iso=self._settings.demo_clock_iso
-        )
-        await self._save_cache(cache_key, series)
-        return series
+        s = _load_nearest_fixture(r_lat, r_lng, hours, demo_clock_iso=self._settings.demo_clock_iso)
+        await self._save_cache(cache_key, s)
+        return s
 
     async def get_current_conditions(
-        self,
-        lat: float,
-        lng: float,
-        language_code: str = "en",
+        self, lat: float, lng: float, language_code: str = "en"
     ) -> HourlyAirPoint:
         """Retrieve current air quality conditions (first hour of forecast)."""
         series = await self.get_hourly_forecast(lat, lng, hours=1, language_code=language_code)
         if series.points:
             return series.points[0]
         return HourlyAirPoint(
-            time_utc=datetime.now(UTC).isoformat(),
-            time_local="12:00",
-            pm25_ug_m3=150.0,
-            pm10_ug_m3=240.0,
-            aqi_local=320,
-            aqi_universal=35,
-            category_local="VERY_POOR",
-            dominant_pollutant="pm25",
-            health_recs={},
+            datetime.now(UTC).isoformat(), "12:00", 150.0, 240.0, 320, 35, "VERY_POOR", "pm25", {}
         )

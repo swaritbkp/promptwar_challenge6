@@ -73,14 +73,18 @@ def _normalize_members(profile: FamilyProfileInput | dict[str, Any]) -> list[dic
         raw_b = m.get("schedule_blocks") or m.get("schedule", [])
         norm_b = [
             {
-                "start_hour": int(b.get("start_hour", 0)),
-                "end_hour": int(b.get("end_hour", 1)),
+                "start_hour": int(b.get("start_hour", b.get("start", 0))),
+                "end_hour": int(b.get("end_hour", b.get("end", 1))),
                 "micro_env": str(b.get("micro_env") or b.get("environment", "indoor_home")),
                 "activity": str(b.get("activity", "other")),
-                "label": str(b.get("label", "")),
-                "flexible": bool(b.get("flexible", False)),
-                "earliest_start": b.get("earliest_start"),
-                "latest_end": b.get("latest_end"),
+                "label": str(b.get("label", b.get("note", ""))),
+                "flexible": bool(b.get("flexible", not b.get("fixed", True))),
+                "earliest_start": b.get(
+                    "earliest_start", b.get("window", [6, 19])[0] if b.get("window") else None
+                ),
+                "latest_end": b.get(
+                    "latest_end", b.get("window", [6, 19])[1] if b.get("window") else None
+                ),
             }
             for b in raw_b
         ]
@@ -97,9 +101,7 @@ def _normalize_members(profile: FamilyProfileInput | dict[str, Any]) -> list[dic
 
 
 def detect_forecast_shift(
-    old_series: list[float],
-    new_series: list[float],
-    threshold_ug_m3: float = 40.0,
+    old_series: list[float], new_series: list[float], threshold_ug_m3: float = 40.0
 ) -> bool:
     """Return True if maximum point difference between forecasts exceeds threshold."""
     if not old_series or not new_series:
@@ -107,8 +109,7 @@ def detect_forecast_shift(
     min_len = min(len(old_series), len(new_series))
     if min_len == 0:
         return False
-    diff = max(abs(new_series[i] - old_series[i]) for i in range(min_len))
-    return diff >= threshold_ug_m3
+    return max(abs(new_series[i] - old_series[i]) for i in range(min_len)) >= threshold_ug_m3
 
 
 def replan_if_needed(
@@ -162,15 +163,7 @@ def replan_if_needed(
                     )
                 )
             else:
-                fixed_b.append(
-                    ScheduleBlock(
-                        start_hour=start,
-                        end_hour=end,
-                        micro_env=env,
-                        activity="light",
-                        label=act,
-                    )
-                )
+                fixed_b.append(ScheduleBlock(start, end, env, "light", act))
 
         if flex_acts:
             opt = optimise_day_plan(
@@ -181,8 +174,8 @@ def replan_if_needed(
             )
             if opt.total_savings_ug > 0:
                 replan_notes.append(
-                    f"Forecast changed by {max_diff:.0f} µg/m³. Rescheduled "
-                    f"{m_name}'s flexible activities, saving {opt.total_savings_ug:.1f} µg."
+                    f"Forecast changed by {max_diff:.0f} µg/m³. Rescheduled {m_name}'s "
+                    f"flexible activities, saving {opt.total_savings_ug:.1f} µg."
                 )
 
     if not replan_notes:
@@ -196,17 +189,14 @@ def replan_if_needed(
 def _compute_cleanest_window(
     pts: list[HourlyAirPoint], pm25_vals: list[float]
 ) -> tuple[str, float]:
-    best_start = 0
-    best_avg = float("inf")
+    best_start, best_avg = 0, float("inf")
     for i in range(len(pm25_vals) - 1):
         win_avg = (pm25_vals[i] + pm25_vals[i + 1]) / 2.0
         if win_avg < best_avg:
-            best_avg = win_avg
-            best_start = i
+            best_avg, best_start = win_avg, i
     end_idx = min(len(pts) - 1, best_start + 2)
     win_str = f"{pts[best_start].time_local}-{pts[end_idx].time_local}"
-    win_pm = round(best_avg if best_avg < float("inf") else 0.0, 1)
-    return win_str, win_pm
+    return win_str, round(best_avg if best_avg < float("inf") else 0.0, 1)
 
 
 def _build_sensitive_alerts(
@@ -217,24 +207,19 @@ def _build_sensitive_alerts(
         m_id, m_name, age = str(m["id"]), str(m["name"]), str(m["age_band"])
         sens = list(m["sensitivities"])
         if age in ("child", "elderly") or sens:
-            sev: Literal["advisory", "warning", "critical"] = "advisory"
-            if worst_pm25 > SEVERE_PM25_THRESHOLD:
-                sev = "critical"
-            elif worst_pm25 > POOR_PM25_THRESHOLD:
-                sev = "warning"
-            reasons: list[str] = []
-            if age == "child":
-                reasons.append("developing lungs")
-            if age == "elderly":
-                reasons.append("respiratory vulnerability")
-            reasons.extend(sens)
+            sev: Literal["advisory", "warning", "critical"] = (
+                "critical"
+                if worst_pm25 > SEVERE_PM25_THRESHOLD
+                else ("warning" if worst_pm25 > POOR_PM25_THRESHOLD else "advisory")
+            )
+            reasons = ([age] if age in ("child", "elderly") else []) + sens
             alerts.append(
                 SensitiveAlertItem(
                     member_id=m_id,
                     name=m_name,
                     alert_text=(
-                        f"Smog peak around {worst_hour} ({worst_pm25} µg/m³). Protect "
-                        f"{m_name} ({', '.join(reasons)}) indoors with air filtration."
+                        f"Smog peak around {worst_hour} ({worst_pm25} µg/m³). Protect {m_name} "
+                        f"({', '.join(reasons)}) indoors with air filtration."
                     ),
                     severity=sev,
                 )
@@ -250,33 +235,28 @@ def _build_top_actions(
         room_volume_m3=DEFAULT_ROOM_VOLUME_M3, outdoor_series=pm25_vals, baseline_events=[]
     )
     if ranked_hacks:
-        top_hack = ranked_hacks[0]
+        top = ranked_hacks[0]
         actions.append(
             BriefActionItem(
-                title=f"Indoor Air Hack: {top_hack.title}",
-                description=(
-                    f"{top_hack.advice} (Reduces PM2.5 by {top_hack.delta_pm25_ug_m3:.1f} µg/m³)."
-                ),
-                ug_saved=round(max(0.0, top_hack.delta_pm25_ug_m3 * 10.0), 1),
+                title=f"Indoor Air Hack: {top.title}",
+                description=f"{top.advice} (Reduces PM2.5 by {top.delta_pm25_ug_m3:.1f} µg/m³).",
+                ug_saved=round(max(0.0, top.delta_pm25_ug_m3 * 10.0), 1),
                 action_type="indoor_hack",
             )
         )
-    metro_swap = evaluate_swap("commute_car_to_metro", units_per_day=20.0, days_per_week=5)
-    g_saved = abs(metro_swap.delta_emit_daily.g_pm25)
+    metro = evaluate_swap("commute_car_to_metro", units_per_day=20.0, days_per_week=5)
     actions.append(
         BriefActionItem(
             title="Clean Commute: Switch to Metro",
-            description=f"Eliminate {g_saved:.1f} g of direct PM2.5 emissions per commute.",
-            ug_saved=round(abs(metro_swap.delta_breathe_daily_ug), 1),
+            description=f"Eliminate {abs(metro.delta_emit_daily.g_pm25):.1f} g PM2.5 per commute.",
+            ug_saved=round(abs(metro.delta_breathe_daily_ug), 1),
             action_type="swap",
         )
     )
     actions.append(
         BriefActionItem(
             title="Outdoor Window Shift",
-            description=(
-                f"Shift outdoor activity to clean window ({cleanest_win}, ~{cleanest_pm} µg/m³)."
-            ),
+            description=f"Shift activity to clean window ({cleanest_win}, ~{cleanest_pm} µg/m³).",
             ug_saved=round(max(0.0, worst_pm25 - cleanest_pm) * 5.0, 1),
             action_type="planner_window",
         )
@@ -307,8 +287,7 @@ def generate_morning_brief(
 
     pm25_vals = [pt.pm25_ug_m3 for pt in pts[:24]]
     worst_idx = max(range(len(pm25_vals)), key=lambda i: pm25_vals[i])
-    worst_hour_local = pts[worst_idx].time_local
-    worst_pm25 = round(pm25_vals[worst_idx], 1)
+    worst_hour_local, worst_pm25 = pts[worst_idx].time_local, round(pm25_vals[worst_idx], 1)
     cleanest_win, cleanest_pm = _compute_cleanest_window(pts, pm25_vals)
     alerts = _build_sensitive_alerts(_normalize_members(profile), worst_hour_local, worst_pm25)
     actions = _build_top_actions(pm25_vals, worst_pm25, cleanest_win, cleanest_pm)
