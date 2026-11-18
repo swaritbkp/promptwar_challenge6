@@ -130,9 +130,9 @@ def simulate_indoor_pm25(
         base_rate = float(source_rates.get(ev.kind, 0.0))
         # Sub-hour averaging: S_hour = base_rate * (minutes / 60.0) * count
         fraction = min(1.0, max(0.0, ev.minutes / 60.0))
-        hourly_sources[ev.start_hour] = (
-            hourly_sources.get(ev.start_hour, 0.0) + base_rate * fraction * max(1, ev.count)
-        )
+        hourly_sources[ev.start_hour] = hourly_sources.get(
+            ev.start_hour, 0.0
+        ) + base_rate * fraction * max(1, ev.count)
 
     # Initial condition
     c_out_0 = outdoor_pm25_series[0] if outdoor_pm25_series else 100.0

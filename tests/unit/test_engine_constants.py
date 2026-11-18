@@ -41,13 +41,13 @@ def test_load_constants_errors(tmp_path: Path) -> None:
 
     # Missing root constants key
     empty_obj = tmp_path / "empty.json"
-    empty_obj.write_text("{\"foo\": \"bar\"}", encoding="utf-8")
+    empty_obj.write_text('{"foo": "bar"}', encoding="utf-8")
     with pytest.raises(ValidationFailedError, match="root 'constants' mapping"):
         load_constants(empty_obj)
 
     # Invalid entry
     bad_entry = tmp_path / "bad_entry.json"
-    bad_entry.write_text("{\"constants\": {\"k\": \"not a dict\"}}", encoding="utf-8")
+    bad_entry.write_text('{"constants": {"k": "not a dict"}}', encoding="utf-8")
     with pytest.raises(ValidationFailedError, match="invalid schema"):
         load_constants(bad_entry)
 
