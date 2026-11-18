@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from hawakhata.engine.indoor_model import IndoorSourceEvent
 from hawakhata.engine.recommendations import (
+    _eval_hack,
     rank_indoor_hacks,
     recommend_purifier_cadr,
     recommend_ventilation_hours,
@@ -75,3 +76,59 @@ def test_rank_indoor_hacks_all_branches() -> None:
         windows_open_hours={7, 8, 19},
     )
     assert any(h.id == "hack_close_peak_windows" for h in hacks_severe)
+
+
+def test_rank_indoor_hacks_edge_branches() -> None:
+    # 1. Test when sleep hours are already covered by purifier
+    sleep_hours = {22, 23, 0, 1, 2, 3, 4, 5}
+    outdoor = [100.0] * 24
+    hacks = rank_indoor_hacks(
+        room_volume_m3=40.0,
+        outdoor_series=outdoor,
+        baseline_events=[],
+        purifier_cadr_m3_per_h=200.0,
+        purifier_on_hours=sleep_hours,
+    )
+    # Night purifier hack shouldn't be recommended because it's already running 22..05
+    assert not any(h.id == "hack_night_purifier" for h in hacks)
+
+    # 2. Test tadka event
+    tadka_events = [IndoorSourceEvent(kind="src_tadka", start_hour=19, minutes=15.0)]
+    hacks_tadka = rank_indoor_hacks(
+        room_volume_m3=40.0,
+        outdoor_series=outdoor,
+        baseline_events=tadka_events,
+    )
+    assert any(h.id == "hack_kitchen_exhaust" for h in hacks_tadka)
+
+    # 3. Test zero delta returning None (line 228)
+    none_hack = _eval_hack(
+        hack_id="negligible",
+        title="Zero delta hack",
+        advice="No effect",
+        source_citation="Test",
+        formula="0",
+        v=50.0,
+        outdoor_series=[0.0] * 24,
+        windows_open_hours=set(),
+        purifier_cadr=0.0,
+        purifier_hours=set(),
+        events=[],
+        base_mean=0.0,
+    )
+    assert none_hack is None
+
+    # 4. Test when hack deltas in huge room are negligible, so h is None for each
+    tiny_events = [
+        IndoorSourceEvent(kind="src_mosquito_coil", start_hour=22, minutes=0.01),
+        IndoorSourceEvent(kind="src_incense_stick", start_hour=7, minutes=0.01),
+        IndoorSourceEvent(kind="src_frying", start_hour=12, minutes=0.01),
+    ]
+    hacks_tiny = rank_indoor_hacks(
+        room_volume_m3=100000.0,
+        outdoor_series=[1.0] * 24,
+        baseline_events=tiny_events,
+        windows_open_hours={7},  # peak window but outdoor is only 1.0, so negligible delta
+        purifier_on_hours=sleep_hours,
+    )
+    assert hacks_tiny == []
