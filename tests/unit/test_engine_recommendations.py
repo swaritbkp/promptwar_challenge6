@@ -10,7 +10,6 @@ from hawakhata.engine.recommendations import (
 
 
 def test_recommend_ventilation_hours_some_qualify() -> None:
-    # Indoor baseline is 100 ug/m3. Outdoor is 50 ug/m3 at hours 13, 14, 15 and 200 ug/m3 elsewhere
     indoor = [100.0] * 24
     outdoor = [200.0] * 24
     outdoor[13] = 45.0
@@ -18,13 +17,12 @@ def test_recommend_ventilation_hours_some_qualify() -> None:
     outdoor[15] = 50.0
 
     rec = recommend_ventilation_hours(outdoor, indoor, max_hours=2)
-    assert rec.recommended_hours == [14, 13]  # sorted by lowest outdoor PM2.5
+    assert rec.recommended_hours == [14, 13]
     assert rec.qualifying_count == 3
     assert "cleanest" in rec.reason.lower()
 
 
 def test_recommend_ventilation_hours_none_qualify_on_severe_day() -> None:
-    # Outdoor is 300 ug/m3 everywhere, indoor is 120 ug/m3
     indoor = [120.0] * 24
     outdoor = [300.0] * 24
 
@@ -35,7 +33,6 @@ def test_recommend_ventilation_hours_none_qualify_on_severe_day() -> None:
 
 
 def test_recommend_purifier_cadr() -> None:
-    # 50 m3 room * 5 ACH = 250 m3/h required
     rec_deficit = recommend_purifier_cadr(room_volume_m3=50.0, current_cadr_m3_per_h=150.0)
     assert rec_deficit.required_cadr_m3_per_h == 250.0
     assert rec_deficit.is_sufficient is False
@@ -67,7 +64,6 @@ def test_rank_indoor_hacks_all_branches() -> None:
     assert "hack_no_incense" in hack_ids
     assert "hack_no_mosquito_coil" in hack_ids
 
-    # When outdoor peak is very high and windows open in peak, close windows is recommended
     outdoor_severe = [400.0] * 24
     hacks_severe = rank_indoor_hacks(
         room_volume_m3=35.0,
@@ -79,7 +75,6 @@ def test_rank_indoor_hacks_all_branches() -> None:
 
 
 def test_rank_indoor_hacks_edge_branches() -> None:
-    # 1. Test when sleep hours are already covered by purifier
     sleep_hours = {22, 23, 0, 1, 2, 3, 4, 5}
     outdoor = [100.0] * 24
     hacks = rank_indoor_hacks(
@@ -89,10 +84,8 @@ def test_rank_indoor_hacks_edge_branches() -> None:
         purifier_cadr_m3_per_h=200.0,
         purifier_on_hours=sleep_hours,
     )
-    # Night purifier hack shouldn't be recommended because it's already running 22..05
     assert not any(h.id == "hack_night_purifier" for h in hacks)
 
-    # 2. Test tadka event
     tadka_events = [IndoorSourceEvent(kind="src_tadka", start_hour=19, minutes=15.0)]
     hacks_tadka = rank_indoor_hacks(
         room_volume_m3=40.0,
@@ -101,7 +94,6 @@ def test_rank_indoor_hacks_edge_branches() -> None:
     )
     assert any(h.id == "hack_kitchen_exhaust" for h in hacks_tadka)
 
-    # 3. Test zero delta returning None (line 228)
     none_hack = _eval_hack(
         hack_id="negligible",
         title="Zero delta hack",
@@ -118,7 +110,6 @@ def test_rank_indoor_hacks_edge_branches() -> None:
     )
     assert none_hack is None
 
-    # 4. Test when hack deltas in huge room are negligible, so h is None for each
     tiny_events = [
         IndoorSourceEvent(kind="src_mosquito_coil", start_hour=22, minutes=0.01),
         IndoorSourceEvent(kind="src_incense_stick", start_hour=7, minutes=0.01),
@@ -128,7 +119,7 @@ def test_rank_indoor_hacks_edge_branches() -> None:
         room_volume_m3=100000.0,
         outdoor_series=[1.0] * 24,
         baseline_events=tiny_events,
-        windows_open_hours={7},  # peak window but outdoor is only 1.0, so negligible delta
+        windows_open_hours={7},
         purifier_on_hours=sleep_hours,
     )
     assert hacks_tiny == []

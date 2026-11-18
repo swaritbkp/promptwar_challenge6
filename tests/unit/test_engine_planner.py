@@ -12,8 +12,6 @@ from hawakhata.engine.planner import (
 
 
 def test_optimise_day_plan_shifts_morning_walk_to_afternoon() -> None:
-    # Delhi winter curve: very high in morning (07:00-09:00: 300 ug/m3),
-    # lowest in afternoon (14:00-16:00: 70 ug/m3)
     outdoor = [200.0] * 24
     outdoor[7] = 320.0
     outdoor[8] = 300.0
@@ -47,7 +45,6 @@ def test_optimise_day_plan_shifts_morning_walk_to_afternoon() -> None:
     assert len(res.shifts) == 1
     shift = res.shifts[0]
     assert shift.usual_start_hour == 7
-    # Should move away from morning smog peak 7 AM to clean afternoon window ~14:00-15:00
     assert shift.optimized_start_hour in (14, 15)
     assert res.total_savings_ug > 0
     assert res.optimized_dose_ug < res.usual_dose_ug
@@ -55,7 +52,6 @@ def test_optimise_day_plan_shifts_morning_walk_to_afternoon() -> None:
 
 
 def test_optimise_day_plan_already_optimal() -> None:
-    # When already scheduled in clean afternoon window (14:00)
     outdoor = [200.0] * 24
     outdoor[14] = 40.0
     flex = [

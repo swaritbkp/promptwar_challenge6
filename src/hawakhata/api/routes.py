@@ -26,6 +26,7 @@ from hawakhata.services.brief_service import generate_morning_brief
 from hawakhata.services.indoor_service import simulate_indoor_environment
 from hawakhata.services.passbook_service import compute_family_passbook
 from hawakhata.services.planner_service import compute_optimized_plan
+from hawakhata.services.story_service import load_demo_profiles, load_story
 from hawakhata.services.swap_service import compute_swap_impact, list_available_swaps
 
 api_router = APIRouter(prefix="/api/v1")
@@ -161,3 +162,19 @@ async def post_morning_brief(
         explanation=brief.explanation.to_dict(),
     )
     return Envelope(data=data, meta=meta)
+
+
+@api_router.get("/demo/profiles", response_model=Envelope[dict[str, Any]], tags=["demo"])
+async def get_demo_profiles(request: Request) -> Envelope[dict[str, Any]]:
+    """Return pre-configured demo family profiles from fixtures."""
+    profiles = load_demo_profiles()
+    meta = make_meta(request, data_mode="fixture")
+    return Envelope(data=profiles, meta=meta)
+
+
+@api_router.get("/story/{story_id}", response_model=Envelope[dict[str, Any]], tags=["story"])
+async def get_story_tour(story_id: str, request: Request) -> Envelope[dict[str, Any]]:
+    """Retrieve narrative steps and fixed clock metadata for story mode tour."""
+    story_data = load_story(story_id)
+    meta = make_meta(request, data_mode="fixture")
+    return Envelope(data=story_data, meta=meta)
