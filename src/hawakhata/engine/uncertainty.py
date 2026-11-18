@@ -25,16 +25,7 @@ AUTOCORRELATION_RHO = 0.7
 
 @dataclass(frozen=True, slots=True)
 class ForecastUncertaintyResult:
-    """Percentile summary and sample paths for air quality forecast uncertainty.
-
-    Attributes:
-        base_series: Deterministic baseline point forecast series (ug/m3).
-        p50_series: Median (50th percentile) expected trajectory across Monte Carlo paths.
-        p90_series: 90th percentile adverse trajectory (risk management boundary).
-        sample_count: Number of generated simulation trajectories.
-        seed: Random seed utilized for reproducibility.
-        explanation: Provenance, modeling equations, and parameter details.
-    """
+    """Percentile summary and sample paths for air quality forecast uncertainty."""
 
     base_series: list[float]
     p50_series: list[float]
@@ -50,17 +41,7 @@ def sample_forecast_paths(
     n: int = DEFAULT_SAMPLE_COUNT,
     seed: int = DEFAULT_SEED,
 ) -> list[list[float]]:
-    """Generate n temporally correlated forecast trajectories using seeded random sampling.
-
-    Args:
-        base_series: Baseline hourly concentrations in ug/m3.
-        spread: Relative standard deviation (volatility parameter sigma, e.g. 0.25).
-        n: Number of Monte Carlo trajectories to simulate.
-        seed: Fixed integer seed for deterministic repeatability.
-
-    Returns:
-        List of n trajectories, each with length matching base_series.
-    """
+    """Generate n temporally correlated forecast trajectories using seeded random sampling."""
     if not base_series or n <= 0:
         return []
 
@@ -91,14 +72,7 @@ def sample_forecast_paths(
 
 
 def p50_p90(samples: list[list[float]]) -> tuple[list[float], list[float]]:
-    """Compute the 50th (median) and 90th percentile series from sample paths.
-
-    Args:
-        samples: List of trajectories of identical length.
-
-    Returns:
-        Tuple of (p50_series, p90_series).
-    """
+    """Compute the 50th (median) and 90th percentile series from sample paths."""
     if not samples or not samples[0]:
         return [], []
 
@@ -126,17 +100,7 @@ def compute_forecast_uncertainty(
     n: int = DEFAULT_SAMPLE_COUNT,
     seed: int = DEFAULT_SEED,
 ) -> ForecastUncertaintyResult:
-    """Generate forecast samples and compute P50/P90 trajectories with full explanation.
-
-    Args:
-        base_series: Hourly point forecast in ug/m3.
-        spread: Dispersion parameter.
-        n: Sample count.
-        seed: Deterministic RNG seed.
-
-    Returns:
-        ForecastUncertaintyResult containing percentiles and provenance container.
-    """
+    """Generate forecast samples and compute P50/P90 trajectories with explanation."""
     samples = sample_forecast_paths(base_series=base_series, spread=spread, n=n, seed=seed)
     p50, p90 = p50_p90(samples)
 

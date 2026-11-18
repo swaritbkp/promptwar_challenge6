@@ -34,15 +34,7 @@ HTTP_OK: int = 200
 
 
 def round_coordinates(lat: float, lng: float) -> tuple[float, float]:
-    """Round latitude and longitude to 2 decimal places (~1.1 km precision at equator).
-
-    Args:
-        lat: Raw latitude in degrees.
-        lng: Raw longitude in degrees.
-
-    Returns:
-        Tuple of (rounded_latitude, rounded_longitude).
-    """
+    """Round latitude and longitude to 2 decimal places (~1.1 km precision at equator)."""
     return round(lat, 2), round(lng, 2)
 
 
@@ -273,17 +265,7 @@ class AirQualityClient:
         hours: int = 24,
         language_code: str = "en",
     ) -> HourlyAirSeries:
-        """Retrieve hourly air quality forecast with caching, retries, and fallback.
-
-        Args:
-            lat: Latitude coordinate.
-            lng: Longitude coordinate.
-            hours: Forecast horizon in hours (1..96).
-            language_code: Language for health recommendations ('en' or 'hi').
-
-        Returns:
-            HourlyAirSeries containing normalised forecast points.
-        """
+        """Retrieve hourly air quality forecast with caching, retries, and fallback."""
         r_lat, r_lng = round_coordinates(lat, lng)
         now_bucket = int(time.time() // 1800)  # 30-min time bucket
         cache_key = f"aq:forecast:{r_lat}:{r_lng}:{hours}:{language_code}:{now_bucket}"

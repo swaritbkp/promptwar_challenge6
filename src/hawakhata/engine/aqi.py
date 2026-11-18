@@ -102,15 +102,7 @@ _PM25_BREAKPOINTS: tuple[tuple[float, float, int, int, str], ...] = (
 
 
 def pm25_to_naqi_category(pm25_ug_m3: float) -> NAQICategory:
-    """Map a PM2.5 concentration in ug/m3 to the corresponding CPCB NAQI category.
-
-    Args:
-        pm25_ug_m3: Inhaled or outdoor PM2.5 concentration in ug/m3. Negative values
-            are clamped to 0.
-
-    Returns:
-        NAQICategory instance containing code, display name, label_key, icon_key, and color.
-    """
+    """Map a PM2.5 concentration in ug/m3 to the corresponding CPCB NAQI category."""
     c = max(0.0, pm25_ug_m3)
     if c <= PM25_GOOD_MAX:
         return CATEGORIES["good"]
@@ -126,14 +118,7 @@ def pm25_to_naqi_category(pm25_ug_m3: float) -> NAQICategory:
 
 
 def aqi_to_category(aqi: int | float) -> NAQICategory:
-    """Map an integer or float AQI value directly to its NAQI category band.
-
-    Args:
-        aqi: Numerical AQI value (0 to 500+). Negative values are clamped to 0.
-
-    Returns:
-        NAQICategory instance.
-    """
+    """Map an integer or float AQI value directly to its NAQI category band."""
     val = max(0.0, float(aqi))
     if val <= AQI_GOOD_MAX:
         return CATEGORIES["good"]
@@ -149,17 +134,7 @@ def aqi_to_category(aqi: int | float) -> NAQICategory:
 
 
 def pm25_to_sub_index(pm25_ug_m3: float) -> int:
-    """Compute the numerical CPCB sub-index for PM2.5 using piecewise linear interpolation.
-
-    Formula:
-        I = I_low + (I_high - I_low) / (B_high - B_low) * (C - B_low)
-
-    Args:
-        pm25_ug_m3: Concentration in ug/m3.
-
-    Returns:
-        Integer AQI sub-index (0 to 500+).
-    """
+    """Compute numerical CPCB sub-index for PM2.5 using piecewise linear interpolation."""
     c = max(0.0, pm25_ug_m3)
     for b_low, b_high, i_low, i_high, _ in _PM25_BREAKPOINTS:
         if b_low <= c <= b_high:

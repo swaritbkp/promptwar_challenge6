@@ -46,21 +46,7 @@ def steady_state_pm25(
     purifier_cadr_m3_per_h: float = 0.0,
     source_strength_ug_per_h: float = 0.0,
 ) -> float:
-    """Calculate the asymptotic indoor PM2.5 steady-state concentration for constant inputs.
-
-    Formula:
-        C_ss = (P * a * C_out + S / V) / (a + k + CADR / V)
-
-    Args:
-        c_out_ug_m3: Ambient outdoor PM2.5 concentration in ug/m3.
-        room_volume_m3: Room volume in cubic meters.
-        windows_open: True if windows are open, False if closed.
-        purifier_cadr_m3_per_h: Purifier clean air delivery rate (CADR) in m3/h.
-        source_strength_ug_per_h: Total indoor emission rate in ug/h.
-
-    Returns:
-        Steady-state indoor concentration in ug/m3.
-    """
+    """Calculate asymptotic indoor PM2.5 steady-state concentration for constant inputs."""
     p = float(get_constant("indoor_penetration_factor").value)
     k = float(get_constant("indoor_deposition_rate").value)
     a = float(
@@ -85,20 +71,7 @@ def simulate_indoor_pm25(
     source_events: list[IndoorSourceEvent] | None = None,
     start_c_ug_m3: float | None = None,
 ) -> IndoorSimulationResult:
-    """Simulate hour-by-hour indoor PM2.5 concentration using exact exponential stepping.
-
-    Args:
-        room_volume_m3: Room volume in m3.
-        outdoor_pm25_series: Sequence of hourly outdoor PM2.5 concentrations (ug/m3).
-        windows_open_hours: Set of hours (0..23) when windows are open.
-        purifier_cadr_m3_per_h: CADR rating of portable air cleaner (m3/h).
-        purifier_on_hours: Set of hours when the purifier is powered on.
-        source_events: Optional list of indoor combustion/cooking events.
-        start_c_ug_m3: Initial concentration at hour 0. If None, steady-state of hour 0 is used.
-
-    Returns:
-        IndoorSimulationResult containing hourly concentrations, mean, peak, and explanation.
-    """
+    """Simulate hour-by-hour indoor PM2.5 concentration using exact exponential stepping."""
     open_hours = windows_open_hours or set()
     purifier_hours = purifier_on_hours or set()
     events = source_events or []

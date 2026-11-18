@@ -30,15 +30,7 @@ class EmissionValue:
 
 @dataclass(frozen=True, slots=True)
 class ActivityEmissionsResult:
-    """Emissions footprint of a specific activity.
-
-    Attributes:
-        activity_id: Activity emission factor identifier.
-        units: Number of activity units performed (e.g. km, kWh, hours, kg).
-        kg_co2: Greenhouse gas footprint in kilograms of CO2 equivalent.
-        g_pm25: Direct particulate emissions in grams of PM2.5.
-        explanation: Calculation methodology and citation metadata.
-    """
+    """Emissions footprint of a specific activity."""
 
     activity_id: str
     units: float
@@ -48,22 +40,7 @@ class ActivityEmissionsResult:
 
 
 def activity_emissions(activity_id: str, units: float) -> ActivityEmissionsResult:
-    """Calculate emissions for an activity with low/central/high uncertainty bounds.
-
-    Formula:
-        Emission = Units * Factor (central, low, high)
-
-    Args:
-        activity_id: Identifier from emission_factor constant dictionary.
-        units: Quantity of activity (km, hours, kWh, or kg). Must be non-negative.
-
-    Returns:
-        ActivityEmissionsResult containing kg_co2 and g_pm25 bounded values.
-
-    Raises:
-        ValueError: If units is negative.
-        KeyError: If activity_id is not found in emission factor constants.
-    """
+    """Calculate emissions for an activity with low/central/high uncertainty bounds."""
     if units < 0:
         raise ValueError(f"Units must be non-negative, got {units}")
 

@@ -35,17 +35,7 @@ class PassbookEntry:
 
 
 def daily_air_budget_ug(age_band: str) -> float:
-    """Calculate the personal WHO-based daily permissible PM2.5 inhalation budget.
-
-    Formula:
-        budget_ug = WHO_24h_AQG (15 ug/m3) * Daily_Mean_Inhalation_Volume (m3/day)
-
-    Args:
-        age_band: Age group identifier (e.g. '0_1', '6_11', '31_41', '71_81').
-
-    Returns:
-        Daily budget in micrograms of PM2.5.
-    """
+    """Calculate the personal WHO-based daily permissible PM2.5 inhalation budget."""
     who_guideline = float(get_constant("who_aqg_pm25_24h").value)
     daily_means = get_constant("inhalation_rate_daily_mean").value
     daily_volume_m3 = float(daily_means.get(age_band, 16.0))
@@ -59,18 +49,7 @@ def build_passbook_entry(
     hourly_doses_ug: list[float] | None = None,
     top_contributors: list[DoseContributor] | None = None,
 ) -> PassbookEntry:
-    """Build a complete passbook entry comparing inhaled debit against air budget.
-
-    Args:
-        member_label: Display name or label for the member.
-        age_band: Age bracket key.
-        debit_ug: Total inhaled PM2.5 mass in micrograms.
-        hourly_doses_ug: Optional 24-hour hourly dose breakdown.
-        top_contributors: Optional top contributors list.
-
-    Returns:
-        PassbookEntry object with balance, overspend ratio, cigarette equivalence, and explanation.
-    """
+    """Build a complete passbook entry comparing inhaled debit against air budget."""
     budget = daily_air_budget_ug(age_band)
     balance = budget - debit_ug
     overspend = (debit_ug / budget) if budget > 0 else 0.0

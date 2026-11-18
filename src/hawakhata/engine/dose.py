@@ -65,15 +65,7 @@ class MemberDoseResult:
 
 
 def inhalation_rate_m3_per_h(age_band: str, activity: str) -> float:
-    """Calculate hourly air breathing volume based on age band and exertion level.
-
-    Args:
-        age_band: Age group key from constants.v1.json (e.g. '3_6', '31_41', '61_71').
-        activity: Activity level ('sleep', 'sedentary', 'light', 'moderate', 'vigorous').
-
-    Returns:
-        Ventilation rate in cubic meters per hour (m3/h).
-    """
+    """Calculate hourly air breathing volume based on age band and exertion level."""
     daily_means = get_constant("inhalation_rate_daily_mean").value
     multipliers = get_constant("activity_multiplier").value
 
@@ -85,18 +77,7 @@ def inhalation_rate_m3_per_h(age_band: str, activity: str) -> float:
 def build_member_timeline(
     schedule_blocks: list[ScheduleBlock] | None = None,
 ) -> list[TimelineSlot]:
-    """Construct a full 24-hour member timeline applying sensible defaults for unassigned hours.
-
-    Defaults:
-        - 22:00 to 06:00: indoor_home, sleep
-        - Remaining daytime hours: indoor_home, sedentary
-
-    Args:
-        schedule_blocks: Optional custom activity intervals that override defaults.
-
-    Returns:
-        24-element list of TimelineSlot objects for hours 0..23.
-    """
+    """Construct a full 24-hour member timeline applying sensible defaults for unassigned hours."""
     timeline: list[TimelineSlot] = []
 
     for h in range(24):
@@ -130,18 +111,7 @@ def compute_member_dose(
     outdoor_pm25_series: list[float],
     indoor_home_series: list[float] | None = None,
 ) -> MemberDoseResult:
-    """Calculate the personal inhaled PM2.5 dose across a 24-hour timeline.
-
-    Args:
-        age_band: Age group identifier.
-        timeline: 24-hour sequence of TimelineSlot instances.
-        outdoor_pm25_series: 24-hour ambient PM2.5 concentrations in ug/m3.
-        indoor_home_series: Optional simulated indoor PM2.5 series. If omitted,
-            an infiltration factor of 0.6 is applied to outdoor concentrations.
-
-    Returns:
-        MemberDoseResult with total dose, hourly breakdowns, top contributors, and explanation.
-    """
+    """Calculate personal inhaled PM2.5 dose across a 24-hour timeline."""
     in_vehicle_ratios = get_constant("in_vehicle_ratio").value
     infiltration_closed = float(get_constant("infiltration_closed_building").value)
 
