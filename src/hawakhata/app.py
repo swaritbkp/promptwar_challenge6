@@ -9,10 +9,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from hawakhata import version
 from hawakhata.api.routes import api_router
@@ -70,6 +74,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(RequestContextMiddleware)
     register_exception_handlers(app)
     app.include_router(api_router)
+
+    root_dir = Path(__file__).resolve().parent.parent.parent
+    static_dir = root_dir / "static"
+    templates_dir = root_dir / "templates"
+
+    if static_dir.exists():
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    templates = Jinja2Templates(directory=templates_dir) if templates_dir.exists() else None
+
+    @app.get("/", response_class=HTMLResponse, tags=["web"])
+    async def index_page(request: Request) -> HTMLResponse:
+        """Render HawaKhata single-page application shell."""
+        if templates is None:
+            return HTMLResponse("<h1>HawaKhata</h1>")
+        return templates.TemplateResponse(request=request, name="index.html")
+
+    @app.get("/how-it-works", response_class=HTMLResponse, tags=["web"])
+    async def how_it_works_page(request: Request) -> HTMLResponse:
+        """Render trust, science and verified constants page."""
+        if templates is None:
+            return HTMLResponse("<h1>How HawaKhata Works</h1>")
+        return templates.TemplateResponse(request=request, name="how_it_works.html")
 
     @app.get("/healthz", tags=["system"])
     async def healthz() -> dict[str, str]:

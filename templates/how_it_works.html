@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}How HawaKhata Works · Trust & Science{% endblock %}
+{% block content %}
+<article class="card">
+<div class="card-header"><h1 class="card-title" style="font-size:1.5rem;">The Science Behind HawaKhata</h1><a href="/" class="btn btn-sm btn-secondary">← Back to Passbook</a></div>
+<section style="margin-bottom:1.5rem;"><h2 class="card-title" style="margin-bottom:0.5rem;">Core Principle: "Gemini Proposes, Code Decides"</h2>
+<p class="stat-lbl" style="margin-bottom:1rem;font-size:0.9375rem;">LLMs understand natural language (EN/HI) but cannot reliably perform physical arithmetic. HawaKhata strictly separates responsibilities:</p>
+<div style="background:var(--surface-2);padding:1rem;border-radius:var(--radius-input);border:1px solid var(--line);margin-bottom:1rem;">
+<ul style="padding-left:1.25rem;display:flex;flex-direction:column;gap:0.5rem;font-size:0.9375rem;">
+<li><strong>Deterministic Engine:</strong> Pure mathematical functions in Python calculate every dose, budget, purifier sizing, and emission delta.</li>
+<li><strong>Numeric Grounding Gate:</strong> Every LLM response is programmatically checked against tool outputs before display. Ungrounded numbers are rejected.</li>
+<li><strong>Deterministic Fallback:</strong> If Gemini is unavailable, rule-based templates answer immediately with verified numbers.</li>
+</ul></div></section>
+<section style="margin-bottom:1.5rem;"><h2 class="card-title" style="margin-bottom:0.5rem;">1. Daily Air Budget (WHO 2021)</h2>
+<p class="stat-lbl" style="margin-bottom:0.75rem;font-size:0.9375rem;">WHO 2021 Global Air Quality Guidelines set 24-h PM2.5 threshold at <strong>15 µg/m³</strong>:</p>
+<div class="stat-box" style="font-family:monospace;margin-bottom:0.75rem;">Budget (µg/day) = 15 µg/m³ × Inhalation Volume (m³/day)</div>
+<p class="stat-lbl">Inhalation rates follow US EPA Exposure Factors: children 6.0 m³/day, adults 12.0–16.0 m³/day, seniors 10.0 m³/day.</p></section>
+<section style="margin-bottom:1.5rem;"><h2 class="card-title" style="margin-bottom:0.5rem;">2. Cigarette Equivalence (Berkeley Earth)</h2>
+<p class="stat-lbl" style="margin-bottom:0.75rem;font-size:0.9375rem;">Berkeley Earth rule-of-thumb translates ambient PM2.5 into tangible cigarette equivalents:</p>
+<div class="stat-box" style="font-family:monospace;margin-bottom:0.75rem;">1 Cigarette/Day ≈ 22 µg/m³ PM2.5 inhaled over 24 hours</div>
+<p class="stat-lbl">In severe smog (350 µg/m³ PM2.5), 24 hours of unfiltered outdoor air equals smoking ~16 cigarettes.</p></section>
+<section style="margin-bottom:1.5rem;"><h2 class="card-title" style="margin-bottom:0.5rem;">3. Indoor Mass-Balance Physics</h2>
+<p class="stat-lbl" style="margin-bottom:0.75rem;font-size:0.9375rem;">Room air simulation solves the single-zone mass-balance differential equation:</p>
+<div class="stat-box" style="font-family:monospace;margin-bottom:0.75rem;">V · (dC/dt) = p · a · V · C_out - (a · V + CADR + k_dep · V) · C_in + S_indoor</div>
+<p class="stat-lbl">Exact exponential stepping guarantees mass conservation and non-negative concentration.</p></section>
+<section style="margin-bottom:1.5rem;"><h2 class="card-title" style="margin-bottom:0.5rem;">4. Privacy & Data Architecture</h2>
+<p class="stat-lbl" style="font-size:0.9375rem;">Zero personal health records or passwords on servers. Profiles stay in local storage; coordinates sent to Google Maps AQ API are rounded to ~1 km.</p></section>
+</article>
+{% endblock %}

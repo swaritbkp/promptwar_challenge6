@@ -44,16 +44,16 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | AGT-06 | Deterministic fallback router and composer | AGT-05 | Must | Done |
 | AGT-07 | Chat endpoint | AGT-06 | Must | Done |
 | AGT-08 | Evaluation harness | AGT-07 | Must | Done |
-| UI-00 | Design screens in Stitch | — | Must | Not started |
-| UI-01 | Design tokens, base layout, navigation, icons, i18n | UI-00, API-07 | Must | Not started |
-| UI-02 | Onboarding (≤ 60 s) | UI-01 | Must | Not started |
-| UI-03 | Today screen | UI-02, API-06 | Must | Not started |
-| UI-04 | Plan screen | UI-03 | Must | Not started |
-| UI-05 | Home air screen | UI-03 | Must | Not started |
-| UI-06 | Swaps + Mohalla screen | UI-03 | Must | Not started |
-| UI-07 | Ask sheet with AI states | UI-03, AGT-07 | Must | Not started |
-| UI-08 | How it works page | UI-01 | Must | Not started |
-| UI-09 | Story mode | UI-03..UI-08 | Must | Not started |
+| UI-00 | Design screens in Stitch | — | Must | Done |
+| UI-01 | Design tokens, base layout, navigation, icons, i18n | UI-00, API-07 | Must | Done |
+| UI-02 | Onboarding (≤ 60 s) | UI-01 | Must | Done |
+| UI-03 | Today screen | UI-02, API-06 | Must | Done |
+| UI-04 | Plan screen | UI-03 | Must | Done |
+| UI-05 | Home air screen | UI-03 | Must | Done |
+| UI-06 | Swaps + Mohalla screen | UI-03 | Must | Done |
+| UI-07 | Ask sheet with AI states | UI-03, AGT-07 | Must | Done |
+| UI-08 | How it works page | UI-01 | Must | Done |
+| UI-09 | Story mode | UI-03..UI-08 | Must | Done |
 | HRD-01 | Security audit with proof files | all above | Must | Not started |
 | HRD-02 | Accessibility audit | all UI | Must | Not started |
 | REL-01 | README with Code Map | HRD-01 | Must | Not started |

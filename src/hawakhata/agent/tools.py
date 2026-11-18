@@ -144,40 +144,38 @@ async def plan_clean_windows(
 
     ctx = get_current_context()
     target_mid = member_id or (ctx.profile.members[0].id if ctx.profile.members else "member_0")
-    activities = [
+    acts = [
         FlexibleActivityInput(
             id=f"act_{idx}",
             member_id=target_mid,
-            title=str(item.get("name") or item.get("title") or "Flexible Activity"),
+            title=str(it.get("name") or it.get("title") or "Flexible Activity"),
             duration_hours=max(
-                1, int(item.get("duration_minutes") or item.get("duration_min") or 60) // 60
+                1, int(it.get("duration_minutes") or it.get("duration_min") or 60) // 60
             ),
-            earliest_start_hour=int(
-                item.get("earliest_start_hour") or item.get("earliest_hour") or 6
-            ),
-            latest_start_hour=int(item.get("latest_start_hour") or item.get("latest_hour") or 10),
-            micro_env=str(item.get("micro_env") or item.get("location_type") or "outdoor"),
-            activity=str(item.get("activity") or item.get("activity_intensity") or "moderate"),
-            usual_start_hour=int(item.get("usual_start_hour") or item.get("earliest_hour") or 7),
+            earliest_start_hour=int(it.get("earliest_start_hour") or it.get("earliest_hour") or 6),
+            latest_start_hour=int(it.get("latest_start_hour") or it.get("latest_hour") or 10),
+            micro_env=str(it.get("micro_env") or it.get("location_type") or "outdoor"),
+            activity=str(it.get("activity") or it.get("activity_intensity") or "moderate"),
+            usual_start_hour=int(it.get("usual_start_hour") or it.get("earliest_hour") or 7),
         )
-        for idx, item in enumerate(data)
-        if isinstance(item, dict)
+        for idx, it in enumerate(data)
+        if isinstance(it, dict)
     ]
     s = await ctx.aq_client.get_hourly_forecast(
         lat=ctx.location.lat, lng=ctx.location.lng, hours=24
     )
-    plan_res = compute_optimized_plan(
+    res = compute_optimized_plan(
         profile=ctx.profile,
         member_id=target_mid,
-        flexible_activities=activities,
+        flexible_activities=acts,
         outdoor_pm25_series=[p.pm25_ug_m3 for p in s.points],
     )
     return {
         "result": {
             "member_id": target_mid,
-            "total_savings_ug": round(plan_res.total_savings_ug, 1),
-            "usual_dose_ug": round(plan_res.usual_dose_ug, 1),
-            "optimized_dose_ug": round(plan_res.optimized_dose_ug, 1),
+            "total_savings_ug": round(res.total_savings_ug, 1),
+            "usual_dose_ug": round(res.usual_dose_ug, 1),
+            "optimized_dose_ug": round(res.optimized_dose_ug, 1),
             "shifts": [
                 {
                     "activity": sh.title,
@@ -186,7 +184,7 @@ async def plan_clean_windows(
                     "savings_ug": round(sh.savings_ug, 1),
                     "percent_savings": round(sh.percent_savings, 1),
                 }
-                for sh in plan_res.shifts
+                for sh in res.shifts
             ],
         },
         "explanation": "Combinatorial non-colliding window optimization using Monte Carlo paths.",

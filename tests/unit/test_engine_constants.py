@@ -83,7 +83,7 @@ def test_constants_json_valid_and_complete() -> None:
         assert item["value"] is not None
 
     sources = constants["indoor_source_emission_rate"]["value"]
-    for required_src in [
+    req_src = (
         "src_frying",
         "src_tadka",
         "src_incense_stick",
@@ -92,11 +92,11 @@ def test_constants_json_valid_and_complete() -> None:
         "src_angithi_coal",
         "src_wood_heater",
         "src_smoking",
-    ]:
-        assert sources[required_src] > 0
+    )
+    assert all(sources[s] > 0 for s in req_src)
 
     efs = constants["emission_factor"]["value"]
-    for required_ef in [
+    req_ef = (
         "car_petrol_per_km",
         "car_diesel_per_km",
         "two_wheeler_per_km",
@@ -108,5 +108,5 @@ def test_constants_json_valid_and_complete() -> None:
         "angithi_coal_per_hour",
         "electric_heater_per_hour_2kw_grid",
         "open_leaf_burning_per_kg",
-    ]:
-        assert efs[required_ef]["kg_co2"] > 0
+    )
+    assert all(efs[e]["kg_co2"] > 0 for e in req_ef)
