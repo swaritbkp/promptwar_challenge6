@@ -15,13 +15,9 @@ from hawakhata.engine.swaps import (
 
 
 def test_get_available_swaps() -> None:
-    catalogue = get_available_swaps()
-    ids = [s["id"] for s in catalogue]
-    assert (
-        len(catalogue) >= 6
-        and "commute_car_to_metro" in ids
-        and "heating_angithi_to_electric" in ids
-    )
+    cat = get_available_swaps()
+    ids = [s["id"] for s in cat]
+    assert len(cat) >= 6 and "commute_car_to_metro" in ids and "heating_angithi_to_electric" in ids
 
 
 def test_evaluate_swap_commute_car_to_metro() -> None:

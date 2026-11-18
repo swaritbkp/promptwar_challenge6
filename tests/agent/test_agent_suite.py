@@ -57,6 +57,19 @@ def sample_location() -> LocationInput:
 
 @pytest.fixture
 def sample_profile(sample_location: LocationInput) -> FamilyProfileInput:
+    sb = [
+        ScheduleBlockInput(start_hour=8, end_hour=14, micro_env="indoor_home", activity="light"),
+        ScheduleBlockInput(start_hour=16, end_hour=18, micro_env="outdoor", activity="moderate"),
+    ]
+    rm = [
+        RoomInput(
+            name="Kids Room",
+            volume_m3=42.0,
+            purifier_cadr_m3_per_h=250.0,
+            windows_open_hours=[12, 13],
+            purifier_on_hours=list(range(24)),
+        )
+    ]
     return FamilyProfileInput(
         id="fam_test",
         name="Test Family",
@@ -67,25 +80,10 @@ def sample_profile(sample_location: LocationInput) -> FamilyProfileInput:
                 name="Aarav",
                 age_band="child",
                 sensitivities=["asthma"],
-                schedule_blocks=[
-                    ScheduleBlockInput(
-                        start_hour=8, end_hour=14, micro_env="indoor_home", activity="light"
-                    ),
-                    ScheduleBlockInput(
-                        start_hour=16, end_hour=18, micro_env="outdoor", activity="moderate"
-                    ),
-                ],
+                schedule_blocks=sb,
             )
         ],
-        rooms=[
-            RoomInput(
-                name="Kids Room",
-                volume_m3=42.0,
-                purifier_cadr_m3_per_h=250.0,
-                windows_open_hours=[12, 13],
-                purifier_on_hours=list(range(24)),
-            )
-        ],
+        rooms=rm,
     )
 
 

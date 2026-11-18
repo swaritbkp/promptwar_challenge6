@@ -54,12 +54,12 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | UI-07 | Ask sheet with AI states | UI-03, AGT-07 | Must | Done |
 | UI-08 | How it works page | UI-01 | Must | Done |
 | UI-09 | Story mode | UI-03..UI-08 | Must | Done |
-| HRD-01 | Security audit with proof files | all above | Must | Not started |
-| HRD-02 | Accessibility audit | all UI | Must | Not started |
-| REL-01 | README with Code Map | HRD-01 | Must | Not started |
-| REL-02 | Deploy to Cloud Run | REL-01 | Must | Not started |
-| REL-03 | Early release + score-driven improvement rounds | REL-02 | Must | Not started |
-| REL-04 | Demo lock and video assets | REL-02 | Must | Not started |
+| HRD-01 | Security audit with proof files | all above | Must | Done |
+| HRD-02 | Accessibility audit | all UI | Must | Done |
+| REL-01 | README with Code Map | HRD-01 | Must | Done |
+| REL-02 | Deploy to Cloud Run | REL-01 | Must | Ready (manual) |
+| REL-03 | Early release + score-driven improvement rounds | REL-02 | Must | Pending deploy |
+| REL-04 | Demo lock and video assets | REL-02 | Must | Local prep done |
 
 ## Parked
 | Idea | Found during | Why parked |

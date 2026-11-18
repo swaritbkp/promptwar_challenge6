@@ -81,7 +81,7 @@ async def get_air_forecast(hours: int = 24) -> dict[str, Any]:
                 for p in s.points
             ],
         },
-        "explanation": "Google Maps Air Quality API hourly forecast normalized to India NAQI.",
+        "explanation": "Hourly forecast.",
         "missing_fields": [],
     }
 
@@ -116,7 +116,7 @@ async def get_family_passbook(date_iso: str | None = None) -> dict[str, Any]:
                 for e in pb.entries
             ],
         },
-        "explanation": "WHO 2021 air budget and Berkeley Earth cigarette equivalence.",
+        "explanation": "WHO 2021 air budget.",
         "missing_fields": [],
     }
 
@@ -187,7 +187,7 @@ async def plan_clean_windows(
                 for sh in res.shifts
             ],
         },
-        "explanation": "Combinatorial non-colliding window optimization using Monte Carlo paths.",
+        "explanation": "Schedule optimization.",
         "missing_fields": [],
     }
 
@@ -228,7 +228,7 @@ async def simulate_indoor_air(
             ),
             "ventilation_safe_hours": sim.ventilation_recommendation.get("recommended_hours", []),
         },
-        "explanation": "Single-zone mass-balance ODE with exact exponential integration.",
+        "explanation": "Indoor air simulation.",
         "missing_fields": [],
     }
 
@@ -259,7 +259,7 @@ async def evaluate_swaps(
                 abs(float(comm.get("community_delta_co2_kg_monthly", 0.0))), 2
             ),
         },
-        "explanation": "Deterministic activity emission factors scaled linearly to community.",
+        "explanation": "Swap impact.",
         "missing_fields": [],
     }
 
@@ -289,7 +289,7 @@ async def get_smog_brief() -> dict[str, Any]:
                 {"name": a.name, "message": a.alert_text} for a in brief.sensitive_member_alerts
             ],
         },
-        "explanation": "Daily proactive smog brief aggregating forecast and vulnerability rules.",
+        "explanation": "Smog brief.",
         "missing_fields": [],
     }
 
