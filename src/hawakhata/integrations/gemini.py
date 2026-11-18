@@ -63,6 +63,11 @@ class GeminiCascadeClient:
         else:
             self._client = None
 
+    @property
+    def is_configured(self) -> bool:
+        """Whether the client has valid credentials configured."""
+        return self._client is not None
+
     def check_rate_limit(self, client_id: str) -> None:
         """Verify per-minute and daily quotas for the client identifier."""
         hashed_id = TokenBucketLimiter.client_key(client_id)

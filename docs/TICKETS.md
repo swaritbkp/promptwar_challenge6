@@ -39,9 +39,9 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | AGT-01 | Input/output guardrails | API-01 | Must | Done |
 | AGT-02 | Numeric grounding gate | AGT-01 | Must | Done |
 | AGT-03 | Versioned prompt registry | — | Must | Done |
-| AGT-04 | Gemini client: cascade, timeouts, AI quota | AGT-03 | Must | Not started |
-| AGT-05 | ADK agent with tools, sessions and follow-ups | AGT-02, AGT-04, API-06 | Must | Not started |
-| AGT-06 | Deterministic fallback router and composer | AGT-05 | Must | Not started |
+| AGT-04 | Gemini client: cascade, timeouts, AI quota | AGT-03 | Must | Done |
+| AGT-05 | ADK agent with tools, sessions and follow-ups | AGT-02, AGT-04, API-06 | Must | Done |
+| AGT-06 | Deterministic fallback router and composer | AGT-05 | Must | Done |
 | AGT-07 | Chat endpoint | AGT-06 | Must | Not started |
 | AGT-08 | Evaluation harness | AGT-07 | Must | Not started |
 | UI-00 | Design screens in Stitch | — | Must | Not started |
@@ -61,31 +61,6 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | REL-03 | Early release + score-driven improvement rounds | REL-02 | Must | Not started |
 | REL-04 | Demo lock and video assets | REL-02 | Must | Not started |
 
-## Completed Tickets (Phase 0, 1, 2)
-- **FND-01..03**: Verified external APIs, pinned dependencies, completed constants with citations, created 96h Delhi NCR and Chandigarh air data fixtures.
-- **ENG-01..09**: Pure deterministic engine (constants, NAQI, dose, budget, indoor ODE, recommendations, uncertainty, clean-window planner, emissions & swaps).
-- **INT-01**: Google Air Quality API client with ~1 km coordinate rounding, circuit breaker, bounded TTL-LRU/Redis cache, and offline fixture fallback.
-- **API-01..07**: Bounded Pydantic v2 schemas (`extra="forbid"`), unified 2xx `Envelope[T]`, endpoints for passbook, plan, indoor simulate, swaps impact, proactive morning brief with forecast-shift replan, and deterministic story modes.
-
-## Remaining Tickets
-- **AGT-04**: Gemini cascade (primary -> fallback on 429/5xx/timeout), abuse quotas (R11).
-- **AGT-05**: ADK agent with tools over services, bounded sessions, single follow-up question.
-- **AGT-06**: Deterministic fallback router from lexicon and templates with real numbers.
-- **AGT-07**: Chat endpoint (/api/v1/chat) with L1 sanitize, cascade, grounding gate, L2 policy.
-- **AGT-08**: Eval harness (eval/run_eval.py) over golden cases (100% grounding in fake mode).
-- **UI-00**: Stitch designs for all screens per UX_SPEC from DESIGN.md.
-- **UI-01**: Design tokens, base layout, landmarks, skip link, router, i18n EN/HI, fixture banner.
-- **UI-02..06**: Screens (Onboarding, Today, Plan, Home air, Swaps) with empty/loading/error states.
-- **UI-07**: Ask sheet with AI states, textContent DOM insertion, number chip links.
-- **UI-08**: How it works page with SVG architecture, services, constants table.
-- **UI-09**: Deterministic story mode (/?story=ncr|chd) with keyboard navigation.
-- **HRD-01**: Security audit doc (docs/SECURITY_AUDIT.md) with proof files and tests.
-- **HRD-02**: Accessibility audit, keyboard walk-through, contrast, 200% zoom.
-- **REL-01**: README with Code Map verified by repo audit.
-- **REL-02**: Cloud Run deploy with Secret Manager.
-- **REL-03**: Score-driven improvement loop on deployed service.
-- **REL-04**: Demo script and video assets lock.
-
-## Parked (ideas found while building — not in scope until P0 is Done)
+## Parked
 | Idea | Found during | Why parked |
 |---|---|---|

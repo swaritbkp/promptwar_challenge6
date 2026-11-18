@@ -5,10 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from hawakhata.api.schemas import (
-    FamilyProfileInput,
-    ForecastShiftInfo,
-)
+from hawakhata.api.schemas import FamilyProfileInput, ForecastShiftInfo
 from hawakhata.engine.dose import ScheduleBlock
 from hawakhata.engine.explain import Explanation
 from hawakhata.engine.planner import FlexibleActivity, optimise_day_plan
@@ -26,7 +23,7 @@ DEFAULT_LATEST_END = 20
 
 @dataclass(frozen=True)
 class BriefActionItem:
-    """Single prioritized action with estimated PM2.5 savings."""
+    """Action recommendation with quantified exposure savings."""
 
     title: str
     description: str
@@ -46,7 +43,7 @@ class SensitiveAlertItem:
 
 @dataclass(frozen=True)
 class ReplanResult:
-    """Outcome of a forecast-shift re-plan check."""
+    """Outcome of a forecast shift re-plan check."""
 
     shifted: bool
     delta_max_pm25: float
@@ -56,7 +53,7 @@ class ReplanResult:
 
 @dataclass(frozen=True)
 class BriefResult:
-    """Complete proactive morning brief output."""
+    """Proactive morning brief output."""
 
     headline: str
     worst_hour_local: str
@@ -70,13 +67,11 @@ class BriefResult:
 
 
 def _normalize_members(profile: FamilyProfileInput | dict[str, Any]) -> list[dict[str, Any]]:
-    """Convert FamilyProfileInput or dict into a standard dict list."""
     p_dict = profile.model_dump() if isinstance(profile, FamilyProfileInput) else profile
-    raw_members = p_dict.get("members", [])
-    result: list[dict[str, Any]] = []
-    for m in raw_members:
-        raw_blocks = m.get("schedule_blocks") or m.get("schedule", [])
-        norm_blocks = [
+    res: list[dict[str, Any]] = []
+    for m in p_dict.get("members", []):
+        raw_b = m.get("schedule_blocks") or m.get("schedule", [])
+        norm_b = [
             {
                 "start_hour": int(b.get("start_hour", 0)),
                 "end_hour": int(b.get("end_hour", 1)),
@@ -87,18 +82,18 @@ def _normalize_members(profile: FamilyProfileInput | dict[str, Any]) -> list[dic
                 "earliest_start": b.get("earliest_start"),
                 "latest_end": b.get("latest_end"),
             }
-            for b in raw_blocks
+            for b in raw_b
         ]
-        result.append(
+        res.append(
             {
                 "id": str(m.get("id", "m")),
                 "name": str(m.get("name") or m.get("label", "Member")),
                 "age_band": str(m.get("age_band", "adult")),
                 "sensitivities": list(m.get("sensitivities", [])),
-                "schedule_blocks": norm_blocks,
+                "schedule_blocks": norm_b,
             }
         )
-    return result
+    return res
 
 
 def detect_forecast_shift(
@@ -106,14 +101,14 @@ def detect_forecast_shift(
     new_series: list[float],
     threshold_ug_m3: float = 40.0,
 ) -> bool:
-    """Return True if the maximum difference between forecasts exceeds threshold_ug_m3."""
+    """Return True if maximum point difference between forecasts exceeds threshold."""
     if not old_series or not new_series:
         return False
     min_len = min(len(old_series), len(new_series))
     if min_len == 0:
         return False
-    max_diff = max(abs(new_series[i] - old_series[i]) for i in range(min_len))
-    return max_diff >= threshold_ug_m3
+    diff = max(abs(new_series[i] - old_series[i]) for i in range(min_len))
+    return diff >= threshold_ug_m3
 
 
 def replan_if_needed(
@@ -130,19 +125,12 @@ def replan_if_needed(
     )
 
     if not shifted:
-        return ReplanResult(
-            shifted=False,
-            delta_max_pm25=round(max_diff, 1),
-            replanned=False,
-            replan_notes=[],
-        )
+        return ReplanResult(False, round(max_diff, 1), False, [])
 
-    members_data = _normalize_members(profile)
     replan_notes: list[str] = []
-
-    for m in members_data:
-        m_id, m_name, age_band = str(m["id"]), str(m["name"]), str(m["age_band"])
-        fixed_blocks: list[ScheduleBlock] = []
+    for m in _normalize_members(profile):
+        m_name, age_band = str(m["name"]), str(m["age_band"])
+        fixed_b: list[ScheduleBlock] = []
         flex_acts: list[FlexibleActivity] = []
 
         for b in m["schedule_blocks"]:
@@ -162,19 +150,19 @@ def replan_if_needed(
                 )
                 flex_acts.append(
                     FlexibleActivity(
-                        id=f"{m_id}_{act}",
-                        member_id=m_id,
-                        title=act,
+                        id=f"flex_{len(flex_acts)}",
+                        member_id=str(m["id"]),
+                        title=str(b.get("label", act)),
                         duration_hours=dur,
                         earliest_start_hour=e_val,
-                        latest_start_hour=max(0, l_val - dur),
+                        latest_start_hour=max(e_val, l_val - dur),
                         micro_env=env,
-                        activity="moderate",
+                        activity=act,
                         usual_start_hour=start,
                     )
                 )
             else:
-                fixed_blocks.append(
+                fixed_b.append(
                     ScheduleBlock(
                         start_hour=start,
                         end_hour=end,
@@ -185,16 +173,16 @@ def replan_if_needed(
                 )
 
         if flex_acts:
-            opt_res = optimise_day_plan(
+            opt = optimise_day_plan(
                 age_band=age_band,
-                fixed_blocks=fixed_blocks,
+                fixed_blocks=fixed_b,
                 flexible_activities=flex_acts,
                 outdoor_pm25_series=new_series[:24],
             )
-            if opt_res.total_savings_ug > 0:
+            if opt.total_savings_ug > 0:
                 replan_notes.append(
                     f"Forecast changed by {max_diff:.0f} µg/m³. Rescheduled "
-                    f"{m_name}'s flexible activities, saving {opt_res.total_savings_ug:.1f} µg."
+                    f"{m_name}'s flexible activities, saving {opt.total_savings_ug:.1f} µg."
                 )
 
     if not replan_notes:
@@ -202,18 +190,12 @@ def replan_if_needed(
             f"Forecast shifted by {max_diff:.0f} µg/m³; checked schedule for vulnerable windows."
         )
 
-    return ReplanResult(
-        shifted=True,
-        delta_max_pm25=round(max_diff, 1),
-        replanned=True,
-        replan_notes=replan_notes,
-    )
+    return ReplanResult(True, round(max_diff, 1), True, replan_notes)
 
 
 def _compute_cleanest_window(
     pts: list[HourlyAirPoint], pm25_vals: list[float]
 ) -> tuple[str, float]:
-    """Find the 2-hour window with lowest average PM2.5."""
     best_start = 0
     best_avg = float("inf")
     for i in range(len(pm25_vals) - 1):
@@ -221,7 +203,6 @@ def _compute_cleanest_window(
         if win_avg < best_avg:
             best_avg = win_avg
             best_start = i
-
     end_idx = min(len(pts) - 1, best_start + 2)
     win_str = f"{pts[best_start].time_local}-{pts[end_idx].time_local}"
     win_pm = round(best_avg if best_avg < float("inf") else 0.0, 1)
@@ -231,25 +212,22 @@ def _compute_cleanest_window(
 def _build_sensitive_alerts(
     members_data: list[dict[str, Any]], worst_hour: str, worst_pm25: float
 ) -> list[SensitiveAlertItem]:
-    """Build targeted guidance alerts for vulnerable individuals."""
     alerts: list[SensitiveAlertItem] = []
     for m in members_data:
         m_id, m_name, age = str(m["id"]), str(m["name"]), str(m["age_band"])
-        sensitivities = list(m["sensitivities"])
-        if age in ("child", "elderly") or sensitivities:
+        sens = list(m["sensitivities"])
+        if age in ("child", "elderly") or sens:
             sev: Literal["advisory", "warning", "critical"] = "advisory"
             if worst_pm25 > SEVERE_PM25_THRESHOLD:
                 sev = "critical"
             elif worst_pm25 > POOR_PM25_THRESHOLD:
                 sev = "warning"
-
             reasons: list[str] = []
             if age == "child":
                 reasons.append("developing lungs")
             if age == "elderly":
                 reasons.append("respiratory vulnerability")
-            reasons.extend(sensitivities)
-
+            reasons.extend(sens)
             alerts.append(
                 SensitiveAlertItem(
                     member_id=m_id,
@@ -267,12 +245,9 @@ def _build_sensitive_alerts(
 def _build_top_actions(
     pm25_vals: list[float], worst_pm25: float, cleanest_win: str, cleanest_pm: float
 ) -> list[BriefActionItem]:
-    """Rank top 3 actions across indoor hacks, community swaps, and window shifts."""
     actions: list[BriefActionItem] = []
     ranked_hacks = rank_indoor_hacks(
-        room_volume_m3=DEFAULT_ROOM_VOLUME_M3,
-        outdoor_series=pm25_vals,
-        baseline_events=[],
+        room_volume_m3=DEFAULT_ROOM_VOLUME_M3, outdoor_series=pm25_vals, baseline_events=[]
     )
     if ranked_hacks:
         top_hack = ranked_hacks[0]
@@ -286,7 +261,6 @@ def _build_top_actions(
                 action_type="indoor_hack",
             )
         )
-
     metro_swap = evaluate_swap("commute_car_to_metro", units_per_day=20.0, days_per_week=5)
     g_saved = abs(metro_swap.delta_emit_daily.g_pm25)
     actions.append(
@@ -297,7 +271,6 @@ def _build_top_actions(
             action_type="swap",
         )
     )
-
     actions.append(
         BriefActionItem(
             title="Outdoor Window Shift",
@@ -317,7 +290,7 @@ def generate_morning_brief(
     cached_yesterday_series: list[float] | None = None,
     threshold_ug_m3: float = 40.0,
 ) -> BriefResult:
-    """Generate comprehensive proactive morning brief from current forecast and family profile."""
+    """Generate comprehensive morning brief from forecast and family profile."""
     pts = air_series.points
     if not pts:
         return BriefResult(
@@ -329,24 +302,16 @@ def generate_morning_brief(
             sensitive_member_alerts=[],
             top_actions=[],
             forecast_shift=None,
-            explanation=Explanation(
-                formula="empty_series",
-                inputs={},
-                constants_used=[],
-                sources=[],
-                assumptions=["No air points returned"],
-            ),
+            explanation=Explanation("empty_series", {}, [], [], ["No air points returned"]),
         )
 
     pm25_vals = [pt.pm25_ug_m3 for pt in pts[:24]]
     worst_idx = max(range(len(pm25_vals)), key=lambda i: pm25_vals[i])
     worst_hour_local = pts[worst_idx].time_local
     worst_pm25 = round(pm25_vals[worst_idx], 1)
-
-    cleanest_window_local, cleanest_pm25 = _compute_cleanest_window(pts, pm25_vals)
-    members_data = _normalize_members(profile)
-    alerts = _build_sensitive_alerts(members_data, worst_hour_local, worst_pm25)
-    actions = _build_top_actions(pm25_vals, worst_pm25, cleanest_window_local, cleanest_pm25)
+    cleanest_win, cleanest_pm = _compute_cleanest_window(pts, pm25_vals)
+    alerts = _build_sensitive_alerts(_normalize_members(profile), worst_hour_local, worst_pm25)
+    actions = _build_top_actions(pm25_vals, worst_pm25, cleanest_win, cleanest_pm)
 
     shift_info: ForecastShiftInfo | None = None
     if cached_yesterday_series:
@@ -360,7 +325,7 @@ def generate_morning_brief(
 
     headline = (
         f"Severe smog today peaking at {worst_hour_local} ({worst_pm25} µg/m³). "
-        f"Cleanest air window is {cleanest_window_local}."
+        f"Cleanest air window is {cleanest_win}."
         if worst_pm25 > VERY_POOR_PM25_THRESHOLD
         else f"Moderate pollution today with peak {worst_pm25} µg/m³ at {worst_hour_local}."
     )
@@ -370,8 +335,8 @@ def generate_morning_brief(
         inputs={
             "worst_hour_local": worst_hour_local,
             "worst_pm25": worst_pm25,
-            "cleanest_window": cleanest_window_local,
-            "cleanest_pm25": cleanest_pm25,
+            "cleanest_window": cleanest_win,
+            "cleanest_pm25": cleanest_pm,
             "points_count": len(pts),
         },
         constants_used=[],
@@ -383,8 +348,8 @@ def generate_morning_brief(
         headline=headline,
         worst_hour_local=worst_hour_local,
         worst_pm25=worst_pm25,
-        cleanest_window_local=cleanest_window_local,
-        cleanest_pm25=cleanest_pm25,
+        cleanest_window_local=cleanest_win,
+        cleanest_pm25=cleanest_pm,
         sensitive_member_alerts=alerts,
         top_actions=actions,
         forecast_shift=shift_info,

@@ -1,11 +1,4 @@
-"""Pydantic v2 schemas for all HawaKhata API request and response contracts.
-
-Rules:
-    - All models set ``extra="forbid"`` to reject unexpected client fields.
-    - All strings, numbers, and lists have explicit domain bounds.
-    - Every 2xx response uses the standard ``Envelope[T]`` carrying metadata and request ID.
-    - Mathematical transparency objects (``Explanation``) are attached to calculation outputs.
-"""
+"""Pydantic v2 schemas for all HawaKhata API request and response contracts."""
 
 from __future__ import annotations
 
@@ -15,13 +8,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class StrictBaseModel(BaseModel):
-    """Base model forbidding extra fields and configuring standard JSON modes."""
+    """Base model forbidding extra fields."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class ResponseMeta(StrictBaseModel):
-    """Standard metadata container included in all 2xx responses."""
+    """Standard metadata container for 2xx responses."""
 
     request_id: str = Field(max_length=64)
     data_mode: Literal["live", "fixture"]
@@ -40,7 +33,7 @@ class Envelope[T](StrictBaseModel):
 
 
 class LocationInput(StrictBaseModel):
-    """Geographic coordinate specification with privacy validation."""
+    """Geographic coordinate specification."""
 
     lat: float = Field(ge=-90.0, le=90.0)
     lng: float = Field(ge=-180.0, le=180.0)
@@ -81,7 +74,7 @@ class RoomInput(StrictBaseModel):
 
 
 class SourceEventInput(StrictBaseModel):
-    """Indoor particulate emission event (cooking, agarbatti, coil, smoking)."""
+    """Indoor particulate emission event."""
 
     kind: str = Field(max_length=50)
     start_hour: int = Field(ge=0, le=23)
@@ -101,7 +94,7 @@ class FamilyProfileInput(StrictBaseModel):
 
 
 class FlexibleActivityInput(StrictBaseModel):
-    """An activity that can be repositioned during clean-window planning."""
+    """Activity candidate for clean-window optimization."""
 
     id: str = Field(max_length=50)
     member_id: str = Field(max_length=50)
@@ -112,9 +105,6 @@ class FlexibleActivityInput(StrictBaseModel):
     micro_env: str = Field(default="outdoor", max_length=50)
     activity: str = Field(default="moderate", max_length=50)
     usual_start_hour: int = Field(ge=0, le=23)
-
-
-# --- Endpoint Request / Response Models ---
 
 
 class ForecastRequest(StrictBaseModel):
@@ -135,7 +125,7 @@ class PassbookRequest(StrictBaseModel):
 
 
 class PlanRequest(StrictBaseModel):
-    """Request payload for schedule clean-window optimization."""
+    """Request payload for clean-window optimization."""
 
     profile: FamilyProfileInput
     member_id: str = Field(max_length=50)
@@ -145,7 +135,7 @@ class PlanRequest(StrictBaseModel):
 
 
 class IndoorSimulateRequest(StrictBaseModel):
-    """Request payload for single-zone indoor PM2.5 mass-balance simulation."""
+    """Request payload for indoor PM2.5 simulation."""
 
     room: RoomInput
     sources: list[SourceEventInput] = Field(default_factory=list, max_length=20)
@@ -155,7 +145,7 @@ class IndoorSimulateRequest(StrictBaseModel):
 
 
 class SwapsImpactRequest(StrictBaseModel):
-    """Request payload for sustainable alternative evaluation and scaling."""
+    """Request payload for sustainable alternatives."""
 
     swap_id: str = Field(max_length=50)
     units_per_day: float = Field(ge=0.0, le=1000.0)
@@ -176,7 +166,7 @@ class BriefAction(StrictBaseModel):
 
 
 class SensitiveAlert(StrictBaseModel):
-    """Targeted alert for a vulnerable or sensitive family member."""
+    """Targeted alert for a vulnerable family member."""
 
     member_id: str = Field(max_length=64)
     name: str = Field(max_length=80)
@@ -185,7 +175,7 @@ class SensitiveAlert(StrictBaseModel):
 
 
 class ForecastShiftInfo(StrictBaseModel):
-    """Detection outcome when comparing previous forecast against current."""
+    """Forecast shift detection outcome."""
 
     shifted: bool
     delta_max_pm25: float
@@ -194,7 +184,7 @@ class ForecastShiftInfo(StrictBaseModel):
 
 
 class BriefResponse(StrictBaseModel):
-    """Proactive morning brief response."""
+    """Proactive morning brief response payload."""
 
     headline: str = Field(max_length=200)
     worst_hour_local: str = Field(max_length=10)
@@ -208,7 +198,7 @@ class BriefResponse(StrictBaseModel):
 
 
 class BriefRequest(StrictBaseModel):
-    """Request payload for morning proactive brief and forecast shift detection."""
+    """Request payload for morning proactive brief."""
 
     profile: FamilyProfileInput
     previous_forecast_pm25: list[float] | None = Field(default=None, max_length=96)
@@ -217,14 +207,14 @@ class BriefRequest(StrictBaseModel):
 
 
 class ChatMessageInput(StrictBaseModel):
-    """Turn in a multi-turn user conversation."""
+    """Turn in a multi-turn conversation."""
 
     role: Literal["user", "model", "system"]
     content: str = Field(max_length=4000)
 
 
 class ChatRequest(StrictBaseModel):
-    """Request payload for Ask HawaKhata multi-turn conversational agent."""
+    """Request payload for Ask HawaKhata chat endpoint."""
 
     session_id: str | None = Field(default=None, max_length=64)
     message: str = Field(min_length=1, max_length=1000)
@@ -235,7 +225,7 @@ class ChatRequest(StrictBaseModel):
 
 
 class MetaResponse(StrictBaseModel):
-    """System version and runtime capability metadata."""
+    """System version and runtime metadata."""
 
     app_name: str
     app_version: str

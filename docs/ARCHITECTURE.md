@@ -1,81 +1,48 @@
 # ARCHITECTURE — HawaKhata
 
-## Layers
+## System Layers
 ```
-Browser (Jinja2 page + ES modules, profile in localStorage, SVG charts)
-   │  JSON over HTTPS
+Browser (Semantic HTML5 + ES modules, localStorage profile, SVG charts)
+   │  HTTPS JSON
 FastAPI app (app.py: create_app)
-   ├─ middleware: request-id → security headers/CSP → body-size limit → rate limit → structured logging
-   ├─ api/routes.py  (thin)  →  services/*  →  engine/* (pure, no I/O)
-   │                                   └──→ integrations/air_quality.py (cache → live → fixture)
-   └─ /api/v1/chat → agent/guardrails.L1 → agent/agent.py (ADK, Gemini, tools=services)
+   ├─ middleware: request-id → security headers/CSP → body-size limit → rate limit → JSON logs
+   ├─ api/routes.py → services/* → engine/* (pure, zero I/O)
+   │                      └──→ integrations/air_quality.py (cache → live Google API → fixture)
+   └─ /api/v1/chat → agent/guardrails.L1 → agent/agent.py (ADK, Gemini cascade, tools)
                        → agent/grounding.check → agent/guardrails.L2 → response
-                       ↳ on timeout / error / ungrounded twice → agent/fallback.py (deterministic)
+                       └── on timeout / error / ungrounded → agent/fallback.py (deterministic)
 ```
 
-## Endpoints (all JSON, versioned)
-| Method | Path | Purpose |
+## Endpoints (All JSON, Versioned)
+| Method | Path | Description |
 |---|---|---|
-| GET | `/` | UI |
-| GET | `/healthz` | liveness |
-| GET | `/api/v1/meta` | app, agent, prompt, constants versions; data mode (live/fixture); model ids |
-| POST | `/api/v1/air/forecast` | normalised hourly series for a location (PM2.5, PM10, AQI local + universal, health recs) |
-| POST | `/api/v1/passbook` | F1 |
-| POST | `/api/v1/plan` | F2 |
-| POST | `/api/v1/indoor/simulate` | F3 |
-| POST | `/api/v1/swaps/impact` | F4 |
-| POST | `/api/v1/brief` | F6 |
-| POST | `/api/v1/chat` | F5 |
-| GET | `/api/v1/demo/profiles` | demo family list + profiles from `data/fixtures/profiles.json` |
-| GET | `/api/v1/story/{story_id}` | F7 story config (profile ref, fixture, fixed clock) |
-| GET | `/how-it-works` | F8 trust page |
+| GET | `/`, `/how-it-works` | UI pages (Jinja2) |
+| GET | `/healthz`, `/api/v1/meta` | Liveness and runtime metadata |
+| POST | `/api/v1/air/forecast` | Normalised hourly series (PM2.5, PM10, NAQI, health recs) |
+| POST | `/api/v1/passbook` | Inhaled dose, daily air budget, balance, cigarette eq |
+| POST | `/api/v1/plan` | Clean-window activity optimizer with uncertainty |
+| POST | `/api/v1/indoor/simulate` | Single-zone indoor PM2.5 model and purifier sizing |
+| POST | `/api/v1/swaps/impact` | Household & Mohalla community emission reductions |
+| POST | `/api/v1/brief` | Proactive morning brief with auto re-planning |
+| POST | `/api/v1/chat` | Multi-turn grounded GenAI assistant with fallback |
+| GET | `/api/v1/demo/profiles`, `/api/v1/story/{id}` | Demo families and reproducible tour configurations |
 
-All computing endpoints accept optional `now` (ISO-8601) and `data_source` (`auto`/`fixture`) so story
-mode is deterministic without special-casing; the engine never reads the system clock.
+## Error & Response Contract
+- **Error (non-2xx):** `{"error": {"code": "CODE", "message": "human text", "request_id": "...", "retryable": bool}}`
+- **Codes:** `VALIDATION_ERROR`, `RATE_LIMITED`, `PAYLOAD_TOO_LARGE`, `UPSTREAM_TIMEOUT`, `UPSTREAM_ERROR`, `GUARDRAIL_BLOCKED`, `INTERNAL_ERROR`.
+- **Envelope (2xx):** `{"data": {...}, "meta": {"request_id": "...", "data_mode": "live|fixture", "engine_version": "...", "constants_version": "v1", "agent_version": "...", "degraded": false}}`
 
-## Error contract (every non-2xx)
-```json
-{"error": {"code": "UPSTREAM_TIMEOUT", "message": "human readable", "request_id": "…", "retryable": true}}
-```
-Codes: `VALIDATION_ERROR`, `RATE_LIMITED`, `PAYLOAD_TOO_LARGE`, `UPSTREAM_TIMEOUT`, `UPSTREAM_ERROR`,
-`GUARDRAIL_BLOCKED`, `INTERNAL_ERROR`. Upstream failures degrade (fixture/fallback) before they error.
+## Air Quality Integration
+`integrations/air_quality.AirQualityClient`:
+1. Coordinate rounding (~1 km cell). Cache key = cell + hour bucket.
+2. TTL cache hit → return. Cache miss → POST Google Maps Air Quality `forecast:lookup`.
+3. Circuit breaker opens after N failures. Degrades seamlessly to nearest winter fixture.
+4. Returns `HourlyAirSeries` with NAQI categories and health advice.
 
-## Response envelope (2xx)
-```json
-{"data": {...}, "meta": {"request_id": "…", "data_mode": "live|fixture", "engine_version": "…",
- "constants_version": "v1", "prompt_version": "v1.0", "agent_version": "…", "degraded": false}}
-```
-
-## Data flow — air quality
-`integrations/air_quality.get_hourly_forecast(lat, lng, hours)`:
-1. Round to a ~1 km grid cell (privacy + cache hit-rate). Cache key = cell + hour bucket.
-2. Cache hit → return. Miss → POST `forecast:lookup` (+ `currentConditions:lookup`) with `LOCAL_AQI`,
-   `POLLUTANT_CONCENTRATION`, `HEALTH_RECOMMENDATIONS`, `DOMINANT_POLLUTANT_CONCENTRATION`; follow page tokens.
-3. Timeout (config) + 1 retry with jitter; circuit breaker opens after N failures for M seconds.
-4. Failure / no key → nearest fixture from `data/fixtures/` with `data_mode="fixture"`.
-5. Normalise into `HourlyAirSeries` (UTC + local time, pm25, pm10, aqi_local, aqi_universal, category,
-   dominant pollutant, health recs by group).
-
-## Agent design (F5)
-- ADK `LlmAgent` with instruction from `prompts/v1.0/agent_system.md`, tools:
-  `get_air_forecast`, `get_family_passbook`, `plan_clean_windows`, `simulate_indoor_air`,
-  `evaluate_swaps`, `get_smog_brief`, `explain_number`.
-- Session memory: ADK session service (in-memory, bounded: max sessions + TTL; Redis-ready interface).
-- Follow-ups: if a tool returns `missing_fields`, the agent asks ONE concise question, then continues.
-- Output: `{"reply": str, "language": "en|hi", "numbers_used": [...], "tool_calls": [...], "follow_up": str|null}`.
-- Grounding gate extracts every number from `reply` (Latin + Devanagari digits), allows those present in
-  tool outputs (tolerance for rounding/units) plus a tiny whitelist (e.g. counts ≤ 10, years, times).
-  Fail → one regeneration with the violations listed → fail again → fallback narrator.
-- Model cascade: primary model id from config → secondary (flash-lite) on 429/5xx/timeout.
-
-## Caching & limits (all bounded)
-| Thing | Implementation | Bound |
-|---|---|---|
-| AQ responses | `TTLCache` / `RedisCache` | `CACHE_MAX_ENTRIES`, `AQ_CACHE_TTL_S` |
-| Chat sessions | ADK session service wrapper | `SESSION_MAX`, `SESSION_TTL_S`, `SESSION_MAX_TURNS` |
-| Rate limiter | token bucket per client hash | `RATE_LIMIT_MAX_CLIENTS` (LRU-evicted) |
-| Request body | middleware | `MAX_BODY_BYTES` |
-
-## Observability & governance
-Structured JSON logs (request_id, route, latency_ms, data_mode, model, prompt_version, grounding_result,
-fallback_used) — no PII. `/api/v1/meta` exposes versions. `eval/run_eval.py` writes `eval/report.json`.
+## GenAI Agent Pipeline
+1. L1 Input Guardrails: length cap, control char strip, prompt injection regex, Indian PII masking (phone, Aadhaar, PAN, email).
+2. ADK Agent & Cascade: primary model (`gemini-2.5-flash`), secondary fallback (`gemini-2.5-flash-lite`).
+3. Domain Tools: wrapped services (`get_air_forecast`, `get_family_passbook`, `plan_clean_windows`, etc.).
+4. Grounding Gate: extracts numbers from reply, matches against tool outputs with numerical tolerances. Ungrounded output rejected.
+5. L2 Output Guardrails: canary token check, medical emergency detector, prescription blocker.
+6. Fallback: deterministic intent router (`lexicon.v1.json`) and template composer (`templates.v1.json`) with real engine calculations.
