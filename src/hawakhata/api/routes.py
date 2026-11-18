@@ -11,10 +11,12 @@ from hawakhata.api.dependencies import get_aq_client, make_meta
 from hawakhata.api.schemas import (
     Envelope,
     ForecastRequest,
+    IndoorSimulateRequest,
     PassbookRequest,
     PlanRequest,
 )
 from hawakhata.integrations.air_quality import AirQualityClient
+from hawakhata.services.indoor_service import simulate_indoor_environment
 from hawakhata.services.passbook_service import compute_family_passbook
 from hawakhata.services.planner_service import compute_optimized_plan
 
@@ -47,6 +49,25 @@ async def post_passbook(
     series = await aq_client.get_hourly_forecast(lat=loc.lat, lng=loc.lng, hours=24)
     pm25_series = [pt.pm25_ug_m3 for pt in series.points]
     result = compute_family_passbook(req.profile, pm25_series)
+    meta = make_meta(request, data_mode=series.data_mode)
+    return Envelope(data=asdict(result), meta=meta)
+
+
+@api_router.post("/indoor/simulate", response_model=Envelope[dict[str, Any]], tags=["indoor"])
+async def post_indoor_simulate(
+    req: IndoorSimulateRequest,
+    request: Request,
+    aq_client: AqClientDep,
+) -> Envelope[dict[str, Any]]:
+    """Simulate 24-hour indoor PM2.5, evaluate purifier, and rank hacks."""
+    loc = req.location
+    series = await aq_client.get_hourly_forecast(lat=loc.lat, lng=loc.lng, hours=24)
+    pm25_series = [pt.pm25_ug_m3 for pt in series.points]
+    result = simulate_indoor_environment(
+        room=req.room,
+        sources=req.sources,
+        outdoor_pm25_series=pm25_series,
+    )
     meta = make_meta(request, data_mode=series.data_mode)
     return Envelope(data=asdict(result), meta=meta)
 

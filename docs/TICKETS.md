@@ -32,7 +32,7 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | API-01 | Request/response schemas and envelope | ENG-04 | Must | Done |
 | API-02 | Passbook endpoint | API-01, INT-01 | Must | Done |
 | API-03 | Plan endpoint | API-02, ENG-08 | Must | Done |
-| API-04 | Indoor simulate endpoint | API-02, ENG-06 | Must | Not started |
+| API-04 | Indoor simulate endpoint | API-02, ENG-06 | Must | Done |
 | API-05 | Swaps impact endpoint | API-02, ENG-09 | Must | Not started |
 | API-06 | Brief endpoint with forecast-shift re-plan | API-03 | Must | Not started |
 | API-07 | Demo profiles and story endpoints | API-02 | Must | Not started |
