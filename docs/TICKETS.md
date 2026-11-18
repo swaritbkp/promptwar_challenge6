@@ -20,7 +20,7 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | FND-02 | Verify and complete the constants file with sources | FND-01 | Must | Done |
 | FND-03 | Create Delhi NCR and Chandigarh air-data fixtures | FND-01 | Must | Done |
 | ENG-01 | Load constants and define the Explanation value object | FND-02 | Must | Done |
-| ENG-02 | Map PM2.5 and AQI to India NAQI categories | ENG-01 | Must | Not started |
+| ENG-02 | Map PM2.5 and AQI to India NAQI categories | ENG-01 | Must | Done |
 | ENG-03 | Compute per-member inhaled dose from a day timeline | ENG-01 | Must | Not started |
 | ENG-04 | Compute the daily air budget and passbook entry | ENG-03 | Must | Not started |
 | ENG-05 | Simulate indoor PM2.5 with the mass-balance model | ENG-01 | Must | Not started |
