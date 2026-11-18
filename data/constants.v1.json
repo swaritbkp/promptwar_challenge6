@@ -1,0 +1,83 @@
+{
+  "version": "v1",
+  "policy": "Every value used by engine/ must come from this file. Entries with verified=false or value=null MUST be checked/filled during /kickoff from the cited (or a better) primary source. Never invent a source. Keep ranges honest.",
+  "constants": {
+    "who_aqg_pm25_24h": {"value": 15, "unit": "ug_m3", "range": [15, 15], "source": "WHO Global Air Quality Guidelines (2021), PM2.5 24-hour guideline level", "verified": true},
+    "who_aqg_pm25_annual": {"value": 5, "unit": "ug_m3", "range": [5, 5], "source": "WHO Global Air Quality Guidelines (2021), PM2.5 annual guideline level", "verified": true},
+    "cigarette_equiv_pm25_24h": {"value": 22, "unit": "ug_m3_per_cigarette_day", "range": [22, 22], "source": "Berkeley Earth (Muller & Muller, 2015) rough equivalence: 22 ug/m3 PM2.5 for 24h ~ 1 cigarette/day", "verified": false},
+
+    "naqi_pm25_breakpoints": {"value": [[0, 30, "good"], [31, 60, "satisfactory"], [61, 90, "moderate"], [91, 120, "poor"], [121, 250, "very_poor"], [251, 1000, "severe"]], "unit": "ug_m3_24h", "range": null, "source": "CPCB National Air Quality Index (2014) PM2.5 sub-index breakpoints", "verified": false},
+    "naqi_aqi_categories": {"value": [[0, 50, "good"], [51, 100, "satisfactory"], [101, 200, "moderate"], [201, 300, "poor"], [301, 400, "very_poor"], [401, 500, "severe"]], "unit": "aqi", "range": null, "source": "CPCB National Air Quality Index (2014)", "verified": false},
+    "grap_stage_aqi_thresholds": {"value": [[201, 300, "I"], [301, 400, "II"], [401, 450, "III"], [451, 500, "IV"]], "unit": "aqi", "range": null, "source": "CAQM Graded Response Action Plan for Delhi-NCR (check latest revision)", "verified": false, "applies_to": "Delhi NCR coordinates only"},
+
+    "inhalation_rate_daily_mean": {
+      "unit": "m3_per_day",
+      "source": "US EPA Exposure Factors Handbook (2011), Chapter 6, Table 6-1 recommended long-term mean daily inhalation rates",
+      "verified": false,
+      "value": {
+        "0_1": 5.4, "1_2": 8.0, "2_3": 8.9, "3_6": 10.1, "6_11": 12.0, "11_16": 15.2, "16_21": 16.3,
+        "21_31": 15.7, "31_41": 16.0, "41_51": 16.0, "51_61": 15.7, "61_71": 14.2, "71_81": 12.9, "81_plus": 12.2
+      }
+    },
+    "activity_multiplier": {
+      "unit": "x_daily_mean_hourly_rate",
+      "source": "Derived from EPA Exposure Factors Handbook (2011) Table 6-2 short-term rates by activity level; normalise so a typical day averages 1.0",
+      "verified": false,
+      "value": {"sleep": 0.45, "sedentary": 0.8, "light": 1.6, "moderate": 2.6, "vigorous": 4.5},
+      "range": {"sleep": [0.35, 0.55], "sedentary": [0.7, 0.95], "light": [1.3, 2.0], "moderate": [2.0, 3.2], "vigorous": [3.5, 6.0]}
+    },
+
+    "indoor_penetration_factor": {"value": 0.8, "unit": "fraction", "range": [0.6, 1.0], "source": "Indoor PM2.5 infiltration literature (e.g., Chen & Zhao 2011, Atmospheric Environment review)", "verified": false},
+    "indoor_deposition_rate": {"value": 0.2, "unit": "per_h", "range": [0.1, 0.4], "source": "Indoor PM2.5 deposition literature (e.g., Chen & Zhao 2011)", "verified": false},
+    "air_exchange_closed": {"value": 0.5, "unit": "per_h", "range": [0.2, 1.0], "source": "Typical residential air-exchange rates, windows closed (verify for Indian housing)", "verified": false},
+    "air_exchange_open": {"value": 3.0, "unit": "per_h", "range": [1.0, 6.0], "source": "Typical residential air-exchange rates, windows open (verify)", "verified": false},
+    "infiltration_closed_building": {"value": 0.6, "unit": "fraction_of_outdoor", "range": [0.4, 0.9], "source": "Indoor/outdoor PM2.5 ratio studies, non-residential buildings without filtration (verify)", "verified": false},
+    "purifier_target_ach": {"value": 5, "unit": "per_h", "range": [4, 6], "source": "Common sizing guidance for portable air cleaners in smoke/smog events (e.g., US EPA guide to air cleaners in the home) — verify", "verified": false},
+
+    "in_vehicle_ratio": {
+      "unit": "fraction_of_outdoor",
+      "source": "Commuter exposure studies in Delhi/India by mode — research and cite during kickoff",
+      "verified": false,
+      "value": {"transit_car": 0.8, "transit_two_wheeler": 1.3, "transit_public": 1.0, "transit_metro": 0.6, "transit_walk_cycle": 1.1},
+      "range": {"transit_car": [0.5, 1.1], "transit_two_wheeler": [1.0, 1.8], "transit_public": [0.8, 1.4], "transit_metro": [0.3, 0.9], "transit_walk_cycle": [0.9, 1.5]}
+    },
+
+    "indoor_source_emission_rate": {
+      "unit": "ug_per_h_while_active",
+      "source": "Indoor source strength literature (cooking, incense, mosquito coils, candles, solid-fuel heating, smoking) — research and cite each during kickoff",
+      "verified": false,
+      "value": {"src_frying": null, "src_tadka": null, "src_incense_stick": null, "src_mosquito_coil": null, "src_candle": null, "src_angithi_coal": null, "src_wood_heater": null, "src_smoking": null},
+      "range": {}
+    },
+
+    "emission_factor": {
+      "unit": "per_activity_unit",
+      "source": "India-relevant emission factors (e.g., ARAI / India GHG Program / IPCC / published inventories) — research and cite each during kickoff; keep kg_co2 and g_pm25 with ranges",
+      "verified": false,
+      "value": {
+        "car_petrol_per_km": {"kg_co2": null, "g_pm25": null},
+        "car_diesel_per_km": {"kg_co2": null, "g_pm25": null},
+        "two_wheeler_per_km": {"kg_co2": null, "g_pm25": null},
+        "bus_per_passenger_km": {"kg_co2": null, "g_pm25": null},
+        "metro_per_passenger_km": {"kg_co2": null, "g_pm25": null},
+        "carpool_per_km_shared_3": {"kg_co2": null, "g_pm25": null},
+        "diesel_generator_per_kwh": {"kg_co2": null, "g_pm25": null},
+        "inverter_grid_per_kwh": {"kg_co2": null, "g_pm25": null},
+        "angithi_coal_per_hour": {"kg_co2": null, "g_pm25": null},
+        "electric_heater_per_hour_2kw_grid": {"kg_co2": null, "g_pm25": null},
+        "open_leaf_burning_per_kg": {"kg_co2": null, "g_pm25": null}
+      }
+    }
+  },
+  "swap_catalogue": [
+    {"id": "commute_car_to_metro", "before": "car_petrol_per_km", "after": "metro_per_passenger_km", "affects": ["emit", "breathe_transit"]},
+    {"id": "commute_car_to_carpool", "before": "car_petrol_per_km", "after": "carpool_per_km_shared_3", "affects": ["emit"]},
+    {"id": "commute_two_wheeler_to_metro", "before": "two_wheeler_per_km", "after": "metro_per_passenger_km", "affects": ["emit", "breathe_transit"]},
+    {"id": "heating_angithi_to_electric", "before": "angithi_coal_per_hour", "after": "electric_heater_per_hour_2kw_grid", "affects": ["emit", "breathe_indoor"]},
+    {"id": "power_generator_to_inverter", "before": "diesel_generator_per_kwh", "after": "inverter_grid_per_kwh", "affects": ["emit"]},
+    {"id": "leaves_burning_to_compost", "before": "open_leaf_burning_per_kg", "after": null, "affects": ["emit", "breathe_outdoor_local"]},
+    {"id": "no_incense_on_severe_days", "before": "src_incense_stick", "after": null, "affects": ["breathe_indoor"]},
+    {"id": "coil_to_net_or_repellent", "before": "src_mosquito_coil", "after": null, "affects": ["breathe_indoor"]},
+    {"id": "frying_to_steaming_on_severe_days", "before": "src_frying", "after": null, "affects": ["breathe_indoor"]}
+  ]
+}

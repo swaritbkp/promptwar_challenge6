@@ -1,0 +1,18 @@
+{
+  "version": "v1",
+  "purpose": "Story mode steps for demos and first-run tours. Captions are i18n keys; numbers are filled from live API responses at runtime via placeholders that reference response fields.",
+  "stories": {
+    "ncr": {"profile_ref": "demo_ncr", "fixture": "delhi_gurugram_winter", "clock_local": "07:10"},
+    "chd": {"profile_ref": "demo_chd", "fixture": "chandigarh_mohali_winter", "clock_local": "17:20"}
+  },
+  "steps": [
+    {"id": "s0_title", "screen": "today", "target": "#story-title-card", "caption_key": "story.s0", "action": null},
+    {"id": "s1_balance", "screen": "today", "target": "[data-story='balance-top-member']", "caption_key": "story.s1", "action": null},
+    {"id": "s2_why", "screen": "today", "target": "[data-story='why-number']", "caption_key": "story.s2", "action": "open_explanation"},
+    {"id": "s3_plan", "screen": "plan", "target": "[data-story='plan-compare']", "caption_key": "story.s3", "action": "apply_better_plan"},
+    {"id": "s4_home_air", "screen": "home-air", "target": "[data-story='indoor-chart']", "caption_key": "story.s4", "action": "apply_top_hacks"},
+    {"id": "s5_swaps", "screen": "swaps", "target": "[data-story='mohalla']", "caption_key": "story.s5", "action": "set_mohalla_200"},
+    {"id": "s6_ask", "screen": "ask", "target": "[data-story='chat']", "caption_key": "story.s6", "action": "send_sample_question_hi"},
+    {"id": "s7_trust", "screen": "how-it-works", "target": "[data-story='architecture']", "caption_key": "story.s7", "action": null}
+  ]
+}

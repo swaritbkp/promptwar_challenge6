@@ -1,0 +1,42 @@
+[project]
+name = "hawakhata"
+version = "0.1.0"
+description = "HawaKhata — an air passbook for families navigating winter smog"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "eval"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF", "S", "PTH", "D", "ANN", "PL", "TID"]
+ignore = ["D203", "D213", "D413", "PLR0913"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "D", "ANN", "PLR2004"]
+"eval/**" = ["D", "T201"]
+"scripts/**" = ["T201", "S603", "PLR2004"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra"
+
+[tool.coverage.run]
+source = ["src/hawakhata"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

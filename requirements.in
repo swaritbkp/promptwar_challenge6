@@ -1,0 +1,19 @@
+# Direct dependencies. /kickoff pins exact versions of these into requirements.txt.
+fastapi
+uvicorn[standard]
+jinja2
+pydantic
+pydantic-settings
+httpx
+google-genai
+google-adk
+redis
+# dev / test
+pytest
+pytest-cov
+pytest-asyncio
+hypothesis
+fakeredis
+ruff
+pip-audit
+mypy
