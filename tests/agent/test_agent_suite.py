@@ -138,14 +138,21 @@ def test_output_policy_enforcement() -> None:
 
 
 def test_extract_and_check_grounding() -> None:
-    text = "1,234.5 and 1,23,456 with 15.5% reduction, 5x, 19×, Devanagari १५० at 14:00."  # noqa: RUF001
+    text = "1,234.5 and 1,23,456 with 15.5% reduction, 5x, 19×, Devanagari १५० in 2024 at 14:00."  # noqa: RUF001
     vals = [n.value for n in extract_numbers(text)]
-    assert {1234.5, 123456.0, 15.5, 5.0, 19.0, 150.0}.issubset(set(vals)) and 14.0 not in vals
-    tool_output = {"hourly_pm25": [142.2], "savings_ug": 50.0}
+    assert {1234.5, 123456.0, 15.5, 5.0, 19.0, 150.0}.issubset(set(vals))
+    assert 14.0 not in vals and 2024.0 not in vals
+    tool_output = {
+        "hourly_pm25": [142.2],
+        "savings_ug": 50.0,
+        "ratio": 0.85,
+        "tuple_data": (120.0, {15.0}),
+    }
     allowed = collect_allowed_numbers(tool_output, user_text="budget is 180 ug")
     assert any(abs(142.2 - a) < 1e-2 for a in allowed) and any(
         abs(180.0 - a) < 1e-2 for a in allowed
     )
+    assert 85.0 in allowed
     reply_ok = "PM2.5 is 142 µg/m³. Save 50 µg over 24 hours (approx 3 cigarettes)."
     assert check_numeric_grounding(reply_ok, tool_output).passed is True
     assert check_numeric_grounding("The current level is 789 ug/m3.", tool_output).passed is False
