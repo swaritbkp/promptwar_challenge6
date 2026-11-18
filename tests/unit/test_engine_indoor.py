@@ -14,24 +14,13 @@ from hawakhata.engine.indoor_model import (
 
 
 def test_steady_state_calculation() -> None:
-    # V = 40 m3, C_out = 100 ug/m3, windows closed (a=0.5), k=0.2, P=0.8, CADR=0, S=0
-    # lambda = 0.5 + 0.2 = 0.7 /h
-    # C_ss = (0.8 * 0.5 * 100) / 0.7 = 40 / 0.7 = 57.1428 ug/m3
     c_ss = steady_state_pm25(c_out_ug_m3=100.0, room_volume_m3=40.0)
     assert pytest.approx(c_ss, rel=1e-3) == 57.143
 
 
 def test_exact_step_equals_analytic_solution() -> None:
-    # Compare exponential stepping against analytical ODE: C(t) = C_ss + (C0 - C_ss)*exp(-lambda*t)
-    v = 50.0
-    c_out = 200.0
-    c0 = 150.0
-    res = simulate_indoor_pm25(
-        room_volume_m3=v,
-        outdoor_pm25_series=[c_out],
-        start_c_ug_m3=c0,
-    )
-    # 1 hour step
+    v, c_out, c0 = 50.0, 200.0, 150.0
+    res = simulate_indoor_pm25(room_volume_m3=v, outdoor_pm25_series=[c_out], start_c_ug_m3=c0)
     p, a, k = 0.8, 0.5, 0.2
     lam = a + k
     c_ss = (p * a * c_out) / lam
@@ -40,16 +29,13 @@ def test_exact_step_equals_analytic_solution() -> None:
 
 
 def test_sub_hour_source_event_averaged() -> None:
-    # 20 min tadka in hour 1
     event = IndoorSourceEvent(kind="src_tadka", start_hour=1, minutes=20.0)
-    outdoor = [100.0] * 5
     res = simulate_indoor_pm25(
         room_volume_m3=40.0,
-        outdoor_pm25_series=outdoor,
+        outdoor_pm25_series=[100.0] * 5,
         source_events=[event],
         start_c_ug_m3=50.0,
     )
-    # Hour 1 should see a substantial PM2.5 spike compared to hour 0
     assert res.hourly_pm25_ug_m3[1] > res.hourly_pm25_ug_m3[0]
 
 

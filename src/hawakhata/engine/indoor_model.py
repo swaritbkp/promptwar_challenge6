@@ -21,14 +21,7 @@ from hawakhata.engine.explain import Explanation
 
 @dataclass(frozen=True, slots=True)
 class IndoorSourceEvent:
-    """An indoor particulate emission event (cooking, agarbatti, coil, smoking).
-
-    Attributes:
-        kind: Identifier from constants.v1.json (e.g. 'src_frying', 'src_incense_stick').
-        start_hour: Hour of the day when activity starts (0..23).
-        minutes: Duration in minutes (1..60).
-        count: Number of active units (e.g. 2 incense sticks).
-    """
+    """An indoor particulate emission event (cooking, agarbatti, coil, smoking)."""
 
     kind: str
     start_hour: int
@@ -38,14 +31,7 @@ class IndoorSourceEvent:
 
 @dataclass(frozen=True, slots=True)
 class IndoorSimulationResult:
-    """Outcome of 24-hour indoor PM2.5 mass-balance simulation.
-
-    Attributes:
-        hourly_pm25_ug_m3: Hourly concentration time-series.
-        mean_pm25_ug_m3: 24-hour time-weighted average PM2.5 concentration.
-        peak_pm25_ug_m3: Maximum hourly indoor concentration observed.
-        explanation: Provenance, formula, and parameter container.
-    """
+    """Outcome of 24-hour indoor PM2.5 mass-balance simulation."""
 
     hourly_pm25_ug_m3: list[float]
     mean_pm25_ug_m3: float

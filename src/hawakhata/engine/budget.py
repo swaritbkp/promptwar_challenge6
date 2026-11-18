@@ -18,22 +18,7 @@ from hawakhata.engine.explain import Explanation
 
 @dataclass(frozen=True, slots=True)
 class PassbookEntry:
-    """Passbook ledger line item for a single family member.
-
-    Attributes:
-        member_label: Friendly name or identifier.
-        age_band: Age bracket key from constants.v1.json.
-        budget_ug: Permissible daily PM2.5 inhalation mass (ug).
-        debit_ug: Actual or predicted inhaled PM2.5 mass (ug).
-        balance_ug: Remaining budget (positive) or overage (negative).
-        overspend_ratio: Ratio of debit to budget (e.g. 1.0 = at budget, 5.0 = 5x over).
-        is_over_budget: True if debit exceeds permissible budget.
-        cigarette_equivalent: Rough cigarette equivalence (Berkeley Earth model).
-        cigarette_label: Disclaimer clarifying that equivalence is an exposure heuristic.
-        hourly_doses_ug: Optional 24-hour series of hourly inhaled micrograms.
-        top_contributors: Optional list of top exposure hours.
-        explanation: Full provenance and citation container.
-    """
+    """Passbook ledger line item for a single family member."""
 
     member_label: str
     age_band: str

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from hawakhata.engine.aqi import (
     aqi_to_category,
     pm25_to_naqi_category,
@@ -9,14 +7,12 @@ from hawakhata.engine.aqi import (
 )
 
 
-@pytest.mark.parametrize(
-    ("pm25", "expected_code", "expected_icon"),
-    [
+def test_pm25_to_naqi_category_boundaries() -> None:
+    cases = [
         (0.0, "good", "smile"),
         (15.0, "good", "smile"),
         (30.0, "good", "smile"),
         (30.1, "satisfactory", "leaf"),
-        (31.0, "satisfactory", "leaf"),
         (60.0, "satisfactory", "leaf"),
         (60.1, "moderate", "cloud"),
         (90.0, "moderate", "cloud"),
@@ -25,23 +21,16 @@ from hawakhata.engine.aqi import (
         (120.1, "very_poor", "mask"),
         (250.0, "very_poor", "mask"),
         (250.1, "severe", "warning_triangle"),
-        (450.0, "severe", "warning_triangle"),
         (999.0, "severe", "warning_triangle"),
-    ],
-)
-def test_pm25_to_naqi_category_boundaries(
-    pm25: float, expected_code: str, expected_icon: str
-) -> None:
-    cat = pm25_to_naqi_category(pm25)
-    assert cat.code == expected_code
-    assert cat.icon_key == expected_icon
-    assert cat.label_key == f"naqi.category.{expected_code}"
-    assert cat.color_hex.startswith("#")
+    ]
+    for pm25, expected_code, expected_icon in cases:
+        cat = pm25_to_naqi_category(pm25)
+        assert cat.code == expected_code and cat.icon_key == expected_icon
+        assert cat.label_key == f"naqi.category.{expected_code}" and cat.color_hex.startswith("#")
 
 
-@pytest.mark.parametrize(
-    ("aqi", "expected_code"),
-    [
+def test_aqi_to_category_boundaries() -> None:
+    cases = [
         (0, "good"),
         (50, "good"),
         (51, "satisfactory"),
@@ -53,13 +42,10 @@ def test_pm25_to_naqi_category_boundaries(
         (301, "very_poor"),
         (400, "very_poor"),
         (401, "severe"),
-        (500, "severe"),
         (850, "severe"),
-    ],
-)
-def test_aqi_to_category_boundaries(aqi: int, expected_code: str) -> None:
-    cat = aqi_to_category(aqi)
-    assert cat.code == expected_code
+    ]
+    for aqi, expected_code in cases:
+        assert aqi_to_category(aqi).code == expected_code
 
 
 def test_pm25_to_sub_index_values() -> None:

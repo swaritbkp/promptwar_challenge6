@@ -26,12 +26,7 @@ DATA_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "data"
 
 @dataclass(frozen=True, slots=True)
 class DeltaEmission:
-    """Emission change from a sustainable swap (negative values indicate reductions).
-
-    Attributes:
-        kg_co2: Net greenhouse gas difference in kilograms of CO2 equivalent.
-        g_pm25: Net direct particulate difference in grams of PM2.5.
-    """
+    """Emission change from a sustainable swap (negative indicates reductions)."""
 
     kg_co2: float
     g_pm25: float
@@ -39,17 +34,7 @@ class DeltaEmission:
 
 @dataclass(frozen=True, slots=True)
 class SwapImpactResult:
-    """Multi-horizon emissions and exposure impact of an adopted lifestyle swap.
-
-    Attributes:
-        swap_id: Unique swap identifier from the catalogue.
-        title: Descriptive human-readable swap title.
-        delta_emit_daily: Emission delta per single active day.
-        delta_emit_weekly: Emission delta across the weekly active days.
-        delta_emit_monthly: Emission delta across an average month (4.33 weeks).
-        delta_breathe_daily_ug: Personal daily dose change in micrograms (negative = avoided dose).
-        explanation: Provenance, formulas, and scientific citations.
-    """
+    """Multi-horizon emissions and exposure impact of an adopted lifestyle swap."""
 
     swap_id: str
     title: str
@@ -62,16 +47,7 @@ class SwapImpactResult:
 
 @dataclass(frozen=True, slots=True)
 class CommunityImpactResult:
-    """Scaled collective impact across a residential colony, sector, or mohalla.
-
-    Attributes:
-        households: Number of candidate households in the community.
-        participation_rate: Fractional adoption rate between 0.0 and 1.0.
-        community_delta_co2_kg_monthly: Avoided community CO2 emissions per month (kg).
-        community_delta_pm25_g_monthly: Avoided community PM2.5 emissions per month (g).
-        community_avoided_dose_monthly_mg: Cumulative personal inhaled particulate avoided (mg).
-        explanation: Scaling formulas and assumptions.
-    """
+    """Scaled collective impact across a residential colony or mohalla."""
 
     households: int
     participation_rate: float

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import pathlib
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -53,9 +53,9 @@ def test_get_unknown_story_404(client: TestClient) -> None:
 
 
 def test_story_service_missing_files(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(story_service, "_PROFILES_PATH", pathlib.Path("/nonexistent/profiles.json"))
+    monkeypatch.setattr(story_service, "_PROFILES_PATH", Path("/nonexistent/profiles.json"))
     assert story_service.load_demo_profiles() == {}
 
-    monkeypatch.setattr(story_service, "_STORY_PATH", pathlib.Path("/nonexistent/story.json"))
+    monkeypatch.setattr(story_service, "_STORY_PATH", Path("/nonexistent/story.json"))
     with pytest.raises(NotFoundError, match="Story configuration file missing"):
         story_service.load_story("ncr")

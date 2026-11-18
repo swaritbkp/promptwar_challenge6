@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -68,3 +69,44 @@ def test_explanation_frozen_and_serializable() -> None:
     assert d["formula"] == "debit = sum(C_i * IR_i * t_i)"
     assert d["constants_used"] == ["who_aqg_pm25_24h", "inhalation_rate_daily_mean"]
     assert len(d["sources"]) == 2
+
+
+def test_constants_json_valid_and_complete() -> None:
+    data_path = Path(__file__).resolve().parent.parent.parent / "data" / "constants.v1.json"
+    doc = json.loads(data_path.read_text(encoding="utf-8"))
+    assert doc["version"] == "v1"
+    constants = doc["constants"]
+
+    for _key, item in constants.items():
+        assert "source" in item and len(item["source"]) > 5
+        assert isinstance(item["verified"], bool)
+        assert item["value"] is not None
+
+    sources = constants["indoor_source_emission_rate"]["value"]
+    for required_src in [
+        "src_frying",
+        "src_tadka",
+        "src_incense_stick",
+        "src_mosquito_coil",
+        "src_candle",
+        "src_angithi_coal",
+        "src_wood_heater",
+        "src_smoking",
+    ]:
+        assert sources[required_src] > 0
+
+    efs = constants["emission_factor"]["value"]
+    for required_ef in [
+        "car_petrol_per_km",
+        "car_diesel_per_km",
+        "two_wheeler_per_km",
+        "bus_per_passenger_km",
+        "metro_per_passenger_km",
+        "carpool_per_km_shared_3",
+        "diesel_generator_per_kwh",
+        "inverter_grid_per_kwh",
+        "angithi_coal_per_hour",
+        "electric_heater_per_hour_2kw_grid",
+        "open_leaf_burning_per_kg",
+    ]:
+        assert efs[required_ef]["kg_co2"] > 0

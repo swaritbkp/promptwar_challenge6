@@ -1,21 +1,9 @@
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
-from hawakhata.app import create_app
-from hawakhata.config import Settings
 
-
-@pytest.fixture
-def test_client() -> TestClient:
-    settings = Settings(google_maps_api_key=None, app_env="test")
-    app = create_app(settings)
-    with TestClient(app) as client:
-        yield client
-
-
-def test_indoor_simulate_happy_path(test_client: TestClient) -> None:
+def test_indoor_simulate_happy_path(client: TestClient) -> None:
     payload = {
         "room": {
             "name": "Master Bedroom",
@@ -30,7 +18,7 @@ def test_indoor_simulate_happy_path(test_client: TestClient) -> None:
         ],
         "location": {"lat": 28.46, "lng": 77.03},
     }
-    resp = test_client.post("/api/v1/indoor/simulate", json=payload)
+    resp = client.post("/api/v1/indoor/simulate", json=payload)
     assert resp.status_code == 200
     data = resp.json()
     assert "data" in data
@@ -42,7 +30,7 @@ def test_indoor_simulate_happy_path(test_client: TestClient) -> None:
     assert data["meta"]["data_mode"] == "fixture"
 
 
-def test_indoor_simulate_validation_error(test_client: TestClient) -> None:
+def test_indoor_simulate_validation_error(client: TestClient) -> None:
     # Volume must be >= 5.0
     payload = {
         "room": {
@@ -53,7 +41,7 @@ def test_indoor_simulate_validation_error(test_client: TestClient) -> None:
         "sources": [],
         "location": {"lat": 28.46, "lng": 77.03},
     }
-    resp = test_client.post("/api/v1/indoor/simulate", json=payload)
+    resp = client.post("/api/v1/indoor/simulate", json=payload)
     assert resp.status_code == 422
     err = resp.json()
     assert err["error"]["code"] == "VALIDATION_ERROR"

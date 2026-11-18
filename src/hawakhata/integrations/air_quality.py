@@ -127,19 +127,7 @@ class CircuitBreaker:
 
 @dataclass(frozen=True, slots=True)
 class HourlyAirPoint:
-    """Normalised single-hour air quality observation or forecast.
-
-    Attributes:
-        time_utc: ISO-8601 UTC timestamp.
-        time_local: Local time string formatted as HH:00 or ISO-8601.
-        pm25_ug_m3: Fine particulate concentration in ug/m3.
-        pm10_ug_m3: Coarse particulate concentration in ug/m3.
-        aqi_local: India NAQI sub-index value (or local index).
-        aqi_universal: Google Universal AQI value.
-        category_local: NAQI category code (e.g. 'POOR', 'VERY_POOR', 'SEVERE').
-        dominant_pollutant: Key of dominant pollutant ('pm25', 'pm10', 'no2').
-        health_recs: Dictionary of targeted health guidance by demographic.
-    """
+    """Normalised single-hour air quality observation or forecast."""
 
     time_utc: str
     time_local: str
@@ -154,14 +142,7 @@ class HourlyAirPoint:
 
 @dataclass(frozen=True, slots=True)
 class HourlyAirSeries:
-    """Normalised multi-hour air quality forecast series.
-
-    Attributes:
-        points: Ordered sequence of hourly air points.
-        location_cell: Privacy-rounded coordinate identifier ('lat,lng').
-        data_mode: 'live' from Google Air Quality API or 'fixture' from local fallback.
-        fetched_at: ISO-8601 timestamp of retrieval.
-    """
+    """Normalised multi-hour air quality forecast series."""
 
     points: list[HourlyAirPoint]
     location_cell: str

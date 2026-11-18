@@ -39,19 +39,7 @@ DEFAULT_ROBUST_LAMBDA = 0.5
 
 @dataclass(frozen=True, slots=True)
 class FlexibleActivity:
-    """An activity whose timing can be shifted within a permissible window.
-
-    Attributes:
-        id: Unique activity identifier.
-        member_id: Family member who performs this activity.
-        title: Descriptive display name (e.g. "Morning walk", "Kids outdoor play").
-        duration_hours: Contiguous duration in hours (1..4).
-        earliest_start_hour: Earliest allowed start hour (0..23).
-        latest_start_hour: Latest allowed start hour (0..23).
-        micro_env: Target micro-environment (e.g. 'outdoor', 'transit_walk_cycle').
-        activity: Exertion level ('light', 'moderate', 'vigorous').
-        usual_start_hour: Current unoptimised baseline start hour.
-    """
+    """An activity whose timing can be shifted within a permissible window."""
 
     id: str
     member_id: str
@@ -66,18 +54,7 @@ class FlexibleActivity:
 
 @dataclass(frozen=True, slots=True)
 class PlannedShift:
-    """Recommended time shift for one flexible activity.
-
-    Attributes:
-        activity_id: Activity identifier.
-        title: Title of activity.
-        member_id: Family member.
-        usual_start_hour: Original scheduled start hour.
-        optimized_start_hour: Recommended cleaner start hour.
-        savings_ug: Avoided particulate inhalation dose (micrograms).
-        percent_savings: Relative dose reduction percentage for this activity.
-        explanation: Summary rationale for the recommended window.
-    """
+    """Recommended time shift for one flexible activity."""
 
     activity_id: str
     title: str
@@ -91,17 +68,7 @@ class PlannedShift:
 
 @dataclass(frozen=True, slots=True)
 class OptimizedPlanResult:
-    """Outcome of clean-window schedule optimization.
-
-    Attributes:
-        shifts: Sequence of activity shift recommendations.
-        total_savings_ug: Total personal dose avoided across all shifted activities.
-        is_already_optimal: True if the usual schedule is already the lowest dose.
-        optimized_timeline: The resulting 24-hour timeline after shifting.
-        usual_dose_ug: Total daily dose under the original schedule.
-        optimized_dose_ug: Total daily dose under the shifted schedule.
-        explanation: Calculation provenance and mathematical documentation.
-    """
+    """Outcome of clean-window schedule optimization."""
 
     shifts: list[PlannedShift]
     total_savings_ug: float

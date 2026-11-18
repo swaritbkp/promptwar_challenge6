@@ -34,14 +34,7 @@ class ScheduleBlock:
 
 @dataclass(frozen=True, slots=True)
 class TimelineSlot:
-    """A discretized 1-hour member schedule slice.
-
-    Attributes:
-        hour: Hour of the day (0..23).
-        micro_env: Environment identifier.
-        activity: Physical activity exertion level.
-        label: Descriptive label.
-    """
+    """A discretized 1-hour member schedule slice."""
 
     hour: int
     micro_env: str
@@ -51,15 +44,7 @@ class TimelineSlot:
 
 @dataclass(frozen=True, slots=True)
 class DoseContributor:
-    """Top exposure contribution period.
-
-    Attributes:
-        hour: Hour of occurrence (0..23).
-        micro_env: Micro-environment.
-        activity: Exertion level.
-        dose_ug: Inhaled dose in micrograms during this hour.
-        share_percent: Percentage of total daily dose.
-    """
+    """Top exposure contribution period."""
 
     hour: int
     micro_env: str
@@ -70,15 +55,7 @@ class DoseContributor:
 
 @dataclass(frozen=True, slots=True)
 class MemberDoseResult:
-    """Computed inhaled dose outcome for a single family member over 24 hours.
-
-    Attributes:
-        total_dose_ug: Total mass of PM2.5 inhaled during the period (micrograms).
-        hourly_doses_ug: 24-element series of hourly inhaled PM2.5 in ug.
-        hourly_concentrations_ug_m3: 24-element series of effective micro-env concentrations.
-        top_contributors: Top 3 hours contributing the highest dose shares.
-        explanation: Provenance and calculation transparency container.
-    """
+    """Computed inhaled dose outcome for a single family member over 24 hours."""
 
     total_dose_ug: float
     hourly_doses_ug: list[float]

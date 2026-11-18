@@ -20,14 +20,7 @@ DEFAULT_PURIFIER_ACH = 5.0
 
 @dataclass(frozen=True, slots=True)
 class VentilationRecommendation:
-    """Airing advice identifying optimal hours for natural cross-ventilation.
-
-    Attributes:
-        recommended_hours: List of hours (0..23) when opening windows cleans indoor air.
-        qualifying_count: Total hours in the forecast where outdoor PM2.5 < indoor PM2.5.
-        reason: Human-facing guidance explaining why ventilation is or is not advised.
-        explanation: Full calculation transparency container.
-    """
+    """Airing advice identifying optimal hours for natural cross-ventilation."""
 
     recommended_hours: list[int]
     qualifying_count: int
@@ -37,16 +30,7 @@ class VentilationRecommendation:
 
 @dataclass(frozen=True, slots=True)
 class PurifierRecommendation:
-    """Portable HEPA air purifier sizing verdict.
-
-    Attributes:
-        required_cadr_m3_per_h: Minimum Clean Air Delivery Rate (m3/h) needed for 5 ACH.
-        current_cadr_m3_per_h: User's owned purifier capacity.
-        is_sufficient: True if owned CADR meets or exceeds requirement.
-        deficit_m3_per_h: Deficit in m3/h if undersized.
-        advice: Practical placement and usage guidance.
-        explanation: Calculation provenance container.
-    """
+    """Portable HEPA air purifier sizing verdict against target ACH."""
 
     required_cadr_m3_per_h: float
     current_cadr_m3_per_h: float
@@ -58,15 +42,7 @@ class PurifierRecommendation:
 
 @dataclass(frozen=True, slots=True)
 class IndoorHack:
-    """A ranked practical intervention reducing indoor particulate exposure.
-
-    Attributes:
-        id: Unique identifier for the hack.
-        title: Short actionable summary.
-        delta_pm25_ug_m3: Modeled reduction in daily mean indoor PM2.5 concentration.
-        advice: Actionable steps for the family.
-        explanation: Calculation transparency container.
-    """
+    """A ranked practical intervention reducing indoor particulate exposure."""
 
     id: str
     title: str
@@ -279,43 +255,56 @@ def rank_indoor_hacks(
     base_mean = base_res.mean_pm25_ug_m3
     hacks: list[IndoorHack] = []
 
-    # 1. Eliminate mosquito coils
-    if any(e.kind == "src_mosquito_coil" for e in baseline_events):
+    def _run(
+        h_id: str,
+        title: str,
+        advice: str,
+        src: str,
+        formula: str,
+        *,
+        win: set[int] | None = None,
+        cadr: float | None = None,
+        p_h: set[int] | None = None,
+        ev: list[IndoorSourceEvent] | None = None,
+    ) -> None:
         h = _eval_hack(
-            hack_id="hack_no_mosquito_coil",
-            title="Switch from mosquito coil to bed nets or vaporiser",
-            advice="A mosquito coil burning overnight emits PM2.5 equivalent to 75-100 cigarettes.",
-            source_citation="Liu et al. (2003) Environmental Health Perspectives",
-            formula="delta_pm25 = Baseline_Mean - Simulation_Without_Coil",
+            h_id,
+            title,
+            advice,
+            src,
+            formula,
             v=v,
             outdoor_series=outdoor_series,
-            windows_open_hours=w_hours,
-            purifier_cadr=purifier_cadr_m3_per_h,
-            purifier_hours=p_hours,
-            events=[e for e in baseline_events if e.kind != "src_mosquito_coil"],
+            windows_open_hours=w_hours if win is None else win,
+            purifier_cadr=purifier_cadr_m3_per_h if cadr is None else cadr,
+            purifier_hours=p_hours if p_h is None else p_h,
+            events=baseline_events if ev is None else ev,
             base_mean=base_mean,
         )
         if h:
             hacks.append(h)
 
+    # 1. Eliminate mosquito coils
+    if any(e.kind == "src_mosquito_coil" for e in baseline_events):
+        _run(
+            "hack_no_mosquito_coil",
+            "Switch from mosquito coil to bed nets or vaporiser",
+            "A mosquito coil burning overnight emits PM2.5 equivalent to 75-100 cigarettes.",
+            "Liu et al. (2003) Environmental Health Perspectives",
+            "delta_pm25 = Baseline_Mean - Simulation_Without_Coil",
+            ev=[e for e in baseline_events if e.kind != "src_mosquito_coil"],
+        )
+
     # 2. Avoid incense
     if any(e.kind == "src_incense_stick" for e in baseline_events):
-        h = _eval_hack(
-            hack_id="hack_no_incense",
-            title="Pause burning incense sticks indoors on smoggy days",
-            advice="Incense sticks emit fine particulate bursts of over 100 mg/h per stick.",
-            source_citation="Lin et al. (2008) Atmospheric Environment",
-            formula="delta_pm25 = Baseline_Mean - Simulation_Without_Incense",
-            v=v,
-            outdoor_series=outdoor_series,
-            windows_open_hours=w_hours,
-            purifier_cadr=purifier_cadr_m3_per_h,
-            purifier_hours=p_hours,
-            events=[e for e in baseline_events if e.kind != "src_incense_stick"],
-            base_mean=base_mean,
+        _run(
+            "hack_no_incense",
+            "Pause burning incense sticks indoors on smoggy days",
+            "Incense sticks emit fine particulate bursts of over 100 mg/h per stick.",
+            "Lin et al. (2008) Atmospheric Environment",
+            "delta_pm25 = Baseline_Mean - Simulation_Without_Incense",
+            ev=[e for e in baseline_events if e.kind != "src_incense_stick"],
         )
-        if h:
-            hacks.append(h)
 
     # 3. Kitchen exhaust during frying / tadka
     if any(e.kind in ("src_frying", "src_tadka") for e in baseline_events):
@@ -325,64 +314,41 @@ def rank_indoor_hacks(
             else e
             for e in baseline_events
         ]
-        h = _eval_hack(
-            hack_id="hack_kitchen_exhaust",
-            title="Turn on kitchen exhaust and lid pans during tadka/frying",
-            advice="Kitchen exhaust captures ~70% of frying aerosols before room infiltration.",
-            source_citation="Buonanno et al. (2009) Particle emission factors in cooking",
-            formula="delta_pm25 = Baseline_Mean - Simulation_With_Exhaust",
-            v=v,
-            outdoor_series=outdoor_series,
-            windows_open_hours=w_hours,
-            purifier_cadr=purifier_cadr_m3_per_h,
-            purifier_hours=p_hours,
-            events=reduced,
-            base_mean=base_mean,
+        _run(
+            "hack_kitchen_exhaust",
+            "Turn on kitchen exhaust and lid pans during tadka/frying",
+            "Kitchen exhaust captures ~70% of frying aerosols before room infiltration.",
+            "Buonanno et al. (2009) Particle emission factors in cooking",
+            "delta_pm25 = Baseline_Mean - Simulation_With_Exhaust",
+            ev=reduced,
         )
-        if h:
-            hacks.append(h)
 
     # 4. Seal windows in smog peaks
     peak_hours = {6, 7, 8, 9, 18, 19, 20, 21}
     bad_windows = w_hours.intersection(peak_hours)
     if bad_windows:
-        h = _eval_hack(
-            hack_id="hack_close_peak_windows",
-            title="Keep windows shut during morning and evening smog peaks",
-            advice="Temperature inversions trap severe pollution near the ground morning/evening.",
-            source_citation="Goel et al. (2015) diurnal ambient winter peak studies",
-            formula="delta_pm25 = Baseline_Mean - Simulation_Closed_Peak_Windows",
-            v=v,
-            outdoor_series=outdoor_series,
-            windows_open_hours=w_hours - bad_windows,
-            purifier_cadr=purifier_cadr_m3_per_h,
-            purifier_hours=p_hours,
-            events=baseline_events,
-            base_mean=base_mean,
+        _run(
+            "hack_close_peak_windows",
+            "Keep windows shut during morning and evening smog peaks",
+            "Temperature inversions trap severe pollution near the ground morning/evening.",
+            "Goel et al. (2015) diurnal ambient winter peak studies",
+            "delta_pm25 = Baseline_Mean - Simulation_Closed_Peak_Windows",
+            win=w_hours - bad_windows,
         )
-        if h:
-            hacks.append(h)
 
     # 5. Nighttime purifier operation
     sleep_hours = {22, 23, 0, 1, 2, 3, 4, 5}
     if sleep_hours - p_hours:
         effective_cadr = purifier_cadr_m3_per_h if purifier_cadr_m3_per_h > 0 else (v * 5.0)
-        h = _eval_hack(
-            hack_id="hack_night_purifier",
-            title="Run air purifier continuously in the bedroom during sleep",
-            advice="People spend ~8 hours in the bedroom; clean night air cuts daily dose.",
-            source_citation="US EPA Guide to Air Cleaners in the Home",
-            formula="delta_pm25 = Baseline_Mean - Simulation_Night_Purifier",
-            v=v,
-            outdoor_series=outdoor_series,
-            windows_open_hours=w_hours,
-            purifier_cadr=effective_cadr,
-            purifier_hours=p_hours.union(sleep_hours),
-            events=baseline_events,
-            base_mean=base_mean,
+        _run(
+            "hack_night_purifier",
+            "Run air purifier continuously in the bedroom during sleep",
+            "People spend ~8 hours in the bedroom; clean night air cuts daily dose.",
+            "US EPA Guide to Air Cleaners in the Home",
+            "delta_pm25 = Baseline_Mean - Simulation_Night_Purifier",
+            cadr=effective_cadr,
+            p_h=p_hours.union(sleep_hours),
         )
-        if h:
-            hacks.append(h)
 
     hacks.sort(key=lambda item: item.delta_pm25_ug_m3, reverse=True)
     return hacks[:5]

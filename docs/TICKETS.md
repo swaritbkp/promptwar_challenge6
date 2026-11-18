@@ -36,7 +36,7 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | API-05 | Swaps impact endpoint | API-02, ENG-09 | Must | Done |
 | API-06 | Brief endpoint with forecast-shift re-plan | API-03 | Must | Done |
 | API-07 | Demo profiles and story endpoints | API-02 | Must | Done |
-| AGT-01 | Input/output guardrails | API-01 | Must | Not started |
+| AGT-01 | Input/output guardrails | API-01 | Must | Done |
 | AGT-02 | Numeric grounding gate | AGT-01 | Must | Not started |
 | AGT-03 | Versioned prompt registry | — | Must | Not started |
 | AGT-04 | Gemini client: cascade, timeouts, AI quota | AGT-03 | Must | Not started |

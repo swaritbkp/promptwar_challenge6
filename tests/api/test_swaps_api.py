@@ -1,22 +1,10 @@
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
 
-from hawakhata.app import create_app
-from hawakhata.config import Settings
 
-
-@pytest.fixture
-def test_client() -> TestClient:
-    settings = Settings(google_maps_api_key=None, app_env="test")
-    app = create_app(settings)
-    with TestClient(app) as client:
-        yield client
-
-
-def test_swaps_catalogue_endpoint(test_client: TestClient) -> None:
-    resp = test_client.get("/api/v1/swaps/catalogue")
+def test_swaps_catalogue_endpoint(client: TestClient) -> None:
+    resp = client.get("/api/v1/swaps/catalogue")
     assert resp.status_code == 200
     data = resp.json()
     assert "data" in data
@@ -24,7 +12,7 @@ def test_swaps_catalogue_endpoint(test_client: TestClient) -> None:
     assert len(data["data"]["swaps"]) >= 6
 
 
-def test_swaps_impact_happy_path(test_client: TestClient) -> None:
+def test_swaps_impact_happy_path(client: TestClient) -> None:
     payload = {
         "swap_id": "commute_car_to_metro",
         "units_per_day": 20.0,
@@ -33,7 +21,7 @@ def test_swaps_impact_happy_path(test_client: TestClient) -> None:
         "participation_rate": 0.4,
         "location": {"lat": 28.46, "lng": 77.03},
     }
-    resp = test_client.post("/api/v1/swaps/impact", json=payload)
+    resp = client.post("/api/v1/swaps/impact", json=payload)
     assert resp.status_code == 200
     data = resp.json()
     assert "data" in data
@@ -45,14 +33,14 @@ def test_swaps_impact_happy_path(test_client: TestClient) -> None:
     assert data["meta"]["data_mode"] == "fixture"
 
 
-def test_swaps_impact_validation_error(test_client: TestClient) -> None:
+def test_swaps_impact_validation_error(client: TestClient) -> None:
     # Invalid participation rate > 1.0
     payload = {
         "swap_id": "commute_car_to_metro",
         "units_per_day": 20.0,
         "participation_rate": 1.8,
     }
-    resp = test_client.post("/api/v1/swaps/impact", json=payload)
+    resp = client.post("/api/v1/swaps/impact", json=payload)
     assert resp.status_code == 422
     err = resp.json()
     assert err["error"]["code"] == "VALIDATION_ERROR"

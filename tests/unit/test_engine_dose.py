@@ -13,12 +13,9 @@ from hawakhata.engine.dose import (
 
 
 def test_inhalation_rate_calculation() -> None:
-    # 31_41 mean daily is 16.0 m3/day -> hourly mean = 16.0/24 = 0.6667
-    # sedentary mult is 0.8 -> 0.6667 * 0.8 = 0.5333
     ir_sed = inhalation_rate_m3_per_h("31_41", "sedentary")
     assert pytest.approx(ir_sed, rel=1e-3) == 0.5333
 
-    # vigorous mult is 4.5 -> 0.6667 * 4.5 = 3.0
     ir_vig = inhalation_rate_m3_per_h("31_41", "vigorous")
     assert pytest.approx(ir_vig, rel=1e-3) == 3.0
 
@@ -26,70 +23,35 @@ def test_inhalation_rate_calculation() -> None:
 def test_build_member_timeline_defaults() -> None:
     slots = build_member_timeline()
     assert len(slots) == 24
-    # Check sleep hours
     for h in [22, 23, 0, 1, 2, 3, 4, 5]:
-        assert slots[h].activity == "sleep"
-        assert slots[h].micro_env == "indoor_home"
-    # Check daytime default
+        assert slots[h].activity == "sleep" and slots[h].micro_env == "indoor_home"
     for h in [6, 12, 17, 21]:
-        assert slots[h].activity == "sedentary"
-        assert slots[h].micro_env == "indoor_home"
+        assert slots[h].activity == "sedentary" and slots[h].micro_env == "indoor_home"
 
 
 def test_build_member_timeline_with_blocks() -> None:
     blocks = [
-        ScheduleBlock(
-            start_hour=8,
-            end_hour=10,
-            micro_env="transit_car",
-            activity="sedentary",
-            label="Car commute",
-        ),
-        ScheduleBlock(
-            start_hour=17,
-            end_hour=18,
-            micro_env="outdoor",
-            activity="moderate",
-            label="Evening walk",
-        ),
+        ScheduleBlock(8, 10, "transit_car", "sedentary", "Car commute"),
+        ScheduleBlock(17, 18, "outdoor", "moderate", "Evening walk"),
     ]
     slots = build_member_timeline(blocks)
-    assert slots[8].micro_env == "transit_car"
-    assert slots[9].micro_env == "transit_car"
-    assert slots[10].micro_env == "indoor_home"
-    assert slots[17].micro_env == "outdoor"
-    assert slots[17].activity == "moderate"
+    assert slots[8].micro_env == "transit_car" and slots[9].micro_env == "transit_car"
+    assert slots[10].micro_env == "indoor_home" and slots[17].micro_env == "outdoor"
 
 
 def test_compute_member_dose_branches() -> None:
-    # Test indoor_home_series provided, indoor_other, and transit modes
     blocks = [
-        ScheduleBlock(start_hour=0, end_hour=8, micro_env="indoor_home", activity="sleep"),
-        ScheduleBlock(start_hour=8, end_hour=9, micro_env="transit_metro", activity="sedentary"),
-        ScheduleBlock(start_hour=9, end_hour=17, micro_env="indoor_other", activity="sedentary"),
-        ScheduleBlock(
-            start_hour=17,
-            end_hour=18,
-            micro_env="transit_two_wheeler",
-            activity="light",
-        ),
-        ScheduleBlock(start_hour=18, end_hour=19, micro_env="outdoor", activity="light"),
-        ScheduleBlock(start_hour=19, end_hour=24, micro_env="indoor_home", activity="sedentary"),
+        ScheduleBlock(0, 8, "indoor_home", "sleep"),
+        ScheduleBlock(8, 9, "transit_metro", "sedentary"),
+        ScheduleBlock(9, 17, "indoor_other", "sedentary"),
+        ScheduleBlock(17, 18, "transit_two_wheeler", "light"),
+        ScheduleBlock(18, 19, "outdoor", "light"),
+        ScheduleBlock(19, 24, "indoor_home", "sedentary"),
     ]
     timeline = build_member_timeline(blocks)
-    outdoor = [200.0] * 24
-    indoor = [50.0] * 24
-
-    res = compute_member_dose(
-        age_band="6_11",
-        timeline=timeline,
-        outdoor_pm25_series=outdoor,
-        indoor_home_series=indoor,
-    )
+    res = compute_member_dose("6_11", timeline, [200.0] * 24, [50.0] * 24)
     assert res.total_dose_ug > 0
-    # For hours 0..8, concentration should match indoor (50.0)
     assert res.hourly_concentrations_ug_m3[0] == 50.0
-    # For hour 9, indoor_other should be 200 * 0.6 = 120.0
     assert res.hourly_concentrations_ug_m3[9] == 120.0
 
 

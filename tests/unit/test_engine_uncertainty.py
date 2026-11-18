@@ -39,11 +39,7 @@ def test_p50_p90_invariants() -> None:
     assert len(p50) == 3
     assert len(p90) == 3
     for h in range(3):
-        # 90th percentile must be greater than or equal to median
-        assert p90[h] >= p50[h]
-        # Concentrations are strictly positive
-        assert p50[h] > 0
-        assert p90[h] > 0
+        assert p90[h] >= p50[h] > 0
 
 
 def test_empty_inputs_edge_cases() -> None:
