@@ -37,7 +37,7 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | API-06 | Brief endpoint with forecast-shift re-plan | API-03 | Must | Done |
 | API-07 | Demo profiles and story endpoints | API-02 | Must | Done |
 | AGT-01 | Input/output guardrails | API-01 | Must | Done |
-| AGT-02 | Numeric grounding gate | AGT-01 | Must | Not started |
+| AGT-02 | Numeric grounding gate | AGT-01 | Must | Done |
 | AGT-03 | Versioned prompt registry | — | Must | Not started |
 | AGT-04 | Gemini client: cascade, timeouts, AI quota | AGT-03 | Must | Not started |
 | AGT-05 | ADK agent with tools, sessions and follow-ups | AGT-02, AGT-04, API-06 | Must | Not started |
@@ -61,66 +61,13 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 | REL-03 | Early release + score-driven improvement rounds | REL-02 | Must | Not started |
 | REL-04 | Demo lock and video assets | REL-02 | Must | Not started |
 
-## Tickets
+## Completed Tickets (Phase 0, 1, 2)
+- **FND-01..03**: Verified external APIs, pinned dependencies, completed constants with citations, created 96h Delhi NCR and Chandigarh air data fixtures.
+- **ENG-01..09**: Pure deterministic engine (constants, NAQI, dose, budget, indoor ODE, recommendations, uncertainty, clean-window planner, emissions & swaps).
+- **INT-01**: Google Air Quality API client with ~1 km coordinate rounding, circuit breaker, bounded TTL-LRU/Redis cache, and offline fixture fallback.
+- **API-01..07**: Bounded Pydantic v2 schemas (`extra="forbid"`), unified 2xx `Envelope[T]`, endpoints for passbook, plan, indoor simulate, swaps impact, proactive morning brief with forecast-shift replan, and deterministic story modes.
 
-**FND-01 — Verify external APIs and pin dependencies.** Story: as the builder, I want verified API
-facts so code isn't built on guesses. AC: ADR entries record docs URL + date for Air Quality API
-(current conditions, forecast, extra computations, India local index, pagination), google-genai (model
-ids, structured output, function calling, thinking config, sampling-param deprecation) and google-adk
-(agent, tools, runner, sessions); `requirements.txt` pins direct deps exactly; gate GREEN. R1.
-
-**FND-02 — Verify and complete constants.** AC: every `verified:false` checked against its source or
-replaced by a better primary source; every `null` filled with value + range + citation, or explicitly
-left `verified:false` with a conservative range and a note; no invented citations. —
-
-**FND-03 — Fixtures.** AC: two files, 96 hourly points each, exact API response shape, realistic winter
-diurnal pattern, `synthetic` flag honest, each < 40 KB; a contract test parses both. —
-
-**ENG-01 — Constants + Explanation.** AC: `load_constants()` validates schema and fails loudly on bad
-data; `get_constant(id)` returns value/unit/range/source; `Explanation` (formula, inputs, constants_used,
-sources, assumptions) is frozen and JSON-serialisable. —
-
-**ENG-02 — NAQI categories.** AC: `pm25_to_naqi_category()` and `aqi_to_category()` cover every
-boundary value (table test incl. 30/31, 250/251); each category has a text label key and icon key. —
-
-**ENG-03 — Member dose.** AC: `inhalation_rate_m3_per_h(age_band, activity)`; `build_member_timeline()`
-from schedule blocks with defaults; `compute_member_dose()` returns hourly dose, total, top-3
-contributors, Explanation; properties: dose ≥ 0 and linear in concentration. —
-
-**ENG-04 — Budget & passbook.** AC: `daily_air_budget_ug()` = WHO 24h × daily IR;
-`build_passbook_entry()` returns debit, budget, balance, overspend ratio, cigarette equivalent (labelled
-rough) and Explanation; property: overspend = debit/budget. —
-
-**ENG-05 — Indoor model.** AC: exact exponential step equals analytic solution (1e-9); properties: more
-CADR never raises C, adding a source never lowers C, C ≥ 0; sub-hour events averaged. —
-
-**ENG-06 — Indoor recommendations.** AC: `recommend_ventilation_hours()` returns only hours where
-outdoor < indoor (empty list + reason otherwise); `recommend_purifier_cadr()` with sufficiency verdict;
-`rank_indoor_hacks()` top 5 by Δ dose with explanations. —
-
-**ENG-07 — Uncertainty.** AC: seeded `sample_forecast_paths()` deterministic for same seed; `p50_p90()`;
-sample count from config. —
-
-**ENG-08 — Planner.** AC: never moves fixed blocks, never overlaps a member's activities, respects
-windows; objective expected + λ·P90; result dose ≤ usual dose; "already optimal" flag; Big-O in docstring. —
-
-**ENG-09 — Emissions & swaps.** AC: `activity_emissions()` with low/central/high; `evaluate_swap()`
-Δbreathe per member + Δemit per day/week/month; `scale_to_community()` linear, zero at participation 0. —
-
-**INT-01 — AQ client.** AC: coordinates rounded ~1 km before cache keys/logs; bounded cache; timeout +
-1 jittered retry; breaker opens after 3 failures for 60 s (clock injected); no key/failure → nearest
-fixture with `data_mode=fixture`; pagination merged; key never logged. R1, R8.
-
-**API-01 — Schemas.** AC: pydantic v2 models with `extra="forbid"`, bounded strings/numbers/lists;
-envelope with meta (versions, data_mode, degraded). R6.
-
-**API-02..API-06 — Computing endpoints.** AC for each: happy path, validation error in the error
-contract, degraded path when upstream is down, accepts optional `now` + `data_source`, handler ≤ 15
-lines delegating to a service. API-06 adds `detect_forecast_shift()` + `replan_if_needed()` with the
-threshold from config. R6.
-
-**API-07 — Demo & story.** AC: `/api/v1/demo/profiles` returns fixture profiles; `/api/v1/story/{id}`
-returns config from `data/story.v1.json`; unknown id → 404 contract; identical outputs on repeat calls. —
+## Remaining Tickets
 
 **AGT-01 — Guardrails.** AC: sanitize, injection detection (EN+HI patterns from data), PII masking
 before any LLM call or log, red-flag detection, output policy (canary, no diagnosis/dosing). Tests for

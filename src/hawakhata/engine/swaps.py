@@ -129,29 +129,7 @@ def evaluate_swap(
     member_age_band: str = "31_41",
     transit_duration_hours: float = 1.0,
 ) -> SwapImpactResult:
-    """Evaluate emission and exposure deltas for an adopted sustainable lifestyle swap.
-
-    Formulas:
-        Delta_emit(day) = Emission(after) - Emission(before)
-        Delta_emit(week) = Delta_emit(day) * days_per_week
-        Delta_emit(month) = Delta_emit(week) * 4.33
-        Delta_breathe(day) = (Ratio_after - Ratio_before) * C_out * IR_h * hours
-
-    Args:
-        swap_id: Catalogue identifier for the swap.
-        units_per_day: Activity units replaced per day (e.g. km commuted, hours heated).
-        days_per_week: Number of active days per week (1..7).
-        outdoor_pm25_mean: Ambient PM2.5 concentration during activity (ug/m3).
-        member_age_band: Age band for inhalation rate calculation.
-        transit_duration_hours: Exposure duration during the activity (hours).
-
-    Returns:
-        SwapImpactResult detailing daily, weekly, and monthly deltas.
-
-    Raises:
-        KeyError: If swap_id is not in the catalogue.
-        ValueError: If units_per_day or days_per_week is invalid.
-    """
+    """Evaluate emission and exposure deltas for an adopted sustainable lifestyle swap."""
     if units_per_day < 0:
         raise ValueError(f"units_per_day must be non-negative, got {units_per_day}")
     if not (MIN_DAYS_PER_WEEK <= days_per_week <= MAX_DAYS_PER_WEEK):
@@ -229,26 +207,7 @@ def scale_to_community(
     households: int,
     participation_rate: float,
 ) -> CommunityImpactResult:
-    """Scale a household swap delta to community (Mohalla) level.
-
-    Formula:
-        Community_Delta = Per_Household_Delta * Households * ParticipationRate
-
-    Invariants:
-        - Strictly linear in households and participation_rate.
-        - Exactly 0.0 when participation_rate == 0.0 or households == 0.
-
-    Args:
-        swap_result: Single household swap impact outcome.
-        households: Number of participating residential units.
-        participation_rate: Adoption percentage (0.0 to 1.0).
-
-    Returns:
-        CommunityImpactResult with scaled monthly emissions and avoided dose.
-
-    Raises:
-        ValueError: If households < 0 or participation_rate not in [0.0, 1.0].
-    """
+    """Scale a household swap delta to community (Mohalla) level linearly."""
     if households < 0:
         raise ValueError(f"households must be non-negative, got {households}")
     if not (0.0 <= participation_rate <= 1.0):

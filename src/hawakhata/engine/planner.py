@@ -1,22 +1,6 @@
 """Clean-Window Activity Planner — shifts flexible routines to cleanest forecast hours.
 
-Optimisation Problem:
-    Given fixed commitments (school/office), candidate flexible activities
-    (walks, outdoor play, errands), and an air quality forecast with uncertainty:
-    Find non-overlapping start times inside permitted windows that minimise
-        Objective = E[Dose] + lambda * P90[Dose]
-    subject to:
-        - Fixed schedule blocks remain strictly stationary.
-        - No activities overlap for the member.
-        - Start times satisfy [earliest_start_hour, latest_start_hour].
-        - Optimised dose <= Usual dose (monotonicity; returns savings >= 0).
-
-Time Complexity:
-    Big-O: O(K * W * H + N_monte_carlo) where:
-        K = number of flexible activities (typically <= 4)
-        W = allowed scheduling window width in hours (typically <= 14)
-        H = activity duration in hours (typically 1..2)
-    For typical family schedules with pruned sequential search, execution time is < 5 ms.
+Time Complexity: Big-O O(K * W * H + N_monte_carlo) where K activities, W window hours, H duration.
 """
 
 from __future__ import annotations

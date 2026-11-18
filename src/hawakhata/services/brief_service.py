@@ -11,7 +11,6 @@ from hawakhata.api.schemas import (
 )
 from hawakhata.engine.dose import ScheduleBlock
 from hawakhata.engine.explain import Explanation
-from hawakhata.engine.indoor_model import simulate_indoor_pm25
 from hawakhata.engine.planner import FlexibleActivity, optimise_day_plan
 from hawakhata.engine.recommendations import rank_indoor_hacks
 from hawakhata.engine.swaps import evaluate_swap
@@ -270,10 +269,6 @@ def _build_top_actions(
 ) -> list[BriefActionItem]:
     """Rank top 3 actions across indoor hacks, community swaps, and window shifts."""
     actions: list[BriefActionItem] = []
-    simulate_indoor_pm25(
-        room_volume_m3=DEFAULT_ROOM_VOLUME_M3,
-        outdoor_pm25_series=pm25_vals,
-    )
     ranked_hacks = rank_indoor_hacks(
         room_volume_m3=DEFAULT_ROOM_VOLUME_M3,
         outdoor_series=pm25_vals,

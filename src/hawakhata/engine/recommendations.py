@@ -1,8 +1,4 @@
-"""Indoor air quality hacks, purifier sizing heuristics, and natural ventilation timing.
-
-Implements the clean-window ventilation test (C_out < C_in), AHAM AC-1 purifier
-sizing (CADR >= V * target_ach), and ranked indoor particulate reduction interventions.
-"""
+"""Indoor air quality hacks, purifier sizing heuristics, and natural ventilation timing."""
 
 from __future__ import annotations
 
@@ -56,21 +52,7 @@ def recommend_ventilation_hours(
     indoor_baseline_series: list[float],
     max_hours: int = 3,
 ) -> VentilationRecommendation:
-    """Identify windows where airing the house measurably reduces indoor PM2.5.
-
-    Condition:
-        C_outdoor(t) < C_indoor(t)
-    Sorted by:
-        Lowest outdoor concentration first (cleanest ambient hours).
-
-    Args:
-        outdoor_series: 24-hour sequence of ambient PM2.5 concentrations in ug/m3.
-        indoor_baseline_series: 24-hour sequence of unventilated indoor PM2.5 levels.
-        max_hours: Maximum number of ventilation hours to recommend.
-
-    Returns:
-        VentilationRecommendation with recommended hours and reasoning.
-    """
+    """Identify windows where airing the house measurably reduces indoor PM2.5 (C_out < C_in)."""
     qualifying: list[tuple[int, float]] = []
     num_hours = min(len(outdoor_series), len(indoor_baseline_series), 24)
 
@@ -120,19 +102,7 @@ def recommend_purifier_cadr(
     current_cadr_m3_per_h: float = 0.0,
     target_ach: float = DEFAULT_PURIFIER_ACH,
 ) -> PurifierRecommendation:
-    """Evaluate whether an air purifier's CADR is adequate for the specified room volume.
-
-    Formula:
-        Required_CADR = Room_Volume * Target_ACH (default 5 ACH)
-
-    Args:
-        room_volume_m3: Volume of the target room in m3.
-        current_cadr_m3_per_h: Stated clean air delivery rate of owned purifier (m3/h).
-        target_ach: Desired air change rate per hour under severe smog.
-
-    Returns:
-        PurifierRecommendation with capacity sufficiency verdict.
-    """
+    """Evaluate whether an air purifier's CADR is adequate (Required_CADR = Volume * Target_ACH)."""
     v = max(1.0, room_volume_m3)
     required = v * target_ach
     deficit = max(0.0, required - current_cadr_m3_per_h)
@@ -227,19 +197,7 @@ def rank_indoor_hacks(
     purifier_on_hours: set[int] | None = None,
     windows_open_hours: set[int] | None = None,
 ) -> list[IndoorHack]:
-    """Rank the top 5 indoor air quality interventions by modeled PM2.5 reduction.
-
-    Args:
-        room_volume_m3: Room volume in m3.
-        outdoor_series: 24-hour outdoor concentration series.
-        baseline_events: Current list of active combustion/cooking activities.
-        purifier_cadr_m3_per_h: Current purifier CADR.
-        purifier_on_hours: Current hours purifier is active.
-        windows_open_hours: Current hours windows are open.
-
-    Returns:
-        List of up to 5 IndoorHack instances sorted in descending order of delta PM2.5.
-    """
+    """Rank up to 5 indoor interventions by descending modeled PM2.5 reduction."""
     v = max(1.0, room_volume_m3)
     p_hours = set(purifier_on_hours or set())
     w_hours = set(windows_open_hours or set())

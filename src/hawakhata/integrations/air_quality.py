@@ -1,15 +1,4 @@
-"""Google Maps Platform Air Quality API client with caching, resilience, and fixture fallback.
-
-Features:
-    - Shared `httpx.AsyncClient` from application lifespan.
-    - Coordinate privacy: rounded to 2 decimal places (~1 km) before caching, requests, or logging.
-    - Bounded caching via `CacheBackend` protocol (`TTLCache` or `RedisCache`).
-    - Circuit breaker: opens after 3 consecutive failures for 60 seconds.
-    - 1 jittered retry on 429 or 5xx server responses.
-    - Clean degradation: when unconfigured, offline, or circuit open, loads the nearest
-      pre-computed 96-hour winter fixture (Delhi NCR or Chandigarh) with timestamps aligned to now.
-    - Security: passes `X-Goog-Api-Key` in headers; never logs keys or precise coordinates.
-"""
+"""Google Maps Platform Air Quality API client with caching, resilience, and fixture fallback."""
 
 from __future__ import annotations
 
