@@ -15,12 +15,7 @@ from hawakhata.engine.swaps import (
 
 @dataclass(frozen=True, slots=True)
 class SwapImpactEvaluation:
-    """Consolidated assessment of household and community-scale swap impacts.
-
-    Attributes:
-        household: Single household multi-horizon emission and dose savings.
-        community: Scaled community impact across residential mohalla/sector.
-    """
+    """Consolidated assessment of household and community-scale swap impacts."""
 
     household: dict[str, Any]
     community: dict[str, Any]
@@ -35,15 +30,7 @@ def compute_swap_impact(
     req: SwapsImpactRequest,
     outdoor_pm25_mean: float = 150.0,
 ) -> SwapImpactEvaluation:
-    """Evaluate lifestyle swap deltas for household and scale to residential community.
-
-    Args:
-        req: Validated swap request containing swap_id, units, and scaling parameters.
-        outdoor_pm25_mean: Mean ambient PM2.5 concentration for transit/exposure savings.
-
-    Returns:
-        SwapImpactEvaluation with household and scaled community deltas.
-    """
+    """Evaluate lifestyle swap deltas for household and scale to residential community."""
     household_swap = evaluate_swap(
         swap_id=req.swap_id,
         units_per_day=req.units_per_day,

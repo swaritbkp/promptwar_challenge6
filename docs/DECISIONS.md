@@ -17,54 +17,8 @@ reversed: write a new entry that supersedes the old one and says why.
 | D10 | External API facts | Verified Google AQ API contract (ind_cpcb), google-genai 2.34.0, and google-adk 2.14.1 | Never build on guessed API shapes. Detailed in ADR-004 below. | Accepted |
 
 ## ADR-004 — Verified External API Specifications & SDK Contracts
-
 Verified on: 2026-11-18.
-
-### 1. Google Maps Platform Air Quality API
-- **Official Docs URL**: `https://developers.google.com/maps/documentation/air-quality`
-- **Endpoints**:
-  - `POST https://airquality.googleapis.com/v1/currentConditions:lookup`
-  - `POST https://airquality.googleapis.com/v1/forecast:lookup` (hourly forecast up to 96 h, paginated with `pageSize` and `pageToken` / `nextPageToken`)
-- **Authentication**: Prefer `X-Goog-Api-Key` header over query parameter to prevent key leakage in query logs.
-- **Request Body Configuration**:
-  ```json
-  {
-    "location": {"latitude": 28.46, "longitude": 77.03},
-    "period": {"startTime": "<UTC RFC3339>", "endTime": "<UTC RFC3339>"},
-    "universalAqi": true,
-    "languageCode": "en",
-    "extraComputations": [
-      "LOCAL_AQI",
-      "HEALTH_RECOMMENDATIONS",
-      "POLLUTANT_CONCENTRATION",
-      "DOMINANT_POLLUTANT_CONCENTRATION",
-      "POLLUTANT_ADDITIONAL_INFO"
-    ],
-    "pageSize": 96
-  }
-  ```
-- **India Local AQI Code Resolution**:
-  - The local index code for India (Central Pollution Control Board / National AQI) is lowercase **`ind_cpcb`**.
-  - Universal AQI code is **`uaqi`**.
-  - Category bands for `ind_cpcb`: `Good`, `Satisfactory`, `Moderate`, `Poor`, `Very Poor`, `Severe`.
-  - Dominant pollutant for winter smog: `pm25`.
-- **Privacy & Caching**: Lat/lng coordinates are rounded to 2 decimal places (~1 km grid cell) before generating cache keys or sending to external logs/APIs.
-
-### 2. Google GenAI SDK (`google-genai==2.34.0`)
-- **Official Docs URL**: `https://ai.google.dev`
-- **Client**: `from google import genai; client = genai.Client(api_key=...)`
-- **Verified Models**:
-  - Primary: `gemini-2.5-flash` (balanced latency, high throughput, native thinking / structured outputs).
-  - Fallback: `gemini-2.5-flash-lite` (low latency, fast token turnarounds for simple narration).
-- **Structured Output**: Passed via `types.GenerateContentConfig(response_mime_type="application/json", response_schema=Schema)`.
-- **Function Calling / Tools**: Passed via `types.GenerateContentConfig(tools=[...])`.
-- **No-Sampling-Params Rule**: `temperature`, `top_p`, and `top_k` are deprecated for Gemini 2.0/2.5 models and must NOT be set in API calls. Behaviour is controlled via system prompts, schemas, and thinking parameters.
-
-### 3. Google ADK Agent Framework (`google-adk==2.14.1`)
-- **Official Docs URL**: `https://google.github.io/adk-docs/`
-- **Components**:
-  - Agent: `google.adk.agents.llm_agent.LlmAgent`
-  - Runner: `google.adk.runners.Runner`
-  - Session Store: `google.adk.sessions.InMemorySessionService` wrapped by bounded memory management (`SESSION_MAX`, `SESSION_TTL_S`, `SESSION_MAX_TURNS`).
-- **Tool Adapter Contract**: Services are wrapped in thin Python callables with typed parameters and descriptive docstrings; return payloads include computed values, formula citations, and explicit `missing_fields` arrays for follow-up questions.
+- **Air Quality API**: `POST airquality.googleapis.com/v1/forecast:lookup` (96h pageSize). Auth via `X-Goog-Api-Key`. India local AQI code is lowercase `ind_cpcb` (`Good`..`Severe`). Universal code `uaqi`. Dominant pollutant `pm25`. Coordinates rounded to ~1 km.
+- **Google GenAI (`google-genai==2.34.0`)**: Models: primary `gemini-2.5-flash`, fallback `gemini-2.5-flash-lite`. Config: `types.GenerateContentConfig` (no deprecated sampling params).
+- **Google ADK (`google-adk==2.14.1`)**: `LlmAgent`, `Runner`, `InMemorySessionService` bounded by `SESSION_*`. Tools return computed values + `missing_fields`.
 

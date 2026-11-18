@@ -66,6 +66,12 @@ class UpstreamUnavailableError(AppError):
     code, status_code, retryable = ErrorCode.UPSTREAM_ERROR, 503, True
 
 
+class RateLimitedError(AppError):
+    """Client has exceeded the allowed request or AI quota limit."""
+
+    code, status_code, retryable = ErrorCode.RATE_LIMITED, 429, True
+
+
 class GuardrailBlockedError(AppError):
     """Input was refused by a safety guardrail."""
 

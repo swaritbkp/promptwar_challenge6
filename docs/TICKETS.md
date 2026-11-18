@@ -68,73 +68,23 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 - **API-01..07**: Bounded Pydantic v2 schemas (`extra="forbid"`), unified 2xx `Envelope[T]`, endpoints for passbook, plan, indoor simulate, swaps impact, proactive morning brief with forecast-shift replan, and deterministic story modes.
 
 ## Remaining Tickets
-
-**AGT-01 — Guardrails.** AC: sanitize, injection detection (EN+HI patterns from data), PII masking
-before any LLM call or log, red-flag detection, output policy (canary, no diagnosis/dosing). Tests for
-each pattern. R10, R12.
-
-**AGT-02 — Grounding gate.** AC: extracts Latin/Devanagari numbers, %, ×, ranges, Indian grouping;
-allowed set from tool outputs with rounding variants; whitelist; returns violations; ≥ 95 % coverage. R10.
-
-**AGT-03 — Prompt registry.** AC: loads `prompts/<version>/*.md` with front matter; placeholder fill;
-bounded cache; version exposed in meta. —
-
-**AGT-04 — Gemini client.** AC: model ids + timeout from config; no sampling params; cascade primary →
-fallback on 429/5xx/timeout; `DailyQuota` + per-minute limit per client for every AI feature; quota hit
-→ friendly message, deterministic path still works. R11.
-
-**AGT-05 — Agent.** AC: ADK agent with tools over services (profile bound server-side, not passed by
-the LLM); bounded sessions (max, TTL, turns); one follow-up question when a tool reports
-`missing_fields`; reply in user language; structured output envelope. R10, R11.
-
-**AGT-06 — Fallback.** AC: intent routing from `data/lexicon.v1.json` (no names in code); replies
-composed from tool output + per-intent per-language templates in `data/templates.v1.json`. —
-
-**AGT-07 — Chat endpoint.** AC: L1 → agent → grounding (≤ 1 regeneration) → L2 → envelope; timeout →
-fallback; quota → 429 contract with message; never returns raw HTML. R10, R11, R12.
-
-**AGT-08 — Eval.** AC: `eval/run_eval.py --mode fake|live` over ≥ 20 golden cases; grounding and
-guardrail pass-rate 100 % in fake mode; p50/p95 latency; non-zero exit on failure. —
-
-**UI-00 — Stitch designs.** AC: screens per `docs/UX_SPEC.md` generated from `DESIGN.md`; chosen
-variants + notes recorded; exports kept out of the repo. —
-
-**UI-01 — Foundation.** AC: tokens from DESIGN.md (light/dark/high-contrast), icon sprite, base template
-with landmarks + skip link, router with focus management, i18n EN/HI, fixture banner. R8.
-
-**UI-02..UI-06 — Screens.** AC for each: matches the Stitch design and UX_SPEC; loading, empty, error,
-populated states; every number has "Why this number?"; keyboard-complete; Hindi renders correctly;
-static a11y tests pass.
-
-**UI-07 — Ask sheet.** AC: states *AI thinking* (send disabled, progress text), *AI unavailable* (says
-what still works), *AI doesn't know* (honest message + where to look); replies inserted with
-`textContent` only; number chips link to explanations; red-flag card first; sensitive-data hint under
-the input. R10.
-
-**UI-08 — How it works.** AC: architecture SVG, Google services, constants table rendered from data,
-privacy statement; accessible. —
-
-**UI-09 — Story mode.** AC: 8 steps from `data/story.v1.json`; keyboard → ← Enter Esc; captions via
-`aria-live`; numbers identical across 3 runs; works without keys. —
-
-**HRD-01 — Security audit.** AC: `docs/SECURITY_AUDIT.md` created from the private template; every item Pass/Fail/N/A/Unverified with a
-proof file; every finding passed through the verification gate; real findings fixed with tests;
-theoretical ones logged as Known Deviations. Ideally run with a different model than the builder. R1–R12.
-
-**HRD-02 — Accessibility audit.** AC: keyboard walk-through of every screen, contrast checked,
-Lighthouse a11y 100 on four main screens, 200 % zoom and 360 px width OK. —
-
-**REL-01 — README.** AC: follows the template; Code Map citations verified by the repo audit. —
-
-**REL-02 — Deploy.** AC: Cloud Run with Secret Manager; `/healthz`, `/api/v1/meta` (live), `/`,
-`/?story=ncr` verified on the URL. R1.
-
-**REL-03 — Early release + score-driven improvement rounds.** AC: first release as soon as REL-02
-passes; every round's scores logged with the commit hash; each round changes at most two quality areas,
-each change backed by a file:line cause and a test; changes re-verified before the next release. —
-
-**REL-04 — Demo & video assets.** AC: story numbers recorded into the demo script; recordings captured;
-submission text drafted. —
+- **AGT-04**: Gemini cascade (primary -> fallback on 429/5xx/timeout), abuse quotas (R11).
+- **AGT-05**: ADK agent with tools over services, bounded sessions, single follow-up question.
+- **AGT-06**: Deterministic fallback router from lexicon and templates with real numbers.
+- **AGT-07**: Chat endpoint (/api/v1/chat) with L1 sanitize, cascade, grounding gate, L2 policy.
+- **AGT-08**: Eval harness (eval/run_eval.py) over golden cases (100% grounding in fake mode).
+- **UI-00**: Stitch designs for all screens per UX_SPEC from DESIGN.md.
+- **UI-01**: Design tokens, base layout, landmarks, skip link, router, i18n EN/HI, fixture banner.
+- **UI-02..06**: Screens (Onboarding, Today, Plan, Home air, Swaps) with empty/loading/error states.
+- **UI-07**: Ask sheet with AI states, textContent DOM insertion, number chip links.
+- **UI-08**: How it works page with SVG architecture, services, constants table.
+- **UI-09**: Deterministic story mode (/?story=ncr|chd) with keyboard navigation.
+- **HRD-01**: Security audit doc (docs/SECURITY_AUDIT.md) with proof files and tests.
+- **HRD-02**: Accessibility audit, keyboard walk-through, contrast, 200% zoom.
+- **REL-01**: README with Code Map verified by repo audit.
+- **REL-02**: Cloud Run deploy with Secret Manager.
+- **REL-03**: Score-driven improvement loop on deployed service.
+- **REL-04**: Demo script and video assets lock.
 
 ## Parked (ideas found while building — not in scope until P0 is Done)
 | Idea | Found during | Why parked |

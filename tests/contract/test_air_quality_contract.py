@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime
+from pathlib import Path
+
 import httpx
 import pytest
 from pydantic import SecretStr
@@ -84,3 +88,35 @@ async def test_live_api_retry_and_fixture_fallback_on_500() -> None:
         assert calls == 2  # initial + 1 retry
         assert series.data_mode == "fixture"
         assert len(series.points) == 24
+
+
+def test_delhi_and_chandigarh_fixtures() -> None:
+    root = Path(__file__).resolve().parent.parent.parent
+    fixtures_dir = root / "data" / "fixtures"
+    fixture_files = [
+        fixtures_dir / "delhi_gurugram_winter.json",
+        fixtures_dir / "chandigarh_mohali_winter.json",
+    ]
+
+    for p in fixture_files:
+        assert p.exists()
+        assert p.stat().st_size < 40_000
+        with p.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        assert data.get("synthetic") is True
+        assert "location" in data
+        forecasts = data.get("hourlyForecasts", [])
+        assert len(forecasts) == 96
+
+        for _i, point in enumerate(forecasts):
+            assert "dateTime" in point
+            dt = datetime.fromisoformat(point["dateTime"].replace("Z", "+00:00"))
+            assert dt is not None
+            indexes = {idx["code"]: idx for idx in point.get("indexes", [])}
+            assert "ind_cpcb" in indexes and "uaqi" in indexes
+            pollutants = {pol["code"]: pol for pol in point.get("pollutants", [])}
+            assert "pm25" in pollutants and "pm10" in pollutants
+            assert pollutants["pm25"]["concentration"]["value"] > 0
+            health = point.get("healthRecommendations", {})
+            assert "generalPopulation" in health and "elderly" in health and "children" in health

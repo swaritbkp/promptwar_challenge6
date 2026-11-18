@@ -17,21 +17,7 @@ def compute_optimized_plan(
     *,
     robust_lambda: float = 0.5,
 ) -> OptimizedPlanResult:
-    """Find schedule allocations that minimize personal particulate exposure.
-
-    Args:
-        profile: Household profile containing family members and indoor zones.
-        member_id: Identifier of the target family member.
-        flexible_activities: Routines whose timing can be shifted.
-        outdoor_pm25_series: 24-hour ambient PM2.5 forecast sequence.
-        robust_lambda: Risk-aversion penalty on forecast uncertainty (P90 vs P50).
-
-    Returns:
-        OptimizedPlanResult containing shifted slots and avoided inhaled dose.
-
-    Raises:
-        NotFoundError: If member_id does not exist in the profile.
-    """
+    """Find schedule allocations that minimize personal particulate exposure."""
     target_member = next((m for m in profile.members if m.id == member_id), None)
     if target_member is None:
         raise NotFoundError(f"Member with id '{member_id}' was not found in profile")

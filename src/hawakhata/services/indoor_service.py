@@ -19,15 +19,7 @@ from hawakhata.engine.recommendations import (
 
 @dataclass(frozen=True, slots=True)
 class IndoorEnvironmentResult:
-    """Consolidated indoor simulation report with actionable interventions.
-
-    Attributes:
-        room_name: Name of the analyzed room zone.
-        simulation: 24-hour PM2.5 concentration profile and peak levels.
-        purifier_recommendation: HEPA CADR adequacy evaluation (5 ACH).
-        ventilation_recommendation: Safe natural airing window timings.
-        ranked_hacks: Ordered practical interventions reducing indoor particulates.
-    """
+    """Consolidated indoor simulation report with actionable interventions."""
 
     room_name: str
     simulation: dict[str, Any]
@@ -41,16 +33,7 @@ def simulate_indoor_environment(
     sources: list[SourceEventInput],
     outdoor_pm25_series: list[float],
 ) -> IndoorEnvironmentResult:
-    """Run full indoor mass-balance simulation, purifier sizing, and intervention ranking.
-
-    Args:
-        room: Zone configuration with volume, CADR, and open window hours.
-        sources: List of indoor particulate emission events.
-        outdoor_pm25_series: 24-hour sequence of outdoor PM2.5 concentrations in ug/m3.
-
-    Returns:
-        IndoorEnvironmentResult combining hourly curve, ventilation, sizing, and hacks.
-    """
+    """Run full indoor mass-balance simulation, purifier sizing, and intervention ranking."""
     events = [
         IndoorSourceEvent(
             kind=s.kind,

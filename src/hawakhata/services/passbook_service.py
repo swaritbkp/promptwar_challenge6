@@ -13,17 +13,7 @@ from hawakhata.engine.indoor_model import IndoorSourceEvent, simulate_indoor_pm2
 
 @dataclass(frozen=True, slots=True)
 class FamilyPassbookResult:
-    """Consolidated family air passbook summary across all household members.
-
-    Attributes:
-        family_id: Unique household identifier.
-        family_name: Display name for the household.
-        entries: Detailed passbook entries for each individual member.
-        total_budget_ug: Aggregate allowable daily PM2.5 inhalation budget for the family.
-        total_debit_ug: Aggregate inhaled PM2.5 across all members.
-        net_balance_ug: Remaining budget (positive) or total excess overage (negative).
-        highest_debit_member: Label of the member who inhaled the highest particulate mass.
-    """
+    """Consolidated family air passbook summary across all household members."""
 
     family_id: str
     family_name: str
@@ -38,15 +28,7 @@ def compute_family_passbook(
     profile: FamilyProfileInput,
     outdoor_pm25_series: list[float],
 ) -> FamilyPassbookResult:
-    """Compute 24-hour air passbook entries for all family members.
-
-    Args:
-        profile: Validated household profile with members, schedule blocks, and rooms.
-        outdoor_pm25_series: 24-hour sequence of outdoor ambient PM2.5 in ug/m3.
-
-    Returns:
-        FamilyPassbookResult detailing individual entries and aggregate metrics.
-    """
+    """Compute 24-hour air passbook entries for all family members."""
     # 1. Simulate indoor home PM2.5 if room specifications exist
     indoor_home_series: list[float] | None = None
     if profile.rooms:
