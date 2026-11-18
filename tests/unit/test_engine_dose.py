@@ -67,7 +67,12 @@ def test_compute_member_dose_branches() -> None:
         ScheduleBlock(start_hour=0, end_hour=8, micro_env="indoor_home", activity="sleep"),
         ScheduleBlock(start_hour=8, end_hour=9, micro_env="transit_metro", activity="sedentary"),
         ScheduleBlock(start_hour=9, end_hour=17, micro_env="indoor_other", activity="sedentary"),
-        ScheduleBlock(start_hour=17, end_hour=18, micro_env="transit_two_wheeler", activity="light"),
+        ScheduleBlock(
+            start_hour=17,
+            end_hour=18,
+            micro_env="transit_two_wheeler",
+            activity="light",
+        ),
         ScheduleBlock(start_hour=18, end_hour=19, micro_env="outdoor", activity="light"),
         ScheduleBlock(start_hour=19, end_hour=24, micro_env="indoor_home", activity="sedentary"),
     ]
