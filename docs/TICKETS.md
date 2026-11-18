@@ -17,7 +17,7 @@ of Done below are met. Security rule numbers (R#) refer to `docs/SECURITY.md` §
 |---|---|---|---|---|
 | FND-00 | Keep the tested scaffold green (config, core, gate, audit) | — | Must | Done |
 | FND-01 | Verify external APIs and pin dependencies | FND-00 | Must | Done |
-| FND-02 | Verify and complete the constants file with sources | FND-01 | Must | Not started |
+| FND-02 | Verify and complete the constants file with sources | FND-01 | Must | Done |
 | FND-03 | Create Delhi NCR and Chandigarh air-data fixtures | FND-01 | Must | Not started |
 | ENG-01 | Load constants and define the Explanation value object | FND-02 | Must | Not started |
 | ENG-02 | Map PM2.5 and AQI to India NAQI categories | ENG-01 | Must | Not started |
