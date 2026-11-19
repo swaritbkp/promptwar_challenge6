@@ -13,10 +13,6 @@ from hawakhata.engine.dose import (
 from hawakhata.engine.explain import Explanation
 from hawakhata.engine.uncertainty import p50_p90, sample_forecast_paths
 
-HOURS_IN_DAY: int = 24
-EPSILON_DOSE: float = 1e-4
-DEFAULT_ROBUST_LAMBDA = 0.5
-
 
 @dataclass(frozen=True, slots=True)
 class FlexibleActivity:
@@ -45,6 +41,7 @@ class PlannedShift:
     savings_ug: float
     percent_savings: float
     explanation: str
+    outdoor_pm25_at_optimized: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,19 +69,15 @@ def _build_schedule_blocks(
 def _is_valid_slot(
     start_h: int, duration: int, occupied_hours: set[int], earliest: int, latest: int
 ) -> bool:
-    if (
-        start_h < earliest
-        or (start_h + duration - 1) > latest
-        or (start_h + duration) > HOURS_IN_DAY
-    ):
+    if start_h < earliest or (start_h + duration - 1) > latest or (start_h + duration) > 24:
         return False
     return not bool(occupied_hours.intersection(range(start_h, start_h + duration)))
 
 
 def _find_best_slot_for_activity(
     act: FlexibleActivity,
-    chosen_assignments: dict[str, tuple[int, FlexibleActivity]],
-    occupied_hours: set[int],
+    chosen: dict[str, tuple[int, FlexibleActivity]],
+    occupied: set[int],
     *,
     fixed_blocks: list[ScheduleBlock],
     age_band: str,
@@ -93,30 +86,28 @@ def _find_best_slot_for_activity(
 ) -> int:
     def _eval(h: int) -> float:
         tl = build_member_timeline(
-            _build_schedule_blocks(fixed_blocks, {**chosen_assignments, act.id: (h, act)})
+            _build_schedule_blocks(fixed_blocks, {**chosen, act.id: (h, act)})
         )
         return compute_member_dose(age_band, tl, robust_series, indoor_home_series).total_dose_ug
 
     best_hour, best_cost = act.usual_start_hour, float("inf")
     for h in range(act.earliest_start_hour, act.latest_start_hour + 1):
         if _is_valid_slot(
-            h, act.duration_hours, occupied_hours, act.earliest_start_hour, act.latest_start_hour
+            h, act.duration_hours, occupied, act.earliest_start_hour, act.latest_start_hour
         ):
             cost = _eval(h)
             if cost < best_cost:
                 best_cost, best_hour = cost, h
 
-    if (
-        _is_valid_slot(
-            act.usual_start_hour,
-            act.duration_hours,
-            occupied_hours,
-            act.earliest_start_hour,
-            act.latest_start_hour,
-        )
-        and abs(_eval(act.usual_start_hour) - best_cost) < EPSILON_DOSE
+    if _is_valid_slot(
+        act.usual_start_hour,
+        act.duration_hours,
+        occupied,
+        act.earliest_start_hour,
+        act.latest_start_hour,
     ):
-        return act.usual_start_hour
+        if abs(_eval(act.usual_start_hour) - best_cost) < 1e-4:
+            return act.usual_start_hour
     return best_hour
 
 
@@ -127,7 +118,7 @@ def optimise_day_plan(
     outdoor_pm25_series: list[float],
     *,
     indoor_home_series: list[float] | None = None,
-    robust_lambda: float = DEFAULT_ROBUST_LAMBDA,
+    robust_lambda: float = 0.5,
     uncertainty_spread: float = 0.25,
     seed: int = 42,
 ) -> OptimizedPlanResult:
@@ -152,7 +143,7 @@ def optimise_day_plan(
 
     occupied: set[int] = set()
     for b in fixed_blocks:
-        occupied.update(range(max(0, b.start_hour), min(HOURS_IN_DAY, b.end_hour)))
+        occupied.update(range(max(0, b.start_hour), min(24, b.end_hour)))
 
     chosen: dict[str, tuple[int, FlexibleActivity]] = {}
     for act in sorted(flexible_activities, key=lambda a: a.duration_hours, reverse=True):
@@ -180,11 +171,12 @@ def optimise_day_plan(
         )
 
     total_savings = max(0.0, usual_dose - opt_dose)
-    is_already_optimal = total_savings < EPSILON_DOSE
+    is_already_optimal = total_savings < 1e-4
     shifts: list[PlannedShift] = []
 
     for act in flexible_activities:
         opt_start, _ = chosen[act.id]
+        pm_at_opt = round(robust_series[opt_start] if opt_start < len(robust_series) else 0.0, 1)
         if is_already_optimal or opt_start == act.usual_start_hour:
             shifts.append(
                 PlannedShift(
@@ -196,6 +188,7 @@ def optimise_day_plan(
                     0.0,
                     0.0,
                     "Usual timing is already in optimal clean window.",
+                    outdoor_pm25_at_optimized=pm_at_opt,
                 )
             )
         else:
@@ -210,8 +203,8 @@ def optimise_day_plan(
                     opt_start,
                     round(act_savings, 1),
                     round(pct, 1),
-                    f"Shifted from {act.usual_start_hour:02d}:00 "
-                    f"to {opt_start:02d}:00 clean window.",
+                    f"Shifted from {act.usual_start_hour:02d}:00 to {opt_start:02d}:00 clean window.",
+                    outdoor_pm25_at_optimized=pm_at_opt,
                 )
             )
 

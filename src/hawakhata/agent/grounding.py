@@ -1,8 +1,4 @@
-"""Numeric grounding gate verifying LLM claims against engine and API outputs.
-
-Enforces the non-negotiable rule 'Gemini proposes, code decides' by ensuring
-every quantitative claim originated from tool outputs, user inputs, or whitelist.
-"""
+"""Numeric grounding gate verifying LLM claims against engine and API outputs."""
 
 from __future__ import annotations
 
@@ -22,9 +18,6 @@ DEVANAGARI_DIGITS = {
     "\u096f": "9",
 }
 
-ROUND_STEP_THRESHOLD = 50.0
-PERCENT_BASE = 100.0
-
 WHITELIST_NUMBERS: frozenset[float] = frozenset(
     {
         0.0,
@@ -38,14 +31,14 @@ WHITELIST_NUMBERS: frozenset[float] = frozenset(
         8.0,
         9.0,
         10.0,
-        15.0,  # WHO 24h PM2.5 guideline
-        22.0,  # Berkeley Earth cigarette equiv
-        24.0,  # Hours in day
-        48.0,  # 48h forecast
-        60.0,  # Minutes in hour
-        72.0,  # 72h forecast
-        96.0,  # 96h forecast
-        100.0,  # Percentage base
+        15.0,
+        22.0,
+        24.0,
+        48.0,
+        60.0,
+        72.0,
+        96.0,
+        100.0,
     }
 )
 
@@ -79,28 +72,14 @@ class GroundingResult:
     violations: list[GroundingViolation]
 
 
-def _translate_devanagari(text: str) -> str:
-    """Translate Devanagari numerals to standard ASCII Arabic digits."""
-    return "".join(DEVANAGARI_DIGITS.get(ch, ch) for ch in text)
-
-
 def extract_numbers(text: str) -> list[ExtractedNumber]:
     """Extract all numbers (Western, Indian grouping, percentages, multipliers, Devanagari)."""
-    translated = _translate_devanagari(text)
-    skip_spans: list[tuple[int, int]] = []
+    translated = "".join(DEVANAGARI_DIGITS.get(ch, ch) for ch in text)
+    skip_spans = [(m.start(), m.end()) for m in re.finditer(r"\b\d{1,2}:\d{2}\b", translated)]
+    skip_spans += [(m.start(), m.end()) for m in re.finditer(r"\b20\d{2}\b", translated)]
 
-    # 1. Skip clock times HH:MM
-    for m in re.finditer(r"\b\d{1,2}:\d{2}\b", translated):
-        skip_spans.append((m.start(), m.end()))
-
-    # 2. Skip ISO dates and calendar years 2000..2099
-    for m in re.finditer(r"\b20\d{2}\b", translated):
-        skip_spans.append((m.start(), m.end()))
-
-    # 3. Match candidate numbers (including commas, decimals, %, x/\u00d7)
     pattern = (
-        r"(?<![A-Za-z0-9_])(?:\d{1,3}(?:,\d{2,3})+|\d+)"
-        r"(?:\.\d+)?(?:%|[x\u00d7])?(?![A-Za-z0-9_])"
+        r"(?<![A-Za-z0-9_])(?:\d{1,3}(?:,\d{2,3})+|\d+)(?:\.\d+)?(?:%|[x\u00d7])?(?![A-Za-z0-9_])"
     )
     extracted: list[ExtractedNumber] = []
 
@@ -108,22 +87,13 @@ def extract_numbers(text: str) -> list[ExtractedNumber]:
         start, end = m.start(), m.end()
         if any(s <= start and end <= e for s, e in skip_spans):
             continue
-
-        raw_match = m.group(0)
-        clean = raw_match.replace(",", "").rstrip("%x\u00d7")
+        clean = m.group(0).replace(",", "").rstrip("%x\u00d7")
         try:
-            val = float(clean)
             extracted.append(
-                ExtractedNumber(
-                    value=val,
-                    raw=text[start:end],
-                    start=start,
-                    end=end,
-                )
+                ExtractedNumber(value=float(clean), raw=text[start:end], start=start, end=end)
             )
         except ValueError:
             continue
-
     return extracted
 
 
@@ -134,19 +104,13 @@ def collect_allowed_numbers(tool_outputs: object, user_text: str = "") -> set[fl
     def _walk(obj: object) -> None:
         if isinstance(obj, (int, float)) and not isinstance(obj, bool):
             v = float(obj)
-            allowed.add(round(v, 4))
-            allowed.add(round(v, 0))
-            allowed.add(round(v, 1))
-            allowed.add(round(v, 2))
-            if v >= ROUND_STEP_THRESHOLD:
-                allowed.add(round(v / 5.0) * 5.0)
-                allowed.add(round(v / 10.0) * 10.0)
+            allowed.update({round(v, 4), round(v, 0), round(v, 1), round(v, 2)})
+            if v >= 50.0:
+                allowed.update({round(v / 5.0) * 5.0, round(v / 10.0) * 10.0})
             if 0.0 <= v <= 1.0:
-                allowed.add(round(v * PERCENT_BASE, 1))
-                allowed.add(round(v * PERCENT_BASE, 0))
-            if 0.0 <= v <= PERCENT_BASE:
-                allowed.add(round(v / PERCENT_BASE, 2))
-                allowed.add(round(v / PERCENT_BASE, 3))
+                allowed.update({round(v * 100.0, 1), round(v * 100.0, 0)})
+            if 0.0 <= v <= 100.0:
+                allowed.update({round(v / 100.0, 2), round(v / 100.0, 3)})
         elif isinstance(obj, dict):
             for val in obj.values():
                 _walk(val)
@@ -155,13 +119,9 @@ def collect_allowed_numbers(tool_outputs: object, user_text: str = "") -> set[fl
                 _walk(item)
 
     _walk(tool_outputs)
-
     if user_text:
         for num in extract_numbers(user_text):
-            allowed.add(round(num.value, 4))
-            allowed.add(round(num.value, 0))
-            allowed.add(round(num.value, 1))
-
+            allowed.update({round(num.value, 4), round(num.value, 0), round(num.value, 1)})
     return allowed
 
 
@@ -173,20 +133,11 @@ def check_numeric_grounding(
 ) -> GroundingResult:
     """Verify that every number in the agent reply is grounded in allowed sources."""
     allowed = collect_allowed_numbers(tool_outputs, user_text)
-    extracted = extract_numbers(reply)
-    violations: list[GroundingViolation] = []
-
-    for num in extracted:
-        is_grounded = any(abs(num.value - a) <= tolerance for a in allowed)
-        if not is_grounded:
-            violations.append(
-                GroundingViolation(
-                    value=num.value,
-                    raw=num.raw,
-                    start=num.start,
-                    end=num.end,
-                    reason=f"Ungrounded number '{num.raw}' ({num.value}) not in allowed set",
-                )
-            )
-
+    violations = [
+        GroundingViolation(
+            num.value, num.raw, num.start, num.end, f"Ungrounded '{num.raw}' ({num.value})"
+        )
+        for num in extract_numbers(reply)
+        if not any(abs(num.value - a) <= tolerance for a in allowed)
+    ]
     return GroundingResult(passed=len(violations) == 0, violations=violations)

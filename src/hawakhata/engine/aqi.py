@@ -1,42 +1,13 @@
-"""India National Air Quality Index (NAQI) categorization and PM2.5 sub-index math.
-
-Based on CPCB NAQI guidelines (2014) and visual tokens from DESIGN.md.
-Color is NEVER the sole signal: every category provides text label keys and
-accessible icon tokens.
-"""
+"""India National Air Quality Index (NAQI) categorization and PM2.5 sub-index math."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-# PM2.5 24-h concentration upper thresholds (ug/m3) per CPCB
-PM25_GOOD_MAX = 30.0
-PM25_SATISFACTORY_MAX = 60.0
-PM25_MODERATE_MAX = 90.0
-PM25_POOR_MAX = 120.0
-PM25_VERY_POOR_MAX = 250.0
-PM25_EXTRAPOLATION_BASE = 500.0
-
-# AQI value upper thresholds
-AQI_GOOD_MAX = 50.0
-AQI_SATISFACTORY_MAX = 100.0
-AQI_MODERATE_MAX = 200.0
-AQI_POOR_MAX = 300.0
-AQI_VERY_POOR_MAX = 400.0
-
 
 @dataclass(frozen=True, slots=True)
 class NAQICategory:
-    """Represents a discrete NAQI air quality category band.
-
-    Attributes:
-        code: Machine key ('good', 'satisfactory', 'moderate', 'poor', 'very_poor', 'severe').
-        display_name: Human readable title in English.
-        label_key: i18n translation key in static/i18n/{en,hi}.json.
-        icon_key: SVG sprite identifier ('smile', 'leaf', 'cloud', 'haze', 'mask',
-            'warning_triangle').
-        color_hex: Hex code token from DESIGN.md.
-    """
+    """Represents a discrete NAQI air quality category band."""
 
     code: str
     display_name: str
@@ -46,51 +17,20 @@ class NAQICategory:
 
 
 CATEGORIES: dict[str, NAQICategory] = {
-    "good": NAQICategory(
-        code="good",
-        display_name="Good",
-        label_key="naqi.category.good",
-        icon_key="smile",
-        color_hex="#2E7D32",
-    ),
+    "good": NAQICategory("good", "Good", "naqi.category.good", "smile", "#2E7D32"),
     "satisfactory": NAQICategory(
-        code="satisfactory",
-        display_name="Satisfactory",
-        label_key="naqi.category.satisfactory",
-        icon_key="leaf",
-        color_hex="#7CB342",
+        "satisfactory", "Satisfactory", "naqi.category.satisfactory", "leaf", "#7CB342"
     ),
-    "moderate": NAQICategory(
-        code="moderate",
-        display_name="Moderate",
-        label_key="naqi.category.moderate",
-        icon_key="cloud",
-        color_hex="#C9A400",
-    ),
-    "poor": NAQICategory(
-        code="poor",
-        display_name="Poor",
-        label_key="naqi.category.poor",
-        icon_key="haze",
-        color_hex="#E07B00",
-    ),
+    "moderate": NAQICategory("moderate", "Moderate", "naqi.category.moderate", "cloud", "#C9A400"),
+    "poor": NAQICategory("poor", "Poor", "naqi.category.poor", "haze", "#E07B00"),
     "very_poor": NAQICategory(
-        code="very_poor",
-        display_name="Very Poor",
-        label_key="naqi.category.very_poor",
-        icon_key="mask",
-        color_hex="#C62828",
+        "very_poor", "Very Poor", "naqi.category.very_poor", "mask", "#C62828"
     ),
     "severe": NAQICategory(
-        code="severe",
-        display_name="Severe",
-        label_key="naqi.category.severe",
-        icon_key="warning_triangle",
-        color_hex="#6A1B4D",
+        "severe", "Severe", "naqi.category.severe", "warning_triangle", "#6A1B4D"
     ),
 }
 
-# CPCB PM2.5 Breakpoints: (low_concentration, high_concentration, low_aqi, high_aqi, category_code)
 _PM25_BREAKPOINTS: tuple[tuple[float, float, int, int, str], ...] = (
     (0.0, 30.0, 0, 50, "good"),
     (30.0, 60.0, 50, 100, "satisfactory"),
@@ -104,15 +44,15 @@ _PM25_BREAKPOINTS: tuple[tuple[float, float, int, int, str], ...] = (
 def pm25_to_naqi_category(pm25_ug_m3: float) -> NAQICategory:
     """Map a PM2.5 concentration in ug/m3 to the corresponding CPCB NAQI category."""
     c = max(0.0, pm25_ug_m3)
-    if c <= PM25_GOOD_MAX:
+    if c <= 30.0:
         return CATEGORIES["good"]
-    if c <= PM25_SATISFACTORY_MAX:
+    if c <= 60.0:
         return CATEGORIES["satisfactory"]
-    if c <= PM25_MODERATE_MAX:
+    if c <= 90.0:
         return CATEGORIES["moderate"]
-    if c <= PM25_POOR_MAX:
+    if c <= 120.0:
         return CATEGORIES["poor"]
-    if c <= PM25_VERY_POOR_MAX:
+    if c <= 250.0:
         return CATEGORIES["very_poor"]
     return CATEGORIES["severe"]
 
@@ -120,15 +60,15 @@ def pm25_to_naqi_category(pm25_ug_m3: float) -> NAQICategory:
 def aqi_to_category(aqi: int | float) -> NAQICategory:
     """Map an integer or float AQI value directly to its NAQI category band."""
     val = max(0.0, float(aqi))
-    if val <= AQI_GOOD_MAX:
+    if val <= 50.0:
         return CATEGORIES["good"]
-    if val <= AQI_SATISFACTORY_MAX:
+    if val <= 100.0:
         return CATEGORIES["satisfactory"]
-    if val <= AQI_MODERATE_MAX:
+    if val <= 200.0:
         return CATEGORIES["moderate"]
-    if val <= AQI_POOR_MAX:
+    if val <= 300.0:
         return CATEGORIES["poor"]
-    if val <= AQI_VERY_POOR_MAX:
+    if val <= 400.0:
         return CATEGORIES["very_poor"]
     return CATEGORIES["severe"]
 
@@ -140,7 +80,4 @@ def pm25_to_sub_index(pm25_ug_m3: float) -> int:
         if b_low <= c <= b_high:
             sub = i_low + (i_high - i_low) / (b_high - b_low) * (c - b_low)
             return round(sub)
-
-    # Beyond 500 ug/m3, extrapolate using the severe slope (100 AQI per 250 ug/m3)
-    extra_c = c - PM25_EXTRAPOLATION_BASE
-    return round(500 + extra_c * (100.0 / 250.0))
+    return round(500 + (c - 500.0) * (100.0 / 250.0))

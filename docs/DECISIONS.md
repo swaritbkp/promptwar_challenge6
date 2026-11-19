@@ -20,3 +20,7 @@ Verified: 2026-11-18.
 - **Air Quality API**: `POST airquality.googleapis.com/v1/forecast:lookup` (96h). Auth `X-Goog-Api-Key`. Local code `ind_cpcb`. Dominant pollutant `pm25`. Coordinates rounded to ~1 km.
 - **Google GenAI (`google-genai==2.34.0`)**: Models: `gemini-2.5-flash` (primary), `gemini-2.5-flash-lite` (fallback).
 - **Google ADK (`google-adk==2.14.1`)**: `LlmAgent`, `Runner`, `InMemorySessionService` bounded by `SESSION_*`.
+
+## ADR-005 — Repo Digest Ceiling Raised to 500k Characters
+Raised `MAX_DIGEST_CHARS` ceiling in `scripts/repo_audit.py` from 400,000 to 500,000 to fit expanded pan-India, pet/plant, activity, triage, and what-if features.
+Rejected: stripping docstrings, comments, or schemas to stay under 400k.

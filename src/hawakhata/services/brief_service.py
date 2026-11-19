@@ -13,13 +13,6 @@ from hawakhata.engine.recommendations import rank_indoor_hacks
 from hawakhata.engine.swaps import evaluate_swap
 from hawakhata.integrations.air_quality import HourlyAirPoint, HourlyAirSeries
 
-SEVERE_PM25_THRESHOLD = 250.0
-POOR_PM25_THRESHOLD = 120.0
-VERY_POOR_PM25_THRESHOLD = 150.0
-DEFAULT_ROOM_VOLUME_M3 = 60.0
-DEFAULT_EARLIEST_START = 6
-DEFAULT_LATEST_END = 20
-
 
 @dataclass(frozen=True)
 class BriefActionItem:
@@ -136,14 +129,8 @@ def replan_if_needed(
             env = str(b.get("micro_env", "indoor_home"))
             if is_flex:
                 dur = max(1, end - start)
-                e_val = (
-                    int(b["earliest_start"])
-                    if b.get("earliest_start") is not None
-                    else DEFAULT_EARLIEST_START
-                )
-                l_val = (
-                    int(b["latest_end"]) if b.get("latest_end") is not None else DEFAULT_LATEST_END
-                )
+                e_val = int(b["earliest_start"]) if b.get("earliest_start") is not None else 6
+                l_val = int(b["latest_end"]) if b.get("latest_end") is not None else 20
                 flex_acts.append(
                     FlexibleActivity(
                         id=f"flex_{len(flex_acts)}",
@@ -169,8 +156,7 @@ def replan_if_needed(
             )
             if opt.total_savings_ug > 0:
                 replan_notes.append(
-                    f"Forecast changed by {max_diff:.0f} µg/m³. Rescheduled {m_name}, "
-                    f"saving {opt.total_savings_ug:.1f} µg."
+                    f"Forecast changed by {max_diff:.0f} µg/m³. Rescheduled {m_name}, saving {opt.total_savings_ug:.1f} µg."
                 )
 
     if not replan_notes:
@@ -202,18 +188,15 @@ def _build_sensitive_alerts(
         if age in ("child", "elderly") or sens:
             sev: Literal["advisory", "warning", "critical"] = (
                 "critical"
-                if worst_pm25 > SEVERE_PM25_THRESHOLD
-                else ("warning" if worst_pm25 > POOR_PM25_THRESHOLD else "advisory")
+                if worst_pm25 > 250.0
+                else ("warning" if worst_pm25 > 120.0 else "advisory")
             )
             reasons = ([age] if age in ("child", "elderly") else []) + sens
             alerts.append(
                 SensitiveAlertItem(
                     member_id=m_id,
                     name=m_name,
-                    alert_text=(
-                        f"Smog peak around {worst_hour} ({worst_pm25} µg/m³). Protect "
-                        f"{m_name} ({', '.join(reasons)}) indoors with air filtration."
-                    ),
+                    alert_text=f"Smog peak around {worst_hour} ({worst_pm25} µg/m³). Protect {m_name} ({', '.join(reasons)}) indoors with air filtration.",
                     severity=sev,
                 )
             )
@@ -224,9 +207,7 @@ def _build_top_actions(
     pm25_vals: list[float], worst_pm25: float, cleanest_win: str, cleanest_pm: float
 ) -> list[BriefActionItem]:
     actions: list[BriefActionItem] = []
-    hacks = rank_indoor_hacks(
-        room_volume_m3=DEFAULT_ROOM_VOLUME_M3, outdoor_series=pm25_vals, baseline_events=[]
-    )
+    hacks = rank_indoor_hacks(room_volume_m3=60.0, outdoor_series=pm25_vals, baseline_events=[])
     if hacks:
         top = hacks[0]
         actions.append(
@@ -296,15 +277,18 @@ def generate_morning_brief(
         )
 
     headline = (
-        f"Severe smog today peaking at {worst_hour_local} ({worst_pm25} µg/m³). "
-        f"Cleanest air window is {cleanest_win}."
-        if worst_pm25 > VERY_POOR_PM25_THRESHOLD
+        f"Severe smog today peaking at {worst_hour_local} ({worst_pm25} µg/m³). Cleanest air window is {cleanest_win}."
+        if worst_pm25 > 150.0
         else f"Moderate pollution today with peak {worst_pm25} µg/m³ at {worst_hour_local}."
     )
 
     explanation = Explanation(
         formula="brief = worst_hour(series) + cleanest_window(series) + rank_hacks() + swaps()",
-        inputs={"worst_hour": worst_hour_local, "worst_pm25": worst_pm25, "cleanest_win": cleanest_win},
+        inputs={
+            "worst_hour": worst_hour_local,
+            "worst_pm25": worst_pm25,
+            "cleanest_win": cleanest_win,
+        },
         constants_used=[],
         sources=["CPCB NAQI", "Google Maps AQ API"],
         assumptions=["Outdoor forecast represents breathing environment."],

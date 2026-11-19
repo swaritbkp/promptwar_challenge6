@@ -11,10 +11,6 @@ from hawakhata.engine.constants import get_constant
 from hawakhata.engine.emissions import activity_emissions
 from hawakhata.engine.explain import Explanation
 
-MONTHS_IN_WEEKS_MULTIPLIER = 4.33
-DEFAULT_DAYS_PER_WEEK = 5
-MIN_DAYS_PER_WEEK = 1
-MAX_DAYS_PER_WEEK = 7
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "data"
 
 
@@ -104,7 +100,7 @@ def evaluate_swap(
     swap_id: str,
     units_per_day: float,
     *,
-    days_per_week: int = DEFAULT_DAYS_PER_WEEK,
+    days_per_week: int = 5,
     outdoor_pm25_mean: float = 150.0,
     member_age_band: str = "31_41",
     transit_duration_hours: float = 1.0,
@@ -112,7 +108,7 @@ def evaluate_swap(
     """Evaluate emission and exposure deltas for an adopted sustainable lifestyle swap."""
     if units_per_day < 0:
         raise ValueError(f"units_per_day must be non-negative, got {units_per_day}")
-    if not (MIN_DAYS_PER_WEEK <= days_per_week <= MAX_DAYS_PER_WEEK):
+    if not (1 <= days_per_week <= 7):
         raise ValueError(f"days_per_week must be between 1 and 7, got {days_per_week}")
 
     catalogue = get_available_swaps()
@@ -128,9 +124,9 @@ def evaluate_swap(
         round(d_co2_daily * days_per_week, 4),
         round(d_pm_daily * days_per_week, 4),
     )
-    d_co2_monthly = round(d_co2_weekly * MONTHS_IN_WEEKS_MULTIPLIER, 4)
-    d_pm_monthly = round(d_pm_weekly * MONTHS_IN_WEEKS_MULTIPLIER, 4)
-    delta_breathe_daily = (
+    d_co2_monthly = round(d_co2_weekly * 4.33, 4)
+    d_pm_monthly = round(d_pm_weekly * 4.33, 4)
+    delta_breathe = (
         _compute_transit_delta_breathe(
             swap_def.get("before"),
             swap_def.get("after"),
@@ -148,7 +144,7 @@ def evaluate_swap(
         delta_emit_daily=DeltaEmission(kg_co2=d_co2_daily, g_pm25=d_pm_daily),
         delta_emit_weekly=DeltaEmission(kg_co2=d_co2_weekly, g_pm25=d_pm_weekly),
         delta_emit_monthly=DeltaEmission(kg_co2=d_co2_monthly, g_pm25=d_pm_monthly),
-        delta_breathe_daily_ug=delta_breathe_daily,
+        delta_breathe_daily_ug=delta_breathe,
         explanation=Explanation(
             "Delta_emit = Emission(after) - Emission(before)",
             {
@@ -177,7 +173,7 @@ def scale_to_community(
         )
 
     eff = float(households) * participation_rate
-    co2_monthly, pm25_monthly = (
+    co2_m, pm25_m = (
         round(swap_result.delta_emit_monthly.kg_co2 * eff, 2),
         round(swap_result.delta_emit_monthly.g_pm25 * eff, 2),
     )
@@ -188,15 +184,15 @@ def scale_to_community(
     return CommunityImpactResult(
         households=households,
         participation_rate=participation_rate,
-        community_delta_co2_kg_monthly=co2_monthly,
-        community_delta_pm25_g_monthly=pm25_monthly,
+        community_delta_co2_kg_monthly=co2_m,
+        community_delta_pm25_g_monthly=pm25_m,
         community_avoided_dose_monthly_mg=monthly_dose_mg,
         explanation=Explanation(
             "Community_Impact = Per_Household_Impact * Households * ParticipationRate",
             {
                 "households": households,
                 "participation_rate": participation_rate,
-                "community_co2_monthly": co2_monthly,
+                "community_co2_monthly": co2_m,
             },
             ["emission_factor"],
             ["Mohalla linear aggregation model"],

@@ -7,9 +7,6 @@ from dataclasses import dataclass
 from hawakhata.engine.explain import Explanation
 from hawakhata.engine.indoor_model import IndoorSourceEvent, simulate_indoor_pm25
 
-MIN_MEANINGFUL_DELTA_UG_M3 = 0.1
-DEFAULT_PURIFIER_ACH = 5.0
-
 
 @dataclass(frozen=True, slots=True)
 class VentilationRecommendation:
@@ -78,17 +75,18 @@ def recommend_ventilation_hours(
 def recommend_purifier_cadr(
     room_volume_m3: float,
     current_cadr_m3_per_h: float = 0.0,
-    target_ach: float = DEFAULT_PURIFIER_ACH,
+    target_ach: float = 5.0,
 ) -> PurifierRecommendation:
     """Evaluate whether air purifier CADR is adequate (Required_CADR = Volume * Target_ACH)."""
     v = max(1.0, room_volume_m3)
     required = v * target_ach
     deficit = max(0.0, required - current_cadr_m3_per_h)
     sufficient = current_cadr_m3_per_h >= required
-    if sufficient:
-        advice = f"Your purifier is sufficient for this {v:.0f} m³ room. Run in bedroom."
-    else:
-        advice = f"Room needs {required:.0f} m³/h CADR (deficit {deficit:.0f} m³/h). Add CADR."
+    advice = (
+        f"Your purifier is sufficient for this {v:.0f} m³ room. Run in bedroom."
+        if sufficient
+        else f"Room needs {required:.0f} m³/h CADR (deficit {deficit:.0f} m³/h). Add CADR."
+    )
     return PurifierRecommendation(
         required_cadr_m3_per_h=required,
         current_cadr_m3_per_h=current_cadr_m3_per_h,
@@ -109,7 +107,7 @@ def _eval_hack(
     hack_id: str,
     title: str,
     advice: str,
-    source_citation: str,
+    src: str,
     formula: str,
     *,
     v: float,
@@ -129,7 +127,7 @@ def _eval_hack(
         source_events=events,
     )
     delta = base_mean - res.mean_pm25_ug_m3
-    if delta < MIN_MEANINGFUL_DELTA_UG_M3:
+    if delta < 0.1:
         return None
     return IndoorHack(
         id=hack_id,
@@ -144,7 +142,7 @@ def _eval_hack(
                 "saved": round(delta, 1),
             },
             ["indoor_emission_rate"],
-            [source_citation],
+            [src],
             ["24h cycle"],
         ),
     )
@@ -190,7 +188,7 @@ def rank_indoor_hacks(
             hack_id=h_id,
             title=title,
             advice=advice,
-            source_citation=src,
+            src=src,
             formula=formula,
             v=v,
             outdoor_series=outdoor_series,

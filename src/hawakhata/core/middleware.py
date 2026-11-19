@@ -1,8 +1,4 @@
-"""HTTP middleware: request ids, security headers, body-size limit, rate limiting.
-
-Registration order in ``app.create_app`` (outermost first): request id →
-security headers → body-size limit → rate limit.
-"""
+"""HTTP middleware: request ids, security headers, body-size limit, rate limiting."""
 
 from __future__ import annotations
 
@@ -41,10 +37,9 @@ SECURITY_HEADERS: dict[str, str] = {
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """Assign a request id, expose it as ``X-Request-ID`` and log latency."""
+    """Assign a request id, expose it as X-Request-ID and log latency."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        """Bind the id for this request and record a structured access log line."""
         incoming = request.headers.get("x-request-id", "")
         is_safe_id = 8 <= len(incoming) <= 64 and incoming.isalnum()  # noqa: PLR2004
         request_id = incoming if is_safe_id else uuid.uuid4().hex
@@ -68,7 +63,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Attach CSP and hardening headers; HSTS only when served over HTTPS."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        """Add the security headers to every response."""
         response = await call_next(request)
         response.headers.update(SECURITY_HEADERS)
         if request.headers.get("x-forwarded-proto", request.url.scheme) == "https":
@@ -77,40 +71,41 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 class BodySizeLimitMiddleware(BaseHTTPMiddleware):
-    """Reject requests whose declared body exceeds ``max_body_bytes``."""
+    """Reject requests whose declared body exceeds max_body_bytes."""
 
     def __init__(self, app: ASGIApp, max_body_bytes: int) -> None:
-        """Store the byte limit."""
         super().__init__(app)
         self._max_body_bytes = max_body_bytes
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        """Return 413 when Content-Length is invalid or too large."""
         declared = request.headers.get("content-length")
         too_large = declared is not None and (
             not declared.isdigit() or int(declared) > self._max_body_bytes
         )
         if too_large:
-            body = error_body(ErrorCode.PAYLOAD_TOO_LARGE, "Request body is too large.")
-            return JSONResponse(body, status_code=413)
+            return JSONResponse(
+                error_body(ErrorCode.PAYLOAD_TOO_LARGE, "Request body is too large."),
+                status_code=413,
+            )
         return await call_next(request)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Apply the token-bucket limiter to ``/api/`` routes."""
+    """Apply the token-bucket limiter to /api/ routes."""
 
     def __init__(self, app: ASGIApp, limiter: TokenBucketLimiter) -> None:
-        """Store the shared limiter."""
         super().__init__(app)
         self._limiter = limiter
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        """Return 429 with ``Retry-After`` when the client exceeds its budget."""
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
         client = self._limiter.client_key(request.client.host if request.client else "unknown")
         if not self._limiter.allow(client):
-            body = error_body(ErrorCode.RATE_LIMITED, "Too many requests.", retryable=True)
             headers = {"Retry-After": str(self._limiter.retry_after_s(client))}
-            return JSONResponse(body, status_code=429, headers=headers)
+            return JSONResponse(
+                error_body(ErrorCode.RATE_LIMITED, "Too many requests.", retryable=True),
+                status_code=429,
+                headers=headers,
+            )
         return await call_next(request)

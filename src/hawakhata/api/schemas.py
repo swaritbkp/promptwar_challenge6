@@ -8,14 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class StrictBaseModel(BaseModel):
-    """Base model forbidding extra fields."""
-
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class ResponseMeta(StrictBaseModel):
-    """Standard metadata container for 2xx responses."""
-
     request_id: str = Field(max_length=64)
     data_mode: Literal["live", "fixture"]
     engine_version: str = Field(default="0.1.0", max_length=20)
@@ -26,23 +22,17 @@ class ResponseMeta(StrictBaseModel):
 
 
 class Envelope[T](StrictBaseModel):
-    """Unified 2xx JSON response envelope."""
-
     data: T
     meta: ResponseMeta
 
 
 class LocationInput(StrictBaseModel):
-    """Geographic coordinate specification."""
-
     lat: float = Field(ge=-90.0, le=90.0)
     lng: float = Field(ge=-180.0, le=180.0)
     city_name: str | None = Field(default=None, max_length=100)
 
 
 class ScheduleBlockInput(StrictBaseModel):
-    """Contiguous block of member activity in a schedule."""
-
     start_hour: int = Field(ge=0, le=23)
     end_hour: int = Field(ge=1, le=24)
     micro_env: str = Field(max_length=50)
@@ -54,8 +44,6 @@ class ScheduleBlockInput(StrictBaseModel):
 
 
 class MemberInput(StrictBaseModel):
-    """Family member profile input."""
-
     id: str = Field(max_length=50)
     name: str = Field(max_length=100)
     age_band: str = Field(max_length=20)
@@ -64,8 +52,6 @@ class MemberInput(StrictBaseModel):
 
 
 class RoomInput(StrictBaseModel):
-    """Living zone specification for indoor simulation."""
-
     name: str = Field(max_length=50)
     volume_m3: float = Field(ge=5.0, le=500.0)
     purifier_cadr_m3_per_h: float = Field(default=0.0, ge=0.0, le=2000.0)
@@ -74,8 +60,6 @@ class RoomInput(StrictBaseModel):
 
 
 class SourceEventInput(StrictBaseModel):
-    """Indoor particulate emission event."""
-
     kind: str = Field(max_length=50)
     start_hour: int = Field(ge=0, le=23)
     minutes: float = Field(default=60.0, ge=1.0, le=60.0)
@@ -83,8 +67,6 @@ class SourceEventInput(StrictBaseModel):
 
 
 class FamilyProfileInput(StrictBaseModel):
-    """Complete household profile schema."""
-
     id: str = Field(max_length=50)
     name: str = Field(max_length=100)
     location: LocationInput
@@ -94,8 +76,6 @@ class FamilyProfileInput(StrictBaseModel):
 
 
 class FlexibleActivityInput(StrictBaseModel):
-    """Activity candidate for clean-window optimization."""
-
     id: str = Field(max_length=50)
     member_id: str = Field(max_length=50)
     title: str = Field(max_length=100)
@@ -108,15 +88,11 @@ class FlexibleActivityInput(StrictBaseModel):
 
 
 class BaseComputeRequest(StrictBaseModel):
-    """Base payload with optional fixed clock and data source selector."""
-
     now: str | None = Field(default=None, max_length=35)
     data_source: Literal["auto", "fixture"] = "auto"
 
 
 class ForecastRequest(StrictBaseModel):
-    """Request payload for hourly air forecast."""
-
     lat: float = Field(ge=-90.0, le=90.0)
     lng: float = Field(ge=-180.0, le=180.0)
     hours: int = Field(default=24, ge=1, le=96)
@@ -124,30 +100,29 @@ class ForecastRequest(StrictBaseModel):
 
 
 class PassbookRequest(BaseComputeRequest):
-    """Request payload for multi-member family air passbook."""
-
     profile: FamilyProfileInput
 
 
 class PlanRequest(BaseComputeRequest):
-    """Request payload for clean-window optimization."""
-
     profile: FamilyProfileInput
     member_id: str = Field(max_length=50)
     flexible_activities: list[FlexibleActivityInput] = Field(max_length=10)
 
 
 class IndoorSimulateRequest(BaseComputeRequest):
-    """Request payload for indoor PM2.5 simulation."""
-
     room: RoomInput
     sources: list[SourceEventInput] = Field(default_factory=list, max_length=20)
     location: LocationInput
 
 
-class SwapsImpactRequest(StrictBaseModel):
-    """Request payload for sustainable alternatives."""
+class PetGuidanceRequest(BaseComputeRequest):
+    species: str = Field(default="dog", max_length=50)
+    location: LocationInput = Field(
+        default_factory=lambda: LocationInput(lat=28.4595, lng=77.0266, city_name="Delhi NCR")
+    )
 
+
+class SwapsImpactRequest(StrictBaseModel):
     swap_id: str = Field(max_length=50)
     units_per_day: float = Field(ge=0.0, le=1000.0)
     days_per_week: int = Field(default=5, ge=1, le=7)
@@ -158,8 +133,6 @@ class SwapsImpactRequest(StrictBaseModel):
 
 
 class BriefAction(StrictBaseModel):
-    """Actionable recommendation with quantified exposure savings."""
-
     title: str = Field(max_length=120)
     description: str = Field(max_length=300)
     ug_saved: float = Field(ge=0.0)
@@ -167,8 +140,6 @@ class BriefAction(StrictBaseModel):
 
 
 class SensitiveAlert(StrictBaseModel):
-    """Targeted alert for a vulnerable family member."""
-
     member_id: str = Field(max_length=64)
     name: str = Field(max_length=80)
     alert_text: str = Field(max_length=300)
@@ -176,8 +147,6 @@ class SensitiveAlert(StrictBaseModel):
 
 
 class ForecastShiftInfo(StrictBaseModel):
-    """Forecast shift detection outcome."""
-
     shifted: bool
     delta_max_pm25: float
     replanned: bool
@@ -185,8 +154,6 @@ class ForecastShiftInfo(StrictBaseModel):
 
 
 class BriefResponse(StrictBaseModel):
-    """Proactive morning brief response payload."""
-
     headline: str = Field(max_length=200)
     worst_hour_local: str = Field(max_length=10)
     worst_pm25: float
@@ -199,22 +166,16 @@ class BriefResponse(StrictBaseModel):
 
 
 class BriefRequest(BaseComputeRequest):
-    """Request payload for morning proactive brief."""
-
     profile: FamilyProfileInput
     previous_forecast_pm25: list[float] | None = Field(default=None, max_length=96)
 
 
 class ChatMessageInput(StrictBaseModel):
-    """Turn in a multi-turn conversation."""
-
     role: Literal["user", "model", "system"]
     content: str = Field(max_length=4000)
 
 
 class ChatRequest(BaseComputeRequest):
-    """Request payload for Ask HawaKhata chat endpoint."""
-
     session_id: str | None = Field(default=None, max_length=64)
     message: str = Field(min_length=1, max_length=1000)
     history: list[ChatMessageInput] = Field(default_factory=list, max_length=20)
@@ -223,8 +184,6 @@ class ChatRequest(BaseComputeRequest):
 
 
 class ChatResponse(StrictBaseModel):
-    """Response payload for Ask HawaKhata chat endpoint."""
-
     session_id: str = Field(max_length=64)
     reply: str = Field(max_length=5000)
     language: str = Field(default="en", max_length=5)
@@ -237,8 +196,6 @@ class ChatResponse(StrictBaseModel):
 
 
 class MetaResponse(StrictBaseModel):
-    """System version and runtime metadata."""
-
     app_name: str
     app_version: str
     engine_version: str

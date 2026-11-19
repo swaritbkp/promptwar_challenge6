@@ -104,10 +104,7 @@ def detect_health_red_flags(text: str) -> HealthVerdict:
 
 
 def enforce_output_policy(
-    reply: str,
-    urgent: bool = False,
-    canary: str | None = None,
-    language: str = "en",
+    reply: str, urgent: bool = False, canary: str | None = None, language: str = "en"
 ) -> OutputPolicyVerdict:
     """Check LLM output for canary leakage, diagnosis/dosing claims, and red flags."""
     if canary and canary in reply:
@@ -122,10 +119,7 @@ def enforce_output_policy(
     disclaimer = (
         "[हवा खाता वायु प्रदूषण मार्गदर्शन प्रदान करता है, चिकित्सा निदान नहीं। कृपया चिकित्सक से परामर्श करें।]"
         if language == "hi"
-        else (
-            "[HawaKhata provides air pollution guidance, not medical diagnosis or treatment."
-            " Please consult a certified medical doctor.]"
-        )
+        else "[HawaKhata provides air pollution guidance, not medical diagnosis or treatment. Please consult a certified medical doctor.]"
     )
     reasons: list[str] = []
     for item in blocklist:
@@ -136,13 +130,9 @@ def enforce_output_policy(
 
     if urgent:
         prefix = (
-            "⚠️ आपातकालीन चिकित्सा सूचना: इन लक्षणों के लिए तत्काल चिकित्सा मूल्यांकन की"
-            " आवश्यकता है। कृपया आपातकालीन सेवाओं (112 / 102 / 108) पर कॉल करें या अस्पताल जाएँ।\n\n"
+            "⚠️ आपातकालीन चिकित्सा सूचना: इन लक्षणों के लिए तत्काल चिकित्सा मूल्यांकन की आवश्यकता है। कृपया आपातकालीन सेवाओं (112 / 102 / 108) पर कॉल करें या अस्पताल जाएँ।\n\n"
             if language == "hi"
-            else (
-                "⚠️ MEDICAL EMERGENCY NOTICE: These symptoms require immediate medical evaluation."
-                " Call emergency services (112 / 102 / 108) or visit ER immediately.\n\n"
-            )
+            else "⚠️ MEDICAL EMERGENCY NOTICE: These symptoms require immediate medical evaluation. Call emergency services (112 / 102 / 108) or visit ER immediately.\n\n"
         )
         sanitized = prefix + sanitized
 

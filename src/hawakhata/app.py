@@ -1,9 +1,4 @@
-"""FastAPI application factory: wiring only, no business logic.
-
-Run locally::
-
-    uvicorn hawakhata.app:create_app --factory --app-dir src --reload
-"""
+"""FastAPI application factory: wiring only, no business logic."""
 
 from __future__ import annotations
 
@@ -31,17 +26,11 @@ from hawakhata.core.middleware import (
     SecurityHeadersMiddleware,
 )
 from hawakhata.core.rate_limit import TokenBucketLimiter
+from hawakhata.engine.cities import get_supported_cities
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
-    """Build the app with middleware, shared clients and system routes.
-
-    Args:
-        settings: Optional explicit settings (tests); defaults to :func:`get_settings`.
-
-    Returns:
-        A configured :class:`FastAPI` instance.
-    """
+    """Build the app with middleware, shared clients and system routes."""
     cfg = settings or get_settings()
     configure_logging(cfg.log_level)
 
@@ -63,7 +52,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = cfg
     app.state.cache = build_cache(cfg)
 
-    # Starlette runs the LAST added middleware first, so add innermost first.
     app.add_middleware(
         RateLimitMiddleware,
         limiter=TokenBucketLimiter(cfg.rate_limit_per_min, cfg.rate_limit_max_clients),
@@ -86,26 +74,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse, tags=["web"])
     async def index_page(request: Request) -> HTMLResponse:
-        """Render HawaKhata single-page application shell."""
-        if templates is None:
-            return HTMLResponse("<h1>HawaKhata</h1>")
-        return templates.TemplateResponse(request=request, name="index.html")
+        return (
+            templates.TemplateResponse(request=request, name="index.html")
+            if templates
+            else HTMLResponse("<h1>HawaKhata</h1>")
+        )
 
     @app.get("/how-it-works", response_class=HTMLResponse, tags=["web"])
     async def how_it_works_page(request: Request) -> HTMLResponse:
-        """Render trust, science and verified constants page."""
-        if templates is None:
-            return HTMLResponse("<h1>How HawaKhata Works</h1>")
-        return templates.TemplateResponse(request=request, name="how_it_works.html")
+        return (
+            templates.TemplateResponse(request=request, name="how_it_works.html")
+            if templates
+            else HTMLResponse("<h1>How HawaKhata Works</h1>")
+        )
 
     @app.get("/healthz", tags=["system"])
     async def healthz() -> dict[str, str]:
-        """Liveness probe; never calls upstream services."""
         return {"status": "ok"}
 
     @app.get("/api/v1/meta", tags=["system"])
     async def meta() -> dict[str, object]:
-        """Report versions and whether live Google data / Gemini are configured."""
         return {
             "data": {
                 "app_version": version.APP_VERSION,
@@ -116,6 +104,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "data_mode": "live" if cfg.has_live_air_data else "fixture",
                 "llm_mode": "gemini" if cfg.has_llm else "deterministic",
                 "story_mode_clock": cfg.demo_clock_iso,
+                "cities": [
+                    {"id": c.id, "name": c.name, "lat": c.lat, "lng": c.lng, "state": c.state}
+                    for c in get_supported_cities()
+                ],
             }
         }
 

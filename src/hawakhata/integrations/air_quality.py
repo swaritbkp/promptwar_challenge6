@@ -28,9 +28,6 @@ DATA_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "data" / "fix
 AQ_API_BASE = "https://airquality.googleapis.com/v1"
 DELHI_NCR_COORDS = (28.4595, 77.0266)
 CHANDIGARH_COORDS = (30.7333, 76.7794)
-MIN_ISO_TIME_LEN = 16
-HTTP_OK = 200
-MAX_RETRY_ATTEMPTS = 2
 
 
 def round_coordinates(lat: float, lng: float) -> tuple[float, float]:
@@ -39,7 +36,6 @@ def round_coordinates(lat: float, lng: float) -> tuple[float, float]:
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculate great circle distance between two points in km."""
     d_lat, d_lon = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
     a = (
         math.sin(d_lat / 2.0) ** 2
@@ -49,8 +45,6 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 class CircuitState(StrEnum):
-    """Resilience circuit state."""
-
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"
@@ -65,7 +59,6 @@ class CircuitBreaker:
         recovery_time_s: float = 60.0,
         clock: Callable[[], float] | None = None,
     ) -> None:
-        """Initialize circuit breaker with threshold and recovery time."""
         self._threshold, self._recovery_s = failure_threshold, recovery_time_s
         self._clock, self._state, self._failures, self._last_failure = (
             clock or time.monotonic,
@@ -76,7 +69,6 @@ class CircuitBreaker:
 
     @property
     def state(self) -> CircuitState:
-        """Current circuit state."""
         if (
             self._state == CircuitState.OPEN
             and (self._clock() - self._last_failure) >= self._recovery_s
@@ -85,15 +77,12 @@ class CircuitBreaker:
         return self._state
 
     def can_execute(self) -> bool:
-        """Return True if requests are permitted."""
         return self.state != CircuitState.OPEN
 
     def record_success(self) -> None:
-        """Record successful call and reset failures."""
         self._failures, self._state = 0, CircuitState.CLOSED
 
     def record_failure(self) -> None:
-        """Record failed call and trip breaker if threshold exceeded."""
         self._failures += 1
         self._last_failure = self._clock()
         if self._failures >= self._threshold:
@@ -151,15 +140,7 @@ def _normalise_raw_forecast_point(raw: dict[str, Any]) -> HourlyAirPoint:
 
     recs = {k: v for k, v in raw.get("healthRecommendations", {}).items() if isinstance(v, str)}
     return HourlyAirPoint(
-        dt,
-        dt[11:16] if len(dt) >= MIN_ISO_TIME_LEN else dt,
-        pm25,
-        pm10,
-        aqi_l,
-        aqi_u,
-        cat_l,
-        dom,
-        recs,
+        dt, dt[11:16] if len(dt) >= 16 else dt, pm25, pm10, aqi_l, aqi_u, cat_l, dom, recs
     )
 
 
@@ -202,7 +183,6 @@ class AirQualityClient:
         http_client: httpx.AsyncClient,
         breaker: CircuitBreaker | None = None,
     ) -> None:
-        """Initialize AirQualityClient with settings, cache, and HTTP client."""
         self._settings, self._cache, self._http = settings, cache, http_client
         self._breaker = breaker or CircuitBreaker()
 
@@ -273,12 +253,12 @@ class AirQualityClient:
         }
         url = f"{AQ_API_BASE}/forecast:lookup"
 
-        for attempt in (1, MAX_RETRY_ATTEMPTS):
+        for attempt in (1, 2):
             try:
                 resp = await self._http.post(
                     url, json=body, headers=headers, timeout=self._settings.aq_timeout_s
                 )
-                if resp.status_code == HTTP_OK:
+                if resp.status_code == 200:
                     self._breaker.record_success()
                     raw = resp.json().get("hourlyForecasts", [])
                     s = HourlyAirSeries(
@@ -291,7 +271,7 @@ class AirQualityClient:
                     return s
             except (httpx.TimeoutException, httpx.NetworkError):
                 pass
-            if attempt < MAX_RETRY_ATTEMPTS:
+            if attempt < 2:
                 await asyncio.sleep(0.1 + random.uniform(0.05, 0.15))  # noqa: S311
                 continue
             self._breaker.record_failure()

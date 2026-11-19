@@ -1,8 +1,4 @@
-"""Bounded abuse limits: a per-minute token bucket and a per-day usage quota.
-
-Both are keyed by a hashed client identifier and keep a size-bounded LRU table,
-so memory cannot grow without limit under a flood of distinct clients.
-"""
+"""Bounded abuse limits: a per-minute token bucket and a per-day usage quota."""
 
 from __future__ import annotations
 
@@ -20,23 +16,11 @@ class _Bucket:
 
 
 class TokenBucketLimiter:
-    """Allow ``per_minute`` requests per client with smooth refill.
-
-    The client table is an LRU bounded by ``max_clients`` so memory cannot grow
-    without limit under a flood of distinct IPs.
-    """
+    """Allow per_minute requests per client with smooth refill."""
 
     def __init__(
-        self,
-        per_minute: int,
-        max_clients: int,
-        clock: Callable[[], float] = time.monotonic,
+        self, per_minute: int, max_clients: int, clock: Callable[[], float] = time.monotonic
     ) -> None:
-        """Create a limiter.
-
-        Raises:
-            ValueError: If ``per_minute`` or ``max_clients`` is not positive.
-        """
         if per_minute <= 0 or max_clients <= 0:
             raise ValueError("per_minute and max_clients must be positive")
         self._capacity = float(per_minute)
@@ -51,7 +35,7 @@ class TokenBucketLimiter:
         return hashlib.sha256(raw_identifier.encode("utf-8")).hexdigest()[:16]
 
     def allow(self, client: str) -> bool:
-        """Consume one token for ``client``; return False when rate limited."""
+        """Consume one token for client; return False when rate limited."""
         now = self._clock()
         bucket = self._buckets.get(client)
         if bucket is None:
@@ -70,7 +54,7 @@ class TokenBucketLimiter:
         return True
 
     def retry_after_s(self, client: str) -> int:
-        """Return whole seconds until ``client`` regains one token."""
+        """Return whole seconds until client regains one token."""
         bucket = self._buckets.get(client)
         if bucket is None or bucket.tokens >= 1.0:
             return 0
@@ -78,28 +62,16 @@ class TokenBucketLimiter:
 
     @property
     def tracked_clients(self) -> int:
-        """Number of clients currently tracked (never exceeds ``max_clients``)."""
+        """Number of clients currently tracked."""
         return len(self._buckets)
 
 
 class DailyQuota:
-    """Cap expensive operations (Gemini calls) per client per rolling UTC day.
-
-    Each AI feature gets its own instance so one feature cannot exhaust another's
-    budget. Day boundaries come from the injected clock (seconds since epoch).
-    """
+    """Cap expensive operations per client per rolling UTC day."""
 
     def __init__(
-        self,
-        max_per_day: int,
-        max_clients: int,
-        clock: Callable[[], float] = time.time,
+        self, max_per_day: int, max_clients: int, clock: Callable[[], float] = time.time
     ) -> None:
-        """Create a quota.
-
-        Raises:
-            ValueError: If ``max_per_day`` or ``max_clients`` is not positive.
-        """
         if max_per_day <= 0 or max_clients <= 0:
             raise ValueError("max_per_day and max_clients must be positive")
         self._max_per_day = max_per_day
@@ -111,7 +83,7 @@ class DailyQuota:
         return int(self._clock() // 86_400)
 
     def try_consume(self, client: str) -> bool:
-        """Record one use for ``client``; return False once today's quota is spent."""
+        """Record one use for client; return False once quota is spent."""
         day = self._today()
         used_day, used = self._usage.get(client, (day, 0))
         if used_day != day:
@@ -125,6 +97,6 @@ class DailyQuota:
         return True
 
     def remaining(self, client: str) -> int:
-        """Return how many uses ``client`` has left today."""
+        """Return how many uses client has left today."""
         used_day, used = self._usage.get(client, (self._today(), 0))
         return self._max_per_day if used_day != self._today() else self._max_per_day - used

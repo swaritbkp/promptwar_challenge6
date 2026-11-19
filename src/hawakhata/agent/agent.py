@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from google.adk import Agent
 
-from hawakhata.agent.fallback import detect_language, execute_fallback_turn
+from hawakhata.agent.fallback import (
+    _dispatch_intent,
+    detect_language,
+    execute_fallback_turn,
+    route_intent,
+)
 from hawakhata.agent.grounding import check_numeric_grounding, extract_numbers
 from hawakhata.agent.guardrails import (
     detect_health_red_flags,
@@ -32,7 +38,6 @@ from hawakhata.integrations.air_quality import AirQualityClient
 from hawakhata.integrations.gemini import GeminiCascadeClient
 
 logger = get_logger(__name__)
-
 CANARY_TOKEN = "HAWAKHATA_SEC_CANARY_7X9Q"  # noqa: S105
 
 
@@ -58,15 +63,51 @@ class AgentTurnResult:
     fallback_used: bool
 
 
+def unwrap_agent_reply(text: str) -> str:
+    """Extract and unwrap user-visible reply from raw LLM output."""
+    if not text:
+        return ""
+    s = text.strip()
+    fence_m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", s)
+    candidate = fence_m.group(1).strip() if fence_m else s
+
+    for target in (candidate, s):
+        start, end = target.find("{"), target.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                data = json.loads(target[start : end + 1])
+                if isinstance(data, dict) and "reply" in data:
+                    rep = data["reply"]
+                    if isinstance(rep, str):
+                        rep_str = rep.strip()
+                        if rep_str.startswith("{") and '"reply"' in rep_str:
+                            return unwrap_agent_reply(rep_str)
+                        return rep_str
+                    return str(rep)
+            except Exception:
+                pass
+
+    rep_m = re.search(r'"reply"\s*:\s*"((?:[^"\\]|\\.)*)"', s)
+    if rep_m:
+        raw_val = rep_m.group(1)
+        try:
+            return str(bytes(raw_val, "utf-8").decode("unicode_escape"))
+        except Exception:
+            return raw_val
+
+    if s.startswith("```") and s.endswith("```"):
+        lines = s.splitlines()
+        if len(lines) >= 2:
+            return "\n".join(lines[1:-1]).strip()
+    return s
+
+
 class HawaKhataAgent:
     """Multi-turn ADK agent coordinating tools, grounding verification, and fallback."""
 
     def __init__(
-        self,
-        gemini_client: GeminiCascadeClient,
-        session_store: SessionStore | None = None,
+        self, gemini_client: GeminiCascadeClient, session_store: SessionStore | None = None
     ) -> None:
-        """Initialize HawaKhataAgent with Gemini cascade client and session store."""
         self.client = gemini_client
         self.sessions = session_store or SessionStore()
         self._adk_agent: Agent | None = None
@@ -123,9 +164,21 @@ class HawaKhataAgent:
             brief_tool = await get_smog_brief()
             tool_outputs: list[Any] = [brief_tool]
             tool_calls = ["get_smog_brief"]
+
+            intent, _ = route_intent(safe_input)
+            if intent not in ("brief", "mask"):
+                _, intent_tool_name, intent_tool_out = await _dispatch_intent(
+                    intent, lang, location.city_name or "your area", date_iso
+                )
+                tool_calls.append(intent_tool_name)
+                tool_outputs.append(intent_tool_out)
+
             facts = dict(brief_tool.get("result", {}))
             city = location.city_name or "your area"
             facts["city"] = city
+            for out in tool_outputs:
+                if isinstance(out, dict) and "result" in out and isinstance(out["result"], dict):
+                    facts.update(out["result"])
             facts_str = json.dumps(facts)
             history_entries = self.sessions.get_history(session_id)[-4:]
             hist_str = "\n".join(f"{h['role']}: {h['content']}" for h in history_entries)
@@ -138,25 +191,13 @@ class HawaKhataAgent:
             )
 
             llm_resp = await self.client.generate_content(
-                prompt=prompt,
-                system_instruction=sys_prompt,
-                client_id=client_ip,
+                prompt=prompt, system_instruction=sys_prompt, client_id=client_ip
             )
-            raw = llm_resp.text.strip()
-            clean = (
-                raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip() if raw.startswith("```") else raw
-            )
-            try:
-                reply = (
-                    str(json.loads(clean).get("reply", raw))
-                    if clean.startswith("{") and clean.endswith("}")
-                    else raw
-                )
-            except Exception:
-                reply = raw
+            reply = unwrap_agent_reply(llm_resp.text.strip())
 
             if check_numeric_grounding(reply, tool_outputs, user_text=safe_input).passed:
                 return reply, tool_calls, tool_outputs, False
+            logger.info("Live Gemini reply ungrounded; falling back to deterministic.")
         except Exception as exc:
             logger.debug("Gemini live execution fallback: %s", exc)
         fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
@@ -205,10 +246,8 @@ class HawaKhataAgent:
             )
             final_reply = out_v.sanitized_text
             nums = [n.value for n in extract_numbers(final_reply)]
-
             self.sessions.add_message(session_id, "user", user_message)
             self.sessions.add_message(session_id, "model", final_reply)
-
             return AgentTurnResult(
                 final_reply,
                 lang,

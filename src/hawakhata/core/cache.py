@@ -1,10 +1,4 @@
-"""Bounded caching behind one async protocol.
-
-``TTLCache`` is the default in-process backend: LRU-evicted at ``max_entries``
-and expired after ``ttl_s``. ``RedisCache`` is a drop-in backend for Redis /
-Memorystore when ``REDIS_URL`` is configured, so horizontally scaled Cloud Run
-instances can share cached Google Air Quality responses.
-"""
+"""Bounded caching behind one async protocol."""
 
 from __future__ import annotations
 
@@ -14,7 +8,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -38,7 +32,7 @@ class CacheBackend(Protocol):
     """Async key-value cache contract shared by all backends."""
 
     async def get(self, key: str) -> JsonValue:
-        """Return the cached value or ``None`` when missing or expired."""
+        """Return the cached value or None."""
         ...
 
     async def set(self, key: str, value: JsonValue, ttl_s: int | None = None) -> None:
@@ -51,23 +45,11 @@ class CacheBackend(Protocol):
 
 
 class TTLCache:
-    """In-memory LRU cache with a hard size bound and per-entry expiry.
-
-    Complexity: O(1) average for ``get`` and ``set``. Memory is bounded by
-    ``max_entries``; the least-recently-used entry is evicted first.
-    """
+    """In-memory LRU cache with a hard size bound and per-entry expiry."""
 
     def __init__(
-        self,
-        max_entries: int,
-        default_ttl_s: int,
-        clock: Callable[[], float] = time.monotonic,
+        self, max_entries: int, default_ttl_s: int, clock: Callable[[], float] = time.monotonic
     ) -> None:
-        """Create a cache holding at most ``max_entries`` items.
-
-        Raises:
-            ValueError: If ``max_entries`` or ``default_ttl_s`` is not positive.
-        """
         if max_entries <= 0 or default_ttl_s <= 0:
             raise ValueError("max_entries and default_ttl_s must be positive")
         self._max_entries = max_entries
@@ -78,7 +60,7 @@ class TTLCache:
         self._stats = CacheStats()
 
     async def get(self, key: str) -> JsonValue:
-        """Return a live value (refreshing its LRU position) or ``None``."""
+        """Return a live value or None."""
         async with self._lock:
             entry = self._data.get(key)
             if entry is None or entry[0] <= self._clock():
@@ -91,7 +73,7 @@ class TTLCache:
             return entry[1]
 
     async def set(self, key: str, value: JsonValue, ttl_s: int | None = None) -> None:
-        """Insert or replace ``key``; evict LRU entries beyond ``max_entries``."""
+        """Insert or replace key; evict LRU entries beyond max_entries."""
         expires_at = self._clock() + (ttl_s or self._default_ttl_s)
         async with self._lock:
             self._data[key] = (expires_at, value)
@@ -114,37 +96,35 @@ class RedisCache:
     """Redis-backed cache; values are JSON encoded and always carry a TTL."""
 
     def __init__(self, client: Redis, default_ttl_s: int, prefix: str = "hk:") -> None:
-        """Wrap an async Redis client; keys are namespaced with ``prefix``."""
         self._client = client
         self._default_ttl_s = default_ttl_s
         self._prefix = prefix
         self._stats = CacheStats()
 
     async def get(self, key: str) -> JsonValue:
-        """Return the decoded value or ``None``."""
+        """Return the decoded value or None."""
         raw = await self._client.get(self._prefix + key)
         if raw is None:
             self._stats.misses += 1
             return None
         self._stats.hits += 1
-        decoded: JsonValue = json.loads(raw)
-        return decoded
+        return cast(JsonValue, json.loads(raw))
 
     async def set(self, key: str, value: JsonValue, ttl_s: int | None = None) -> None:
-        """Store ``value`` with an expiry (Redis evicts expired keys itself)."""
+        """Store value with expiry."""
         await self._client.set(
             self._prefix + key, json.dumps(value), ex=ttl_s or self._default_ttl_s
         )
 
     def stats(self) -> CacheStats:
-        """Return hit/miss counters (size is managed by Redis)."""
+        """Return hit/miss counters."""
         return CacheStats(hits=self._stats.hits, misses=self._stats.misses)
 
 
 def build_cache(settings: Settings) -> CacheBackend:
-    """Choose the cache backend from configuration (Redis if ``REDIS_URL`` is set)."""
+    """Choose the cache backend from configuration (Redis if REDIS_URL is set)."""
     if settings.redis_url:
-        from redis.asyncio import Redis  # noqa: PLC0415 - optional dependency path
+        from redis.asyncio import Redis  # noqa: PLC0415
 
         return RedisCache(Redis.from_url(settings.redis_url), settings.aq_cache_ttl_s)
     return TTLCache(settings.cache_max_entries, settings.aq_cache_ttl_s)

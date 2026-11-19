@@ -21,11 +21,10 @@ class _CacheEntry:
 
 
 class _BoundedPromptCache:
-    """Bounded synchronous cache with TTL and FIFO eviction (Rule 1 compliant)."""
+    """Bounded synchronous cache with TTL and FIFO eviction."""
 
     def __init__(self, max_entries: int = 64, ttl_s: float = 3600.0) -> None:
-        self.max_entries = max_entries
-        self.ttl_s = ttl_s
+        self.max_entries, self.ttl_s = max_entries, ttl_s
         self._entries: dict[str, _CacheEntry] = {}
 
     def get(self, key: str) -> PromptTemplate | None:
@@ -39,21 +38,18 @@ class _BoundedPromptCache:
 
     def set(self, key: str, value: PromptTemplate) -> None:
         if len(self._entries) >= self.max_entries:
-            oldest_key = next(iter(self._entries))
-            self._entries.pop(oldest_key, None)
+            self._entries.pop(next(iter(self._entries)), None)
         self._entries[key] = _CacheEntry(value=value, expires_at=time.monotonic() + self.ttl_s)
 
     def clear(self) -> None:
         self._entries.clear()
 
 
-_PROMPT_CACHE = _BoundedPromptCache(max_entries=64, ttl_s=3600.0)
+_PROMPT_CACHE = _BoundedPromptCache()
 
 
 @dataclass(frozen=True, slots=True)
 class PromptMetadata:
-    """Metadata extracted from YAML front-matter."""
-
     name: str
     version: str
     purpose: str
@@ -61,110 +57,74 @@ class PromptMetadata:
 
 @dataclass(frozen=True, slots=True)
 class PromptTemplate:
-    """Prompt template containing metadata and body with placeholder substitution."""
-
     metadata: PromptMetadata
     raw_body: str
 
     def required_placeholders(self) -> set[str]:
-        """Return the set of uppercase placeholder keys required by this prompt."""
         return set(PLACEHOLDER_PATTERN.findall(self.raw_body))
 
     def render(self, **kwargs: object) -> str:
-        """Render prompt text by replacing {{KEY}} placeholders with provided arguments."""
         missing = self.required_placeholders() - set(kwargs.keys())
         if missing:
-            missing_sorted = sorted(missing)
-            raise ValueError(f"Missing required placeholders: {missing_sorted}")
-
-        rendered = self.raw_body
-        for key, val in kwargs.items():
-            rendered = rendered.replace(f"{{{{{key}}}}}", str(val))
-        return rendered
+            raise ValueError(f"Missing required placeholders: {sorted(missing)}")
+        res = self.raw_body
+        for k, v in kwargs.items():
+            res = res.replace(f"{{{{{k}}}}}", str(v))
+        return res
 
 
 def _parse_front_matter(content: str) -> tuple[PromptMetadata, str]:
-    """Extract YAML-like front-matter and markdown body."""
     lines = content.splitlines()
     if not lines or lines[0].strip() != "---":
-        return PromptMetadata(name="", version="", purpose=""), content
-
-    fm_lines: list[str] = []
-    body_idx = 0
+        return PromptMetadata("", "", ""), content
+    fm_lines, body_idx = [], 0
     for i, line in enumerate(lines[1:], start=1):
         if line.strip() == "---":
             body_idx = i + 1
             break
         fm_lines.append(line)
-
-    meta_dict: dict[str, str] = {}
-    for line in fm_lines:
-        if ":" in line:
-            k, v = line.split(":", 1)
-            meta_dict[k.strip()] = v.strip()
-
-    body = "\n".join(lines[body_idx:]).strip()
-    meta = PromptMetadata(
-        name=meta_dict.get("name", ""),
-        version=meta_dict.get("version", ""),
-        purpose=meta_dict.get("purpose", ""),
-    )
-    return meta, body
+    meta_dict = dict(line.split(":", 1) for line in fm_lines if ":" in line)
+    clean_dict = {k.strip(): v.strip() for k, v in meta_dict.items()}
+    return PromptMetadata(
+        clean_dict.get("name", ""), clean_dict.get("version", ""), clean_dict.get("purpose", "")
+    ), "\n".join(lines[body_idx:]).strip()
 
 
 def load_prompt(
-    name: str,
-    version: str = PROMPT_VERSION,
-    base_dir: Path | None = None,
+    name: str, version: str = PROMPT_VERSION, base_dir: Path | None = None
 ) -> PromptTemplate:
-    """Load a prompt template from disk with bounded TTL caching."""
     cache_key = f"{version}:{name}"
     cached = _PROMPT_CACHE.get(cache_key)
     if cached is not None:
         return cached
-
-    prompts_root = base_dir or PROMPTS_DIR
-    target_path = prompts_root / version / f"{name}.md"
-    if not target_path.exists():
-        raise FileNotFoundError(f"Prompt not found: {target_path}")
-
-    content = target_path.read_text(encoding="utf-8")
-    meta, body = _parse_front_matter(content)
-    template = PromptTemplate(metadata=meta, raw_body=body)
-    _PROMPT_CACHE.set(cache_key, template)
-    return template
+    p = (base_dir or PROMPTS_DIR) / version / f"{name}.md"
+    if not p.exists():
+        raise FileNotFoundError(f"Prompt not found: {p}")
+    meta, body = _parse_front_matter(p.read_text("utf-8"))
+    tmpl = PromptTemplate(meta, body)
+    _PROMPT_CACHE.set(cache_key, tmpl)
+    return tmpl
 
 
 def render_prompt(
-    name: str,
-    version: str = PROMPT_VERSION,
-    base_dir: Path | None = None,
-    **kwargs: object,
+    name: str, version: str = PROMPT_VERSION, base_dir: Path | None = None, **kwargs: object
 ) -> str:
-    """Convenience helper to load and render a prompt in one step."""
-    template = load_prompt(name, version=version, base_dir=base_dir)
-    return template.render(**kwargs)
+    return load_prompt(name, version=version, base_dir=base_dir).render(**kwargs)
 
 
 def list_prompts(
-    version: str = PROMPT_VERSION,
-    base_dir: Path | None = None,
+    version: str = PROMPT_VERSION, base_dir: Path | None = None
 ) -> list[PromptMetadata]:
-    """Enumerate all available prompt metadata in a specific prompt version directory."""
-    prompts_root = base_dir or PROMPTS_DIR
-    v_dir = prompts_root / version
+    v_dir = (base_dir or PROMPTS_DIR) / version
     if not v_dir.exists():
         return []
-
-    results: list[PromptMetadata] = []
+    res = []
     for p in sorted(v_dir.glob("*.md")):
-        content = p.read_text(encoding="utf-8")
-        meta, _ = _parse_front_matter(content)
+        meta, _ = _parse_front_matter(p.read_text("utf-8"))
         if meta.name:
-            results.append(meta)
-    return results
+            res.append(meta)
+    return res
 
 
 def clear_prompt_cache() -> None:
-    """Clear in-memory prompt cache for testing."""
     _PROMPT_CACHE.clear()

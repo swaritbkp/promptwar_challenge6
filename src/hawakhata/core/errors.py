@@ -1,9 +1,4 @@
-"""Domain exceptions and the single JSON error contract returned by the API.
-
-Every non-2xx response has the shape::
-
-    {"error": {"code": "...", "message": "...", "request_id": "...", "retryable": false}}
-"""
+"""Domain exceptions and the single JSON error contract returned by the API."""
 
 from __future__ import annotations
 
@@ -43,38 +38,27 @@ class AppError(Exception):
     retryable: bool = False
 
     def __init__(self, message: str) -> None:
-        """Store a user-safe message (never include secrets or raw user input)."""
         super().__init__(message)
         self.message = message
 
 
 class ValidationFailedError(AppError):
-    """Input was syntactically valid but semantically impossible."""
-
     code, status_code = ErrorCode.VALIDATION_ERROR, 422
 
 
 class NotFoundError(AppError):
-    """Requested entity does not exist."""
-
     code, status_code = ErrorCode.NOT_FOUND, 404
 
 
 class UpstreamUnavailableError(AppError):
-    """A Google API failed and no degraded path could serve the request."""
-
     code, status_code, retryable = ErrorCode.UPSTREAM_ERROR, 503, True
 
 
 class RateLimitedError(AppError):
-    """Client has exceeded the allowed request or AI quota limit."""
-
     code, status_code, retryable = ErrorCode.RATE_LIMITED, 429, True
 
 
 class GuardrailBlockedError(AppError):
-    """Input was refused by a safety guardrail."""
-
     code, status_code = ErrorCode.GUARDRAIL_BLOCKED, 400
 
 
@@ -91,7 +75,7 @@ def error_body(code: ErrorCode, message: str, *, retryable: bool = False) -> dic
 
 
 async def _handle_app_error(_: Request, exc: Exception) -> JSONResponse:
-    assert isinstance(exc, AppError)  # noqa: S101 - narrowed by registration
+    assert isinstance(exc, AppError)  # noqa: S101
     _log.warning("app_error", extra={"code": exc.code.value})
     return JSONResponse(
         error_body(exc.code, exc.message, retryable=exc.retryable), status_code=exc.status_code

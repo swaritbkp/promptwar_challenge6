@@ -62,8 +62,12 @@ def sample_profile(sample_location: LocationInput) -> FamilyProfileInput:
         ScheduleBlockInput(start_hour=16, end_hour=18, micro_env="outdoor", activity="moderate"),
     ]
     rm = [RoomInput(name="Kids Room", volume_m3=42.0, purifier_cadr_m3_per_h=250.0)]
-    mem = MemberInput(id="m1", name="Aarav", age_band="child", sensitivities=["asthma"], schedule_blocks=sb)
-    return FamilyProfileInput(id="fam_test", name="Family", location=sample_location, members=[mem], rooms=rm)
+    mem = MemberInput(
+        id="m1", name="Aarav", age_band="child", sensitivities=["asthma"], schedule_blocks=sb
+    )
+    return FamilyProfileInput(
+        id="fam_test", name="Family", location=sample_location, members=[mem], rooms=rm
+    )
 
 
 @pytest.fixture

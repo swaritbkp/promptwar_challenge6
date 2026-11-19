@@ -17,19 +17,14 @@ from hawakhata.integrations.gemini import GeminiCascadeClient
 
 
 def get_settings(request: Request) -> Settings:
-    """Extract singleton application configuration from request app state."""
-    cfg: Settings = request.app.state.settings
-    return cfg
+    return request.app.state.settings  # type: ignore[no-any-return]
 
 
 def get_cache(request: Request) -> CacheBackend:
-    """Extract shared cache backend from request app state."""
-    cache: CacheBackend = request.app.state.cache
-    return cache
+    return request.app.state.cache  # type: ignore[no-any-return]
 
 
 def get_aq_client(request: Request) -> AirQualityClient:
-    """Construct or retrieve the AirQualityClient with shared httpx client and cache."""
     client = getattr(request.app.state, "aq_client", None)
     if client is None:
         http_client = getattr(request.app.state, "http", None)
@@ -46,7 +41,6 @@ def get_aq_client(request: Request) -> AirQualityClient:
 
 
 def get_gemini_client(request: Request) -> GeminiCascadeClient:
-    """Retrieve or construct the GeminiCascadeClient from request app state."""
     client = getattr(request.app.state, "gemini_client", None)
     if client is None:
         client = GeminiCascadeClient(request.app.state.settings)
@@ -55,24 +49,18 @@ def get_gemini_client(request: Request) -> GeminiCascadeClient:
 
 
 def get_agent(request: Request) -> HawaKhataAgent:
-    """Retrieve or construct the singleton HawaKhataAgent from request app state."""
     agent = getattr(request.app.state, "agent", None)
     if agent is None:
-        gemini_client = get_gemini_client(request)
-        agent = HawaKhataAgent(gemini_client)
+        agent = HawaKhataAgent(get_gemini_client(request))
         request.app.state.agent = agent
     return agent
 
 
 def make_meta(
-    request: Request,
-    data_mode: Literal["live", "fixture"],
-    degraded: bool = False,
+    request: Request, data_mode: Literal["live", "fixture"], degraded: bool = False
 ) -> ResponseMeta:
-    """Construct unified response metadata carrying the request ID and version numbers."""
-    req_id = getattr(request.state, "request_id", "req-local")
     return ResponseMeta(
-        request_id=req_id,
+        request_id=getattr(request.state, "request_id", "req-local"),
         data_mode=data_mode,
         engine_version=version.ENGINE_VERSION,
         constants_version=version.CONSTANTS_VERSION,

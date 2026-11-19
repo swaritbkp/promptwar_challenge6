@@ -10,10 +10,12 @@ from typing import Any
 
 from hawakhata.agent.tools import (
     ToolContext,
+    check_indoor_plants_impact,
     evaluate_swaps,
     get_air_forecast,
     get_current_context,
     get_family_passbook,
+    get_pet_air_guidance,
     get_smog_brief,
     plan_clean_windows,
     reset_current_context,
@@ -80,31 +82,19 @@ def compose_reply(intent: str, lang: str, params: dict[str, Any]) -> str:
 async def _dispatch_intent(
     intent: str, lang: str, location_city: str, date_iso: str
 ) -> tuple[str, str, dict[str, Any]]:
-    reply: str
-    tool_name: str
-    tool_output: dict[str, Any]
-
     if intent == "passbook":
         res = await get_family_passbook(date_iso)
-        reply, tool_name, tool_output = (
-            compose_reply("passbook", lang, res.get("result", {})),
-            "get_family_passbook",
-            res,
-        )
-    elif intent == "indoor":
+        return compose_reply("passbook", lang, res.get("result", {})), "get_family_passbook", res
+    if intent == "indoor":
         res = await simulate_indoor_air()
-        reply, tool_name, tool_output = (
-            compose_reply("indoor", lang, res.get("result", {})),
-            "simulate_indoor_air",
-            res,
-        )
-    elif intent == "health":
-        reply, tool_name, tool_output = (
+        return compose_reply("indoor", lang, res.get("result", {})), "simulate_indoor_air", res
+    if intent == "health":
+        return (
             compose_reply("health", lang, {}),
             "health_guidance",
             {"result": "consult doctor", "explanation": "Medical disclaimer", "missing_fields": []},
         )
-    elif intent == "plan":
+    if intent == "plan":
         ctx = get_current_context()
         if (
             ctx.profile.id == "empty"
@@ -112,58 +102,68 @@ async def _dispatch_intent(
             or not any(m.schedule_blocks for m in ctx.profile.members)
         ):
             plan_res = await plan_clean_windows()
-            reply, tool_name, tool_output = (
-                compose_reply("plan_missing", lang, {}),
-                "plan_clean_windows",
-                plan_res,
-            )
-        else:
-            brief_res = await get_smog_brief()
-            cw = brief_res.get("result", {}).get("cleanest_window", {})
-            p = {
-                "dose_saved_ug": 45.0,
-                "percent_reduction": 35.0,
-                "cleanest_start": cw.get("start", "12:00"),
-                "cleanest_end": cw.get("end", "15:00"),
-            }
-            reply, tool_name, tool_output = (
-                compose_reply("plan", lang, p),
-                "get_smog_brief",
-                brief_res,
-            )
-    elif intent == "swap":
+            return compose_reply("plan_missing", lang, {}), "plan_clean_windows", plan_res
+        brief_res = await get_smog_brief()
+        cw = brief_res.get("result", {}).get("cleanest_window", {})
+        p = {
+            "dose_saved_ug": 45.0,
+            "percent_reduction": 35.0,
+            "cleanest_start": cw.get("start", "12:00"),
+            "cleanest_end": cw.get("end", "15:00"),
+        }
+        return compose_reply("plan", lang, p), "get_smog_brief", brief_res
+    if intent == "swap":
         res = await evaluate_swaps()
-        reply, tool_name, tool_output = (
-            compose_reply("swap", lang, res.get("result", {})),
-            "evaluate_swaps",
-            res,
-        )
-    elif intent == "mask":
+        return compose_reply("swap", lang, res.get("result", {})), "evaluate_swaps", res
+    if intent == "mask":
         brief_res = await get_smog_brief()
         d = brief_res.get("result", {})
         cat = d.get("headline", "").split("-")[-1].strip() or "Poor"
-        reply, tool_name, tool_output = (
+        return (
             compose_reply("mask", lang, {"current_aqi": d.get("current_aqi", 0), "category": cat}),
             "get_smog_brief",
             brief_res,
         )
-    else:
+    if intent == "pet":
         brief_res = await get_smog_brief()
         d = brief_res.get("result", {})
-        cw = d.get("cleanest_window", {})
-        fc_res = await get_air_forecast(hours=1)
+        pm = float(d.get("current_pm25", 150.0))
+        pet_res = await get_pet_air_guidance(species="dog", outdoor_pm25=pm)
+        pr = pet_res.get("result", {})
         p = {
             "city": d.get("city", location_city),
-            "category": fc_res.get("result", {}).get("category", "Poor"),
-            "current_pm25": d.get("current_pm25", 0.0),
-            "current_aqi": d.get("current_aqi", 0),
-            "cleanest_window_start": cw.get("start", "12:00"),
-            "cleanest_window_end": cw.get("end", "15:00"),
-            "cleanest_window_pm25": cw.get("pm25", 0.0),
+            "current_pm25": pr.get("current_pm25", pm),
+            "walk_advice": pr.get("walk_advice", ""),
+            "post_walk_wipe": "Recommended" if pr.get("post_walk_wipe_needed") else "Not needed",
+            "indoor_steps": (pr.get("indoor_warnings", []) + [""])[0],
         }
-        reply, tool_name, tool_output = compose_reply("brief", lang, p), "get_smog_brief", brief_res
+        return compose_reply("pet", lang, p), "get_pet_air_guidance", pet_res
+    if intent == "plants":
+        plants_res = await check_indoor_plants_impact(plant_count=5)
+        pr = plants_res.get("result", {})
+        p = {
+            "plant_count": pr.get("plant_count", 5),
+            "plant_cadr_m3_per_h": pr.get("plant_cadr_m3_per_h", 0.5),
+            "hepa_cadr_m3_per_h": pr.get("hepa_cadr_m3_per_h", 300.0),
+            "hepa_to_plant_ratio": pr.get("hepa_to_plant_ratio", 600.0),
+            "percent_removal_by_plants": pr.get("percent_removal_by_plants", 0.8),
+        }
+        return compose_reply("plants", lang, p), "check_indoor_plants_impact", plants_res
 
-    return reply, tool_name, tool_output
+    brief_res = await get_smog_brief()
+    d = brief_res.get("result", {})
+    cw = d.get("cleanest_window", {})
+    fc_res = await get_air_forecast(hours=1)
+    p = {
+        "city": d.get("city", location_city),
+        "category": fc_res.get("result", {}).get("category", "Poor"),
+        "current_pm25": d.get("current_pm25", 0.0),
+        "current_aqi": d.get("current_aqi", 0),
+        "cleanest_window_start": cw.get("start", "12:00"),
+        "cleanest_window_end": cw.get("end", "15:00"),
+        "cleanest_window_pm25": cw.get("pm25", 0.0),
+    }
+    return compose_reply("brief", lang, p), "get_smog_brief", brief_res
 
 
 async def execute_fallback_turn(

@@ -10,15 +10,7 @@ from hawakhata.engine.explain import Explanation
 
 @dataclass(frozen=True, slots=True)
 class ScheduleBlock:
-    """An activity window entered by the user or preset in a demo profile.
-
-    Attributes:
-        start_hour: Beginning of activity (0..23).
-        end_hour: End of activity (1..24).
-        micro_env: Environment identifier (e.g. 'indoor_home', 'outdoor', 'transit_car').
-        activity: Physical exertion level ('sleep', 'sedentary', 'light', 'moderate', 'vigorous').
-        label: User-facing descriptive name.
-    """
+    """An activity window entered by the user or preset in a demo profile."""
 
     start_hour: int
     end_hour: int
@@ -63,15 +55,21 @@ def inhalation_rate_m3_per_h(age_band: str, activity: str) -> float:
     """Calculate hourly air breathing volume based on age band and exertion level."""
     daily_means = get_constant("inhalation_rate_daily_mean").value
     multipliers = get_constant("activity_multiplier").value
+    mean_daily = float(daily_means.get(age_band, 16.0))
+    m_default = (
+        "moderate"
+        if activity in ("run", "play", "pet_walk")
+        else (
+            "light"
+            if activity in ("walk", "school_run", "market_shopping", "park_terrace")
+            else "sedentary"
+        )
+    )
+    mult = float(multipliers.get(activity, multipliers.get(m_default, 1.0)))
+    return (mean_daily / 24.0) * mult
 
-    mean_daily_m3 = float(daily_means.get(age_band, 16.0))
-    mult = float(multipliers.get(activity, 1.0))
-    return (mean_daily_m3 / 24.0) * mult
 
-
-def build_member_timeline(
-    schedule_blocks: list[ScheduleBlock] | None = None,
-) -> list[TimelineSlot]:
+def build_member_timeline(schedule_blocks: list[ScheduleBlock] | None = None) -> list[TimelineSlot]:
     """Construct a full 24-hour member timeline applying sensible defaults for unassigned hours."""
     timeline = [
         TimelineSlot(
@@ -99,61 +97,47 @@ def compute_member_dose(
     in_vehicle_ratios = get_constant("in_vehicle_ratio").value
     infiltration_closed = float(get_constant("infiltration_closed_building").value)
 
-    hourly_concentrations: list[float] = []
-    hourly_doses: list[float] = []
-
+    concs: list[float] = []
+    doses: list[float] = []
     num_hours = min(len(timeline), len(outdoor_pm25_series), 24)
 
     for h in range(num_hours):
         slot = timeline[h]
         c_out = max(0.0, outdoor_pm25_series[h])
-
-        # Determine effective concentration for micro-environment
         if slot.micro_env == "indoor_home":
-            if indoor_home_series and h < len(indoor_home_series):
-                c_eff = max(0.0, indoor_home_series[h])
-            else:
-                c_eff = c_out * infiltration_closed
+            c_eff = (
+                max(0.0, indoor_home_series[h])
+                if (indoor_home_series and h < len(indoor_home_series))
+                else c_out * infiltration_closed
+            )
         elif slot.micro_env == "indoor_other":
             c_eff = c_out * infiltration_closed
-        elif slot.micro_env in ("outdoor", "transit_walk_cycle"):
+        elif slot.micro_env in ("outdoor", "transit_walk_cycle", "park_terrace", "terrace"):
             c_eff = c_out
         else:
-            # Transit modes: car, two_wheeler, bus, metro
-            ratio = float(in_vehicle_ratios.get(slot.micro_env, 1.0))
-            c_eff = c_out * ratio
+            c_eff = c_out * float(in_vehicle_ratios.get(slot.micro_env, 1.0))
+        concs.append(c_eff)
+        doses.append(c_eff * inhalation_rate_m3_per_h(age_band, slot.activity) * 1.0)
 
-        hourly_concentrations.append(c_eff)
-        ir = inhalation_rate_m3_per_h(age_band, slot.activity)
-        dose = c_eff * ir * 1.0  # 1 hour duration
-        hourly_doses.append(dose)
-
-    total_dose = sum(hourly_doses)
-
-    # Compute top 3 contributors
-    contributors: list[DoseContributor] = []
-    for h in range(num_hours):
-        d = hourly_doses[h]
-        share = (d / total_dose * 100.0) if total_dose > 0 else 0.0
-        contributors.append(
-            DoseContributor(
-                hour=h,
-                micro_env=timeline[h].micro_env,
-                activity=timeline[h].activity,
-                dose_ug=round(d, 2),
-                share_percent=round(share, 1),
-            )
+    tot = sum(doses)
+    contributors = [
+        DoseContributor(
+            hour=h,
+            micro_env=timeline[h].micro_env,
+            activity=timeline[h].activity,
+            dose_ug=round(doses[h], 2),
+            share_percent=round((doses[h] / tot * 100.0) if tot > 0 else 0.0, 1),
         )
-
+        for h in range(num_hours)
+    ]
     contributors.sort(key=lambda x: x.dose_ug, reverse=True)
-    top_3 = contributors[:3]
 
     exp = Explanation(
         formula="dose_ug = sum(C_micro(t) * InhalationRate(age, activity) * 1h)",
         inputs={
             "age_band": age_band,
-            "total_dose_ug": f"{total_dose:.1f} ug",
-            "mean_concentration": f"{(sum(hourly_concentrations) / max(1, num_hours)):.1f} ug/m3",
+            "total_dose_ug": f"{tot:.1f} ug",
+            "mean_concentration": f"{(sum(concs) / max(1, num_hours)):.1f} ug/m3",
         },
         constants_used=[
             "inhalation_rate_daily_mean",
@@ -161,20 +145,16 @@ def compute_member_dose(
             "in_vehicle_ratio",
             "infiltration_closed_building",
         ],
-        sources=[
-            "US EPA Exposure Factors Handbook (2011), Table 6-1 & 6-2",
-            "Goel & Kumar (2015) Atmospheric Environment commuter exposure in Delhi",
-        ],
+        sources=["US EPA Exposure Factors Handbook (2011)", "Goel & Kumar (2015)"],
         assumptions=[
             "Uniform 1-hour time slices",
-            "Constant micro-environmental concentrations during each hourly interval",
+            "Constant micro-environmental concentrations per hour",
         ],
     )
-
     return MemberDoseResult(
-        total_dose_ug=total_dose,
-        hourly_doses_ug=hourly_doses,
-        hourly_concentrations_ug_m3=hourly_concentrations,
-        top_contributors=top_3,
+        total_dose_ug=tot,
+        hourly_doses_ug=doses,
+        hourly_concentrations_ug_m3=concs,
+        top_contributors=contributors[:3],
         explanation=exp,
     )

@@ -19,12 +19,14 @@ async def test_live_api_mock_transport_success() -> None:
         "hourlyForecasts": [
             {
                 "dateTime": "2026-11-18T12:00:00Z",
-                "indexes": [{
-                    "code": "ind_cpcb",
-                    "aqi": 340,
-                    "category": "VERY_POOR",
-                    "dominantPollutant": "pm25",
-                }],
+                "indexes": [
+                    {
+                        "code": "ind_cpcb",
+                        "aqi": 340,
+                        "category": "VERY_POOR",
+                        "dominantPollutant": "pm25",
+                    }
+                ],
                 "pollutants": [
                     {"code": "pm25", "concentration": {"value": 185.4}},
                     {"code": "pm10", "concentration": {"value": 290.0}},

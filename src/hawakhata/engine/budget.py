@@ -1,11 +1,4 @@
-"""Family Air Passbook — debit, budget, balance, and exposure equivalents.
-
-The air budget defines the maximum daily PM2.5 mass a person can inhale while
-remaining within the WHO 2021 24-hour guideline (15 ug/m3).
-    budget_ug = WHO_24h_guideline (15 ug/m3) * DailyInhalationVolume (m3/day)
-    balance_ug = budget_ug - debit_ug
-    overspend_ratio = debit_ug / budget_ug
-"""
+"""Family Air Passbook — debit, budget, balance, and exposure equivalents."""
 
 from __future__ import annotations
 
@@ -38,8 +31,7 @@ def daily_air_budget_ug(age_band: str) -> float:
     """Calculate the personal WHO-based daily permissible PM2.5 inhalation budget."""
     who_guideline = float(get_constant("who_aqg_pm25_24h").value)
     daily_means = get_constant("inhalation_rate_daily_mean").value
-    daily_volume_m3 = float(daily_means.get(age_band, 16.0))
-    return who_guideline * daily_volume_m3
+    return who_guideline * float(daily_means.get(age_band, 16.0))
 
 
 def build_passbook_entry(
@@ -54,18 +46,14 @@ def build_passbook_entry(
     balance = budget - debit_ug
     overspend = (debit_ug / budget) if budget > 0 else 0.0
 
-    # Berkeley Earth cigarette equivalence:
-    # 22 ug/m3 24h average PM2.5 exposure corresponds roughly to 1 cigarette per day.
-    # Mean concentration = total_debit_ug / daily_volume_m3
     daily_means = get_constant("inhalation_rate_daily_mean").value
     daily_volume_m3 = float(daily_means.get(age_band, 16.0))
-    mean_24h_exposure_ug_m3 = (debit_ug / daily_volume_m3) if daily_volume_m3 > 0 else 0.0
+    mean_24h_exposure = (debit_ug / daily_volume_m3) if daily_volume_m3 > 0 else 0.0
     equiv_factor = float(get_constant("cigarette_equiv_pm25_24h").value)
-    cigarette_count = (mean_24h_exposure_ug_m3 / equiv_factor) if equiv_factor > 0 else 0.0
+    cigs = (mean_24h_exposure / equiv_factor) if equiv_factor > 0 else 0.0
 
     exp = Explanation(
-        formula="budget = WHO_24h(15 ug/m3) * DailyIR(m3); balance = budget - debit; "
-        "overspend = debit / budget; cig_equiv = (debit / DailyIR) / 22 ug/m3",
+        formula="budget = WHO_24h(15 ug/m3) * DailyIR(m3); balance = budget - debit; overspend = debit / budget; cig_equiv = (debit / DailyIR) / 22 ug/m3",
         inputs={
             "member": member_label,
             "age_band": age_band,
@@ -73,7 +61,7 @@ def build_passbook_entry(
             "budget_ug": f"{budget:.1f} ug",
             "balance_ug": f"{balance:.1f} ug",
             "overspend_ratio": f"{overspend:.2f}x",
-            "cigarette_equiv": f"{cigarette_count:.1f}",
+            "cigarette_equiv": f"{cigs:.1f}",
         },
         constants_used=[
             "who_aqg_pm25_24h",
@@ -81,14 +69,11 @@ def build_passbook_entry(
             "cigarette_equiv_pm25_24h",
         ],
         sources=[
-            "WHO Global Air Quality Guidelines (2021) 24-hour PM2.5 guideline level (15 ug/m3)",
-            "US EPA Exposure Factors Handbook (2011) Chapter 6",
-            "Berkeley Earth (Muller & Muller 2015) rough cigarette equivalence model",
+            "WHO Global Air Quality Guidelines (2021)",
+            "US EPA Exposure Factors Handbook (2011)",
+            "Berkeley Earth (2015)",
         ],
-        assumptions=[
-            "Linear proportionality between inhalation dose and ambient particulate exposure",
-            "Rough equivalence label applies to all cigarette comparisons",
-        ],
+        assumptions=["Linear dose proportionality", "Rough equivalence label"],
     )
 
     return PassbookEntry(
@@ -98,8 +83,8 @@ def build_passbook_entry(
         debit_ug=debit_ug,
         balance_ug=balance,
         overspend_ratio=overspend,
-        is_over_budget=debit_ug > budget,
-        cigarette_equivalent=cigarette_count,
+        is_over_budget=balance < 0,
+        cigarette_equivalent=cigs,
         cigarette_label="Rough equivalence (Berkeley Earth model)",
         hourly_doses_ug=hourly_doses_ug or [],
         top_contributors=top_contributors or [],
