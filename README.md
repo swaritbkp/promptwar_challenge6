@@ -1,11 +1,8 @@
 # HawaKhata (हवा खाता · "Air Passbook")
 
-> An air passbook for winter smog: tracking debit (inhaled PM2.5), savings (exposure avoided), and balance under WHO 2021 guidelines.
+> Air passbook for winter smog: debit (inhaled PM2.5), savings (exposure avoided), and balance under WHO 2021 guidelines.
 
-[![Tests](https://img.shields.io/badge/tests-144%20passed-brightgreen.svg)]()
-[![Coverage](https://img.shields.io/badge/coverage-94.4%25-brightgreen.svg)]()
-[![Security](https://img.shields.io/badge/security-R1--R12%20verified-blue.svg)]()
-[![WCAG](https://img.shields.io/badge/a11y-WCAG%202.2%20AA-success.svg)]()
+[![Tests](https://img.shields.io/badge/tests-144%20passed-brightgreen.svg)]() [![Coverage](https://img.shields.io/badge/coverage-94.4%25-brightgreen.svg)]() [![Security](https://img.shields.io/badge/security-verified-blue.svg)]() [![WCAG](https://img.shields.io/badge/a11y-WCAG%202.2%20AA-success.svg)]()
 
 ## 1. Problem → Solution
 | Brief Clause | Feature | Engine Citation |
@@ -64,16 +61,9 @@ FastAPI Gateway (`app.py: create_app()`)
 - **Strict CSP:** Headers enforce `default-src 'self'` and block inline scripts. Canary token defends prompts.
 - **WCAG 2.2 AA:** Landmarks (`<main>`, `<nav>`), skip links, high contrast, reduced-motion support.
 
-## 6. Testing & Quality Gate
+## 6. Testing & Quickstart
 ```bash
-python scripts/gate.py                # Lint, format, mypy, 144 tests (94.4% cov), audit
-python eval/run_eval.py --mode fake   # 16 golden cases (100% grounding, 100% guardrails)
-```
-
-## 7. Quickstart
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+python scripts/gate.py                # Lint, format, mypy, 144 tests, audit
 uvicorn hawakhata.app:create_app --factory --app-dir src --reload --port 8000
 ```
-Visit `http://localhost:8000` (live passbook) or `http://localhost:8000/?story=ncr` (deterministic tour).
+Open `http://localhost:8000` (live) or `http://localhost:8000/?story=ncr` (tour).

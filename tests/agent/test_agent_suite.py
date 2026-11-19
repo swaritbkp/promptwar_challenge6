@@ -98,7 +98,7 @@ def sample_aq_client() -> AirQualityClient:
 
 def _make_gemini_settings(has_key: bool = True) -> Settings:
     return Settings(
-        gemini_api_key=SecretStr("fake-api-key") if has_key else None,
+        gemini_api_key=SecretStr("fake-key") if has_key else None,
         gemini_model_primary="gemini-2.5-flash",
         gemini_model_fallback="gemini-2.5-flash-lite",
         ai_limit_per_min=5,
@@ -149,12 +149,17 @@ def test_extract_and_check_grounding() -> None:
         "tuple_data": (120.0, {15.0}),
     }
     allowed = collect_allowed_numbers(tool_output, user_text="budget is 180 ug")
-    assert any(abs(142.2 - a) < 1e-2 for a in allowed) and any(
-        abs(180.0 - a) < 1e-2 for a in allowed
+    assert (
+        any(abs(142.2 - a) < 1e-2 for a in allowed)
+        and any(abs(180.0 - a) < 1e-2 for a in allowed)
+        and 85.0 in allowed
     )
-    assert 85.0 in allowed
-    reply_ok = "PM2.5 is 142 µg/m³. Save 50 µg over 24 hours (approx 3 cigarettes)."
-    assert check_numeric_grounding(reply_ok, tool_output).passed is True
+    assert (
+        check_numeric_grounding(
+            "PM2.5 is 142 µg/m³. Save 50 µg over 24 hours (approx 3 cigarettes).", tool_output
+        ).passed
+        is True
+    )
     assert check_numeric_grounding("The current level is 789 ug/m3.", tool_output).passed is False
 
 
@@ -183,13 +188,11 @@ async def test_gemini_cascade_success_and_fallback() -> None:
     client._client = mock_sdk
     resp = await client.generate_content("What is the air?", client_id="test_client_1")
     assert isinstance(resp, GeminiResponse) and resp.model_used == "gemini-2.5-flash"
-
     mock_sdk.aio.models.generate_content = AsyncMock(
         side_effect=[Exception("Quota 429"), MagicMock(text="Fallback response.")]
     )
     resp2 = await client.generate_content("Second try", client_id="test_client_1")
     assert resp2.model_used == "gemini-2.5-flash-lite"
-
     mock_sdk.aio.models.generate_content = AsyncMock(side_effect=Exception("Total failure"))
     with pytest.raises(GeminiUnavailableError):
         await client.generate_content("Third try", client_id="test_client_1")
@@ -243,7 +246,6 @@ async def test_agent_offline_fallback_turn(
     client = GeminiCascadeClient(settings=_make_gemini_settings(has_key=False))
     client._client = None
     agent = HawaKhataAgent(gemini_client=client)
-
     res_en = await agent.run_turn(
         session_id="offline_sess_1",
         user_message="Show my family air passbook balance",
@@ -256,7 +258,6 @@ async def test_agent_offline_fallback_turn(
         and res_en.grounded is True
         and "budget" in res_en.reply.lower()
     )
-
     res_hi = await agent.run_turn(
         session_id="offline_sess_1",
         user_message="आज का स्मॉग ब्रीफ दिखाओ",

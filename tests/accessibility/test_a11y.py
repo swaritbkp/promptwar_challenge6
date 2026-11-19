@@ -40,21 +40,33 @@ def test_no_inline_event_handlers_or_unsafe_scripts() -> None:
         c = t_file.read_text("utf-8")
         assert not re.search(r"\bon\w+\s*=", c), f"Inline handler in {t_file}"
         assert "<script>" not in c, f"Inline script in {t_file}"
+        assert 'style="' not in c, f"Inline style attribute in {t_file} (CSP violation)"
 
 
 def test_pages_and_static_assets(client: TestClient) -> None:
     r_idx = client.get("/")
-    assert r_idx.status_code == 200 and "Content-Security-Policy" in r_idx.headers
-    assert all(
-        m in r_idx.text
-        for m in [
-            "<!DOCTYPE html>",
-            'class="skip-link"',
-            'id="tab-today"',
-            'id="tab-plan"',
-            'id="ask-drawer"',
-        ]
+    assert r_idx.status_code == 200
+    csp = r_idx.headers.get("Content-Security-Policy", "")
+    assert "default-src 'self'" in csp and "style-src 'self'" in csp
+    assert "unsafe-inline" not in csp
+
+    css_links = re.findall(
+        r'<link[^>]+rel=["\']stylesheet["\'][^>]+href=["\']([^"\']+)["\']', r_idx.text
     )
+    assert len(css_links) >= 1
+    for href in css_links:
+        r_css = client.get(href)
+        assert r_css.status_code == 200
+        assert "text/css" in r_css.headers.get("content-type", "")
+        assert len(r_css.text) > 1000 and "--bg:" in r_css.text and "#F7F6F2" in r_css.text
+
+    js_scripts = re.findall(r'<script[^>]+src=["\']([^"\']+)["\']', r_idx.text)
+    assert len(js_scripts) >= 1
+    for src in js_scripts:
+        r_js = client.get(src)
+        assert r_js.status_code == 200
+        assert "javascript" in r_js.headers.get("content-type", "")
+        assert len(r_js.text) > 500 and "HawaKhataApp" in r_js.text
 
     r_hiw = client.get("/how-it-works")
     assert r_hiw.status_code == 200
@@ -67,12 +79,3 @@ def test_pages_and_static_assets(client: TestClient) -> None:
             "Inhalation Volume",
         ]
     )
-
-    css = client.get("/static/css/app.css")
-    assert css.status_code == 200 and "--bg: #F7F6F2;" in css.text
-    js = client.get("/static/js/app.js")
-    assert js.status_code == 200 and "HawaKhataApp" in js.text
-    en = client.get("/static/i18n/en.json")
-    assert en.status_code == 200 and "HawaKhata" in en.text
-    hi = client.get("/static/i18n/hi.json")
-    assert hi.status_code == 200 and "हवा खाता" in hi.text

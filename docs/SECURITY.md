@@ -2,45 +2,27 @@
 
 The rules every change must follow. Feature tickets list the rule numbers (R#) touched.
 
-## 1. Login
-**No login, by design.** HawaKhata is a public tool for families; personal profiles live strictly in `localStorage`. Rate limits and AI quotas provide protection.
+## 1. Login & Access Model
+No login, by design. Personal profiles live strictly in `localStorage`. Public endpoints computing over own payload; server stores no user accounts or profiles.
 
-## 2. Access Model
-| Role | Can access | Can never access |
-|---|---|---|
-| Anyone (anonymous) | Public pages, computing endpoints with own payload, chat | Other users' data (none stored server-side), API keys, prompts, logs |
+## 2. Data Protection & Inputs
+- HTTPS only; HSTS enabled. Secrets in environment variables (`config.py: Settings` with `SecretStr`).
+- Coordinates rounded to ~1 km before caching/logging/prompting. Health flags stay in browser.
+- In-memory caches (`TTLCache`) and sessions (`SessionStore`) bounded by size and TTL.
+- Server-side request validation (`extra="forbid"`). Rate limiting and body size limits on all routes. No CORS wildcard.
 
-## 3. Data Protection
-- HTTPS only (Cloud Run); HSTS sent over HTTPS.
-- Secrets in environment variables locally and Secret Manager in production (`config.py: Settings` uses `SecretStr`).
-- Coordinates rounded to ~1 km before caching, logging or prompting; health flags stay in browser.
-- Server stores no personal data; in-memory caches and chat sessions expire (`SESSION_*`).
+## 3. AI Guardrails
+- AI output inserted via `textContent` only; never evaluated or inserted as HTML.
+- Browser speaks only to `/api/v1/chat`; keys never leave backend.
+- Prompt injection detector, Indian PII masking, canary token check, and medical emergency detector.
+- Token bucket per-minute limiter and daily quota per hashed client IP.
+- Grounding gate rejects ungrounded numbers; deterministic fallback on limit or error.
 
-## 4. Inputs & APIs
-- Every request validated server-side (`extra="forbid"`, bounded fields).
-- No database, SQL, or shell execution.
-- Rate limiting on every `/api/` route (`RateLimitMiddleware`), body-size limit (`BodySizeLimitMiddleware`).
-- CORS not enabled (same-origin UI).
+## 4. Telemetry & Compliance
+- JSON logs with request ID, route, latency, data mode, model, and grounding result. Never logs PII, prompts, keys, or exact coordinates.
+- DPDP Act compliant: "Clear data" deletes local state; no server accounts; region `asia-south1`.
 
-## 5. AI Guardrails
-- **Untrusted output:** Inserted via `textContent` only; never `innerHTML` or evaluated.
-- **Server-side keys:** Browser speaks only to `/api/v1/chat`.
-- **Prompt defense:** Input sanitized, masked, tagged; canary blocked on output.
-- **Usage caps:** Per-minute token bucket and per-day quota per IP. Deterministic fallback on limit.
-- **Grounding:** Numbers must originate from engine or AQ API; health red flags trigger emergency notice.
-
-## 6. Telemetry
-Structured JSON logs with request id, route, latency, data mode, model id, and grounding result. Never logged: raw user text, prompts, keys, or exact coordinates.
-
-## 7. Compliance (India)
-| Requirement | Applies? | Implementation |
-|---|---|---|
-| DPDP Act 2023 | Partly | No server accounts; data in browser; "Clear data" deletes local state. |
-| Health rules | Partly | Health flags stay on device; no medical diagnosis or drug dosing. |
-| Data residency | No | No personal data stored server-side; region `asia-south1`. |
-| Payments/children | No | No payments; no accounts. |
-
-## 8. Absolute Rules
+## 5. Absolute Rules
 | # | Rule |
 |---|---|
 | R1 | No secret, API key or password in source control, any commit, any branch. |
@@ -56,7 +38,7 @@ Structured JSON logs with request id, route, latency, data mode, model id, and g
 | R11 | AI keys never reach the browser; every AI feature has per-client minute and day limits. |
 | R12 | User text is masked for PII and checked for prompt injection before any model call or log. |
 
-## 9. Known Deviations
+## 6. Known Deviations
 | # | Rule | Deviation | Why acceptable | Review date |
 |---|---|---|---|---|
 | KD-1 | R2 | In-memory token bucket per instance | Single-container Cloud Run deployment or optional Redis cache | 2026-11-18 |

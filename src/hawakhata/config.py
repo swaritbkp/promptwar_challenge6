@@ -8,17 +8,21 @@ deployment fails fast instead of misbehaving at request time.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = _PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Typed, validated application settings loaded from env vars / ``.env``."""
 
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore", frozen=True
+        env_file=(_ENV_FILE, ".env"), env_file_encoding="utf-8", extra="ignore", frozen=True
     )
 
     # Runtime

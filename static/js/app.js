@@ -28,7 +28,7 @@ class HawaKhataApp {
         const d = (await r.json()).data || {};
         if (d.data_mode === "fixture") {
           const b = document.getElementById("fixture-notice");
-          if (b) b.style.display = "flex";
+          if (b) b.hidden = false;
         }
       }
     } catch {}
@@ -50,7 +50,7 @@ class HawaKhataApp {
   switchTab(tabId) {
     this.currentTab = tabId;
     document.querySelectorAll(".tab-pane").forEach((p) => {
-      p.style.display = p.id === `tab-${tabId}` ? "block" : "none";
+      p.hidden = p.id !== `tab-${tabId}`;
     });
     document.querySelectorAll(".nav-item[data-tab]").forEach((b) => {
       b.classList.toggle("active", b.getAttribute("data-tab") === tabId);
@@ -79,8 +79,8 @@ class HawaKhataApp {
   _bindModals() {
     const wire = (btnId, modalId, closeId) => {
       const b = document.getElementById(btnId), m = document.getElementById(modalId), c = document.getElementById(closeId);
-      if (b && m) b.addEventListener("click", () => { m.style.display = "flex"; });
-      if (c && m) c.addEventListener("click", () => { m.style.display = "none"; });
+      if (b && m) b.addEventListener("click", () => { m.hidden = false; });
+      if (c && m) c.addEventListener("click", () => { m.hidden = true; });
     };
     wire("btn-why-number", "modal-why", "modal-why-close");
     wire("city-btn", "modal-city", "modal-city-close");
@@ -88,7 +88,7 @@ class HawaKhataApp {
     const mCity = document.getElementById("modal-city"), lbl = document.getElementById("city-name-label");
     const setCity = (btnId, name) => {
       const btn = document.getElementById(btnId);
-      if (btn && mCity) btn.addEventListener("click", () => { if (lbl) lbl.textContent = name; mCity.style.display = "none"; });
+      if (btn && mCity) btn.addEventListener("click", () => { if (lbl) lbl.textContent = name; mCity.hidden = true; });
     };
     setCity("btn-load-ncr", "Gurugram");
     setCity("btn-load-chd", "Mohali");
@@ -99,8 +99,8 @@ class HawaKhataApp {
     const closeBtn = document.getElementById("ask-close-btn"), form = document.getElementById("ask-form");
     const input = document.getElementById("ask-input"), log = document.getElementById("ask-chat-msgs");
 
-    if (fab && drawer) fab.addEventListener("click", () => { drawer.style.display = "flex"; if (input) input.focus(); });
-    if (closeBtn && drawer) closeBtn.addEventListener("click", () => { drawer.style.display = "none"; });
+    if (fab && drawer) fab.addEventListener("click", () => { drawer.hidden = false; if (input) input.focus(); });
+    if (closeBtn && drawer) closeBtn.addEventListener("click", () => { drawer.hidden = true; });
 
     if (form && input && log) {
       form.addEventListener("submit", async (e) => {
@@ -152,7 +152,6 @@ class HawaKhataApp {
       const c = document.createElement("div");
       c.className = `hour-cell ${cats[h]}`;
       c.textContent = `${h}`;
-      c.style.backgroundColor = `var(--naqi-${cats[h]})`;
       if (h >= 12 && h <= 15) c.classList.add("highlight");
       s.appendChild(c);
     }

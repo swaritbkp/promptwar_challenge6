@@ -41,5 +41,4 @@ Checks build against `docs/SECURITY.md`. Pass with exact file/function proof.
 - [x] AI-assisted audit completed.
 
 ---
-Checklist structure adapted from the *Vibecode Pre-Build Protocol* by Pankaj David
-(https://github.com/PankajDavid/vibecode-prebuild-protocol), licensed CC BY 4.0.
+Protocol: Vibecode Pre-Build Protocol (Pankaj David, CC BY 4.0).

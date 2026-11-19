@@ -15,23 +15,20 @@ from hawakhata.integrations.air_quality import AirQualityClient, HourlyAirSeries
 
 @pytest.mark.asyncio
 async def test_live_api_mock_transport_success() -> None:
+    idx = [
+        {"code": "ind_cpcb", "aqi": 340, "category": "VERY_POOR", "dominantPollutant": "pm25"},
+        {"code": "uaqi", "aqi": 42},
+    ]
+    pol = [
+        {"code": "pm25", "concentration": {"value": 185.4}},
+        {"code": "pm10", "concentration": {"value": 290.0}},
+    ]
     mock_payload = {
         "hourlyForecasts": [
             {
                 "dateTime": "2026-11-18T12:00:00Z",
-                "indexes": [
-                    {
-                        "code": "ind_cpcb",
-                        "aqi": 340,
-                        "category": "VERY_POOR",
-                        "dominantPollutant": "pm25",
-                    },
-                    {"code": "uaqi", "aqi": 42},
-                ],
-                "pollutants": [
-                    {"code": "pm25", "concentration": {"value": 185.4}},
-                    {"code": "pm10", "concentration": {"value": 290.0}},
-                ],
+                "indexes": idx,
+                "pollutants": pol,
                 "healthRecommendations": {"generalPopulation": "Avoid"},
             }
         ]

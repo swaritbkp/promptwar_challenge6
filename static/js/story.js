@@ -37,7 +37,7 @@ export class StoryController {
       this.steps = json.data.steps;
       this.currentStep = 0;
       this.active = true;
-      if (this.banner) this.banner.style.display = "flex";
+      if (this.banner) this.banner.hidden = false;
       this.render();
     } catch {}
   }
@@ -70,6 +70,6 @@ export class StoryController {
 
   stop() {
     this.active = false;
-    if (this.banner) this.banner.style.display = "none";
+    if (this.banner) this.banner.hidden = true;
   }
 }
