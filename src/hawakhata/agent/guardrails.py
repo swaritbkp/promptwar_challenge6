@@ -107,10 +107,17 @@ def enforce_output_policy(
     reply: str, urgent: bool = False, canary: str | None = None, language: str = "en"
 ) -> OutputPolicyVerdict:
     """Check LLM output for canary leakage, diagnosis/dosing claims, and red flags."""
-    if canary and canary in reply:
+    reply_low = reply.lower()
+    canary_detected = False
+    if canary and canary.lower() in reply_low:
+        canary_detected = True
+    if "hawakhata_sec_canary" in reply_low or "canary_7x9q" in reply_low:
+        canary_detected = True
+
+    if canary_detected:
         return OutputPolicyVerdict(
             safe=False,
-            sanitized_text="I cannot fulfill this request.",
+            sanitized_text="",
             blocked_reasons=["canary_leak"],
         )
 

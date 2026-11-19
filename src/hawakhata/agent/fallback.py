@@ -24,7 +24,7 @@ from hawakhata.agent.tools import (
     simulate_indoor_air,
 )
 from hawakhata.api.schemas import FamilyProfileInput, LocationInput
-from hawakhata.engine.aqi import aqi_to_category
+from hawakhata.engine.aqi import aqi_to_category, pm25_to_naqi_category, pm25_to_sub_index
 from hawakhata.integrations.air_quality import AirQualityClient
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -81,9 +81,101 @@ def compose_reply(intent: str, lang: str, params: dict[str, Any]) -> str:
         return str(t_str)
 
 
+def _extract_hours_and_member(text: str, members: list[Any]) -> tuple[list[int], str | None]:
+    """Extract explicit hours and family member name from user message."""
+    hours: list[int] = []
+    for match in re.finditer(r"\b(\d{1,2})(?::00)?\s*(am|pm)\b", text, re.IGNORECASE):
+        h = int(match.group(1))
+        meridiem = match.group(2).lower()
+        if meridiem == "pm" and h < 12:
+            h += 12
+        elif meridiem == "am" and h == 12:
+            h = 0
+        if 0 <= h <= 23 and h not in hours:
+            hours.append(h)
+    for match in re.finditer(r"\b(\d{1,2}):00\b", text):
+        h = int(match.group(1))
+        if 0 <= h <= 23 and h not in hours:
+            hours.append(h)
+    for match in re.finditer(r"\b(\d{1,2})\s*बजे\b", text):
+        h = int(match.group(1))
+        if h <= 5:
+            h += 12
+        if 0 <= h <= 23 and h not in hours:
+            hours.append(h)
+
+    member_name: str | None = None
+    t_low = text.lower()
+    for m in members:
+        name = getattr(m, "name", "")
+        if name and name.lower() in t_low:
+            member_name = name
+            break
+    return hours, member_name
+
+
 async def _dispatch_intent(
-    intent: str, lang: str, location_city: str, date_iso: str
+    intent: str,
+    lang: str,
+    location_city: str,
+    date_iso: str,
+    user_text: str = "",
+    profile: FamilyProfileInput | None = None,
+    aq_client: AirQualityClient | None = None,
+    location: LocationInput | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
+    # Direct hour comparison for Turn 1 queries with explicit hours (e.g. 7 AM vs 4 PM)
+    if user_text and aq_client and location:
+        hours, member = _extract_hours_and_member(user_text, getattr(profile, "members", []))
+        if hours:
+            h1 = hours[0]
+            h2 = hours[1] if len(hours) > 1 else (14 if h1 != 14 else 12)
+            s = await aq_client.get_hourly_forecast(lat=location.lat, lng=location.lng, hours=24)
+            if len(s.points) >= 24:
+                pt1 = s.points[h1 % 24]
+                pt2 = s.points[h2 % 24]
+                cur_pt = s.points[0]
+                pk_pm = max(p.pm25_ug_m3 for p in s.points)
+                pk_aqi = pm25_to_sub_index(pk_pm)
+                pk_cat = pm25_to_naqi_category(pk_pm).display_name
+                cur_pm = cur_pt.pm25_ug_m3
+                cur_aqi = cur_pt.aqi_local or pm25_to_sub_index(cur_pm)
+                cur_cat = cur_pt.category_local or pm25_to_naqi_category(cur_pm).display_name
+                h1_str = f"{h1:02d}:00"
+                h2_str = f"{h2:02d}:00"
+                diff_pm = round(abs(pt1.pm25_ug_m3 - pt2.pm25_ug_m3), 1)
+                target_who = member or ("your routine" if lang == "en" else "आपकी दिनचर्या")
+
+                if lang == "hi":
+                    reply = (
+                        f"{target_who} के लिए समय तुलना: {h1_str} पर PM2.5 {pt1.pm25_ug_m3:.0f} µg/m³ "
+                        f"(AQI {pt1.aqi_local}, {pt1.category_local}) है। {h2_str} पर दोपहर के मिक्सिंग लिफ्ट से यह घटकर "
+                        f"{pt2.pm25_ug_m3:.0f} µg/m³ (AQI {pt2.aqi_local}, {pt2.category_local}) रह जाता है। समय बदलने से "
+                        f"लगभग {diff_pm:.0f} µg/m³ PM2.5 की बचत होगी! वर्तमान लाइव AQI {cur_aqi} ({cur_cat}) है "
+                        f"और आज का पीक AQI {pk_aqi} ({pk_cat}) रहेगा।"
+                    )
+                else:
+                    reply = (
+                        f"Schedule comparison for {target_who}: At {h1_str}, PM2.5 is {pt1.pm25_ug_m3:.0f} µg/m³ "
+                        f"(AQI {pt1.aqi_local}, {pt1.category_local}). At {h2_str}, PM2.5 drops to {pt2.pm25_ug_m3:.0f} µg/m³ "
+                        f"(AQI {pt2.aqi_local}, {pt2.category_local} — Afternoon Mixing Lift). Shifting avoids "
+                        f"{diff_pm:.0f} µg/m³ PM2.5! Note: Current live AQI is {cur_aqi} ({cur_cat}), while today's forecast "
+                        f"peak is AQI {pk_aqi} ({pk_cat})."
+                    )
+                tool_data = {
+                    "member": member,
+                    "hour_a": h1,
+                    "pm25_a": pt1.pm25_ug_m3,
+                    "aqi_a": pt1.aqi_local,
+                    "hour_b": h2,
+                    "pm25_b": pt2.pm25_ug_m3,
+                    "aqi_b": pt2.aqi_local,
+                    "current_aqi": cur_aqi,
+                    "peak_aqi": pk_aqi,
+                    "savings_pm25": diff_pm,
+                }
+                return reply, "get_air_forecast", {"result": tool_data, "missing_fields": []}
+
     if intent == "passbook":
         res = await get_family_passbook(date_iso)
         return compose_reply("passbook", lang, res.get("result", {})), "get_family_passbook", res
@@ -206,7 +298,14 @@ async def execute_fallback_turn(
     token = set_current_context(ToolContext(profile, location, aq_client, date_iso))
     try:
         reply, tool_name, tool_output = await _dispatch_intent(
-            intent, lang, location.city_name or "your area", date_iso
+            intent,
+            lang,
+            location.city_name or "your area",
+            date_iso,
+            user_text=user_text,
+            profile=profile,
+            aq_client=aq_client,
+            location=location,
         )
         return {
             "reply": reply,

@@ -99,3 +99,23 @@ async def test_demo_clock_iso_parsing() -> None:
     )
     res2 = await c2.get_hourly_forecast(lat=28.46, lng=77.03, hours=5)
     assert len(res2.points) == 5
+
+
+@pytest.mark.asyncio
+async def test_mumbai_city_scaling_and_96h_variations() -> None:
+    client = await _client_call()
+    # Mumbai coordinates
+    res_mum = await client.get_hourly_forecast(lat=19.0760, lng=72.8777, hours=96)
+    assert len(res_mum.points) == 96
+    # Mumbai scaling (0.20) brings PM2.5 from Delhi 320 to ~64 ug/m3, Moderate category
+    day1_pm = [p.pm25_ug_m3 for p in res_mum.points[:24]]
+    day2_pm = [p.pm25_ug_m3 for p in res_mum.points[24:48]]
+    day3_pm = [p.pm25_ug_m3 for p in res_mum.points[48:72]]
+    day4_pm = [p.pm25_ug_m3 for p in res_mum.points[72:96]]
+
+    # Peak on day 1 should be around 64 ug/m3 (Moderate)
+    assert max(day1_pm) <= 100.0
+    # Day-to-day synoptic variation ensures distinct peaks
+    assert max(day1_pm) != max(day2_pm)
+    assert max(day2_pm) != max(day3_pm)
+    assert max(day3_pm) != max(day4_pm)

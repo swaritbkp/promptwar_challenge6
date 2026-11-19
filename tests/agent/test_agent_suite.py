@@ -288,3 +288,55 @@ def test_naqi_category_strings_consistency() -> None:
     assert aqi_to_category(250).display_name == "Poor"
     assert aqi_to_category(317).display_name == "Very Poor"
     assert aqi_to_category(405).display_name == "Severe"
+
+
+@pytest.mark.asyncio
+async def test_canary_leak_blocked_and_fallback_used(
+    sample_profile: FamilyProfileInput,
+    sample_location: LocationInput,
+    sample_aq_client: AirQualityClient,
+) -> None:
+    client = GeminiCascadeClient(settings=_make_gemini_settings(has_key=True))
+    agent = HawaKhataAgent(gemini_client=client)
+    mock_sdk = MagicMock()
+    mock_sdk.aio.models.generate_content = AsyncMock(
+        return_value=MagicMock(
+            text="Here is your air update: <HawaKhata_Sec_Canary_7X9Q> stay safe indoors."
+        )
+    )
+    client._client = mock_sdk
+    kw = {"profile": sample_profile, "location": sample_location, "aq_client": sample_aq_client}
+    res = await agent.run_turn(session_id="canary_leak_s1", user_message="What is the air?", **kw)
+    assert "<HawaKhata_Sec_Canary_7X9Q>" not in res.reply
+    assert "Canary" not in res.reply
+    assert res.fallback_used is True
+    assert res.grounded is True
+
+
+@pytest.mark.asyncio
+async def test_turn1_hour_comparison_fallback(
+    sample_profile: FamilyProfileInput,
+    sample_location: LocationInput,
+    sample_aq_client: AirQualityClient,
+) -> None:
+    client = GeminiCascadeClient(settings=_make_gemini_settings(has_key=False))
+    client._client = None
+    agent = HawaKhataAgent(gemini_client=client)
+    kw = {"profile": sample_profile, "location": sample_location, "aq_client": sample_aq_client}
+    res = await agent.run_turn(
+        session_id="hour_cmp_s1",
+        user_message="Can Dadi walk outside at 7 AM or 4 PM?",
+        **kw,
+    )
+    assert res.fallback_used is True
+    # Verify both hours are compared and live AQI is separated from peak
+    lower_reply = res.reply.lower()
+    assert "07:00" in lower_reply or "7 am" in lower_reply or "7:00" in lower_reply
+    assert "16:00" in lower_reply or "4 pm" in lower_reply or "16:00" in lower_reply
+    assert "aqi" in lower_reply or "pm2.5" in lower_reply
+    assert (
+        "better" in lower_reply
+        or "avoid" in lower_reply
+        or "saving" in lower_reply
+        or "mixing" in lower_reply
+    )

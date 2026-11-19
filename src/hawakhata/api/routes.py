@@ -269,7 +269,9 @@ async def post_passbook_digest(
     s, pm25 = await _get_series(aq_client, req.profile.location)
     pb = compute_family_passbook(req.profile, pm25)
     city = req.profile.location.city_name or "Delhi NCR"
-    digest = generate_shareable_digest(req.profile, pb, city_name=city)
+    lang_header = request.headers.get("accept-language", "en")
+    lang_code = "hi" if "hi" in lang_header.lower() else "en"
+    digest = generate_shareable_digest(req.profile, pb, city_name=city, language=lang_code)
     return Envelope(data={"digest_text": digest}, meta=make_meta(request, data_mode=s.data_mode))
 
 
@@ -288,14 +290,20 @@ async def post_air_outlook(
         pm_vals = [p.pm25_ug_m3 for p in chunk]
         peak = max(pm_vals)
         mean = sum(pm_vals) / len(pm_vals)
-        cleanest_pm = min(pm_vals)
-        clean_idx = pm_vals.index(cleanest_pm)
+        # Usable daytime waking hours 06:00 to 20:00 (start 06:00 to 17:00 for 3h window)
+        daytime_hours = [(h, pm_vals[h]) for h in range(len(pm_vals)) if 6 <= h <= 17]
+        if daytime_hours:
+            clean_idx, cleanest_pm = min(daytime_hours, key=lambda x: x[1])
+        else:
+            cleanest_pm = min(pm_vals)
+            clean_idx = pm_vals.index(cleanest_pm)
+        end_idx = min(20, clean_idx + 3)
         days.append(
             {
                 "day_number": d_idx + 1,
                 "mean_pm25": round(mean, 1),
                 "peak_pm25": round(peak, 1),
-                "cleanest_window": f"{clean_idx:02d}:00 - {(clean_idx + 3) % 24:02d}:00",
+                "cleanest_window": f"{clean_idx:02d}:00 - {end_idx:02d}:00",
                 "cleanest_pm25": round(cleanest_pm, 1),
                 "category": chunk[0].category_local,
             }

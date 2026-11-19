@@ -26,10 +26,20 @@ def test_evaluate_swap_commute_car_to_metro() -> None:
     assert res.delta_emit_daily.kg_co2 < 0 and res.delta_emit_daily.g_pm25 < 0
     assert res.delta_emit_weekly.kg_co2 == pytest.approx(res.delta_emit_daily.kg_co2 * 5, rel=1e-4)
 
+    # UI card parity: 15 km daily saves 2.1 kg CO2 and 15 ug PM2.5 inhaled
+    r_ui = evaluate_swap("commute_car_to_metro", units_per_day=15.0, days_per_week=5)
+    assert round(abs(r_ui.delta_emit_daily.kg_co2), 1) == 2.1
+    assert round(abs(r_ui.delta_breathe_daily_ug), 0) == 15.0
+
 
 def test_evaluate_swap_leaves_burning_to_compost() -> None:
     res = evaluate_swap("leaves_burning_to_compost", units_per_day=5.0, days_per_week=1)
     assert res.delta_emit_daily.g_pm25 < 0 and res.delta_emit_daily.kg_co2 < 0
+
+    # UI card parity: 2 kg leaves daily saves 2.5 kg CO2 and avoids 24 g PM2.5 smoke
+    r_ui = evaluate_swap("leaves_burning_to_compost", units_per_day=2.0, days_per_week=1)
+    assert round(abs(r_ui.delta_emit_daily.kg_co2), 1) == 2.5
+    assert round(abs(r_ui.delta_emit_daily.g_pm25), 0) == 24.0
 
 
 def test_scale_to_community_zero_and_linear() -> None:
@@ -55,12 +65,10 @@ def test_unknown_and_invalid_swaps_raises() -> None:
 def test_evaluate_swap_various_branches() -> None:
     r_two = evaluate_swap("commute_two_wheeler_to_metro", units_per_day=15.0, days_per_week=6)
     assert r_two.delta_emit_daily.kg_co2 < 0 and r_two.delta_breathe_daily_ug < 0
-    assert (
-        evaluate_swap(
-            "heating_angithi_to_electric", units_per_day=3.0, days_per_week=7
-        ).delta_emit_daily.g_pm25
-        < 0
-    )
+    r_heat = evaluate_swap("heating_angithi_to_electric", units_per_day=4.0, days_per_week=7)
+    assert r_heat.delta_emit_daily.g_pm25 < 0
+    assert round(abs(r_heat.delta_emit_daily.kg_co2), 1) == 0.2
+    assert round(abs(r_heat.delta_emit_daily.g_pm25), 0) == 18.0
     r_inc = evaluate_swap("no_incense_on_severe_days", units_per_day=1.0)
     assert r_inc.delta_emit_daily.kg_co2 == 0.0 and r_inc.delta_emit_daily.g_pm25 == 0.0
 

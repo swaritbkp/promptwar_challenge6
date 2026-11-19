@@ -42,6 +42,12 @@ class HawaKhataApp {
     this.familyProfile = this._loadProfile();
     this.story = new StoryController(this);
     this.airSeries = null;
+    this.currentOutdoorPm25 = 317;
+    this.currentAQI = 317;
+    this.cleanestWindow = "12:00 – 15:00";
+    this.currentHourlyPm25 = [];
+    this.todaySavings = 340;
+    this.fourDayData = null;
     this.init();
   }
 
@@ -77,10 +83,23 @@ class HawaKhataApp {
     this._bindPlan();
     this._bindMembers();
     this._bindTodayActions();
+    this._bindTooltips();
     await this.refreshData();
     await this.setLanguage(this.currentLang);
     const sId = new URLSearchParams(window.location.search).get("story");
     if (sId) this.story.start(sId);
+  }
+
+  _bindTooltips() {
+    $$(".has-tooltip").forEach((tip) => {
+      tip.addEventListener("click", (e) => {
+        e.stopPropagation();
+        tip.classList.toggle("active");
+      });
+    });
+    document.addEventListener("click", () => {
+      $$(".has-tooltip.active").forEach((t) => t.classList.remove("active"));
+    });
   }
 
   async refreshData() {
@@ -132,11 +151,20 @@ class HawaKhataApp {
         grid.replaceChildren();
         d.days.forEach((day) => {
           const card = el("div", "outlook-card");
+          const isHi = this.currentLang === "hi";
+          const dayNameKey = day.day_label.toLowerCase().replace(" ", "_");
+          const dayName = (isHi && this.i18nStrings[dayNameKey]) ? this.i18nStrings[dayNameKey] : day.day_label;
+          const regKey = day.dispersion_regime === "Afternoon Mixing Lift" ? "disp_mixing" : (day.dispersion_regime === "Inversion Trap" ? "disp_inversion" : "disp_stagnant");
+          const regName = (isHi && this.i18nStrings[regKey]) ? this.i18nStrings[regKey] : day.dispersion_regime;
+          const catClass = day.naqi_category.toLowerCase().replace(/ /g, "-");
+          const catKey = `cat_${catClass.replace(/-/g, "_")}`;
+          const catName = (isHi && this.i18nStrings[catKey]) ? this.i18nStrings[catKey] : day.naqi_category;
+
           card.append(
-            el("div", "font-bold text-xs", day.day_label),
-            el("span", `pill-status ${day.naqi_category.toLowerCase().replace(/ /g, "-")}`, `AQI ${day.peak_aqi}`),
+            el("div", "font-bold text-xs", dayName),
+            el("span", `pill-status ${catClass}`, `AQI ${day.peak_aqi} · ${catName}`),
             el("div", "text-xs font-semibold text-saved", `▲ ${day.cleanest_window_start}–${day.cleanest_window_end}`),
-            el("div", "text-xs stat-lbl", `${day.dispersion_regime} · ${day.wind_kmh}km/h`),
+            el("div", "text-xs stat-lbl", `${regName} · ${day.wind_kmh}km/h`),
             el("div", "text-xs text-muted", `BLH: ${Math.round(day.blh_m)}m · P90: ${Math.round(day.uncertainty_p90)}`)
           );
           grid.append(card);
@@ -147,7 +175,42 @@ class HawaKhataApp {
       if (flushTime && d.safe_house_flush) flushTime.textContent = `${d.safe_house_flush.day_label} ${d.safe_house_flush.start_hour}–${d.safe_house_flush.end_hour}`;
       if (flushPm && d.safe_house_flush) flushPm.textContent = `(${d.safe_house_flush.outdoor_pm25} µg/m³ · ${d.safe_house_flush.dispersion_regime})`;
       this.renderMultiDaySlots(d.top_slots || []);
+
+      // Fetch 24h air points for active city to drive live 24h chart
+      try {
+        const airResp = await fetch("/api/v1/air/forecast", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lat: loc.lat, lng: loc.lng, hours: 24 })
+        });
+        if (airResp.ok) {
+          const airData = (await airResp.json()).data || {};
+          if (airData.points && airData.points.length >= 24) {
+            this.currentHourlyPm25 = airData.points.map((p) => p.pm25_ug_m3);
+            this.renderPlanHourlyChart(this.currentHourlyPm25);
+            this._renderHoursStrip(airData.points);
+          }
+        }
+      } catch {}
     } catch {}
+  }
+
+  _renderHoursStrip(points = []) {
+    const s = $("hours-strip");
+    if (!s) return;
+    s.replaceChildren();
+    points.slice(0, 24).forEach((pt, h) => {
+      const pm = pt.pm25_ug_m3 || 0;
+      let cat = "severe";
+      if (pm <= 30) cat = "good";
+      else if (pm <= 60) cat = "satisfactory";
+      else if (pm <= 90) cat = "moderate";
+      else if (pm <= 120) cat = "poor";
+      else if (pm <= 250) cat = "very-poor";
+      const cell = el("div", `hour-cell ${cat}${h >= 12 && h <= 15 ? " highlight" : ""}`, `${h}`);
+      cell.setAttribute("title", `${h}:00 · ${Math.round(pm)} µg/m³`);
+      s.appendChild(cell);
+    });
   }
 
   renderMultiDaySlots(slots = []) {
@@ -156,14 +219,40 @@ class HawaKhataApp {
     list.replaceChildren();
     if (!slots.length) return list.append(el("div", "stat-lbl text-xs", "No 4-day slots calculated yet."));
     slots.forEach((s) => {
-      const row = el("div", "stat-box flex justify-between items-center text-left"), left = el("div"), btn = el("button", "btn btn-sm btn-secondary", "Plan");
+      const row = el("div", "stat-box flex justify-between items-center text-left"), left = el("div"), btns = el("div", "flex gap-05 items-center");
       left.append(
         el("div", "font-semibold text-sm", `#${s.rank} ${s.day_label}: ${s.time_label}`),
         el("div", "stat-lbl text-xs", `${s.dispersion_regime} · PM2.5: ${s.outdoor_pm25} µg/m³ · Dose: ${s.dose_ug} µg`),
         el("div", "text-xs text-saved font-semibold mt-05", `▲ Saves ${s.savings_ug} µg (${s.savings_pct}%) vs today smog peak`)
       );
-      btn.addEventListener("click", () => { btn.textContent = "✓ Set"; btn.className = "btn btn-sm btn-primary"; });
-      row.append(left, btn);
+      const btnPlan = el("button", "btn btn-sm btn-primary", "Plan");
+      btnPlan.addEventListener("click", () => {
+        btnPlan.textContent = "✓ Set";
+        btnPlan.className = "btn btn-sm btn-secondary";
+      });
+      const btnIcs = el("button", "btn btn-sm btn-secondary", "📅 .ics");
+      btnIcs.addEventListener("click", () => {
+        const loc = this.familyProfile.location?.city_name || "Delhi NCR";
+        const pad = (n) => String(n).padStart(2, "0");
+        const toUtc = (dt) => `${dt.getUTCFullYear()}${pad(dt.getUTCMonth() + 1)}${pad(dt.getUTCDate())}T${pad(dt.getUTCHours())}${pad(dt.getUTCMinutes())}00Z`;
+        const start = new Date(Date.now() + (s.day_index || 1) * 86400000);
+        start.setHours(s.start_hour || 13, 0, 0, 0);
+        const end = new Date(start.getTime() + Math.max(1, (s.end_hour - s.start_hour) || 1) * 3600000);
+        const ics = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//HawaKhata//Air Passbook//EN\r\nBEGIN:VEVENT\r\nUID:hk-${Date.now()}@hawakhata.org\r\nDTSTAMP:${toUtc(new Date())}\r\nDTSTART:${toUtc(start)}\r\nDTEND:${toUtc(end)}\r\nSUMMARY:HawaKhata Clean Window: ${s.day_label} ${s.time_label}\r\nDESCRIPTION:Scheduled clean air window in ${loc}. Dilutes PM2.5 to ${s.outdoor_pm25} ug/m3; saves ${s.savings_ug} ug.\r\nLOCATION:${loc}\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+        const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `hawakhata-${s.day_label.toLowerCase()}-routine.ics`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        btnIcs.textContent = "✓ Saved";
+        setTimeout(() => { btnIcs.textContent = "📅 .ics"; }, 2000);
+      });
+      btns.append(btnPlan, btnIcs);
+      row.append(left, btns);
       list.append(row);
     });
   }
@@ -205,6 +294,10 @@ class HawaKhataApp {
     if (l) l.textContent = lang === "en" ? "हिन्दी" : "English";
     document.documentElement.lang = lang;
     this.renderMembers();
+    this.renderActionStrip();
+    if (this.currentHourlyPm25 && this.currentHourlyPm25.length) {
+      this.renderPlanHourlyChart(this.currentHourlyPm25);
+    }
   }
 
   applyLocation(name, lat, lng) {
@@ -266,11 +359,14 @@ class HawaKhataApp {
       });
     }
 
-    onCity("btn-apply-custom-loc", () => {
-      const lat = parseFloat($("custom-lat")?.value) || 28.4595;
-      const lng = parseFloat($("custom-lng")?.value) || 77.0266;
-      this.applyLocation($("custom-city-name")?.value.trim() || "Custom Area", lat, lng);
-    });
+    const btnApplyCustom = $("btn-apply-custom-loc");
+    if (btnApplyCustom) {
+      btnApplyCustom.addEventListener("click", () => {
+        const lat = parseFloat($("custom-lat")?.value) || 28.4595;
+        const lng = parseFloat($("custom-lng")?.value) || 77.0266;
+        this.applyLocation($("custom-city-name")?.value.trim() || "Custom Area", lat, lng);
+      });
+    }
   }
 
   _bindMembers() {
@@ -317,6 +413,7 @@ class HawaKhataApp {
         this._updateHero(d);
         this.renderMembers(d.entries || []);
         this._updatePlanMemberOptions();
+        this.renderActionStrip();
       }
     } catch {
       this.renderMembers();
@@ -324,24 +421,36 @@ class HawaKhataApp {
   }
 
   _updateHero(d) {
+    this.currentOutdoorPm25 = Math.round(d.current_pm25 || (d.peak_pm25 ? d.peak_pm25 * 0.85 : 317));
+    this.currentAQI = d.current_aqi || 317;
+    this.cleanestWindow = d.cleanest_window || "12:00 – 15:00";
+
     const debit = $("hero-debit"), budget = $("hero-budget"), bal = $("hero-balance"), cigs = $("hero-cigs");
-    if (debit) debit.textContent = `${Math.round(d.total_debit_ug || 1420)} µg`;
-    if (budget) budget.textContent = `${Math.round(d.total_budget_ug || 240)} µg`;
+    if (debit) debit.textContent = `${Math.round(d.total_debit_ug || 0)} µg`;
+    if (budget) budget.textContent = `${Math.round(d.total_budget_ug || 0)} µg`;
     if (bal) {
-      const net = Math.round(d.net_balance_ug || -1180);
+      const net = Math.round(d.net_balance_ug || 0);
       bal.textContent = `${net > 0 ? "+" : ""}${net} µg`;
       bal.className = `stat-val ${net < 0 ? "debit" : "saved"}`;
     }
-    if (cigs) cigs.textContent = `${(d.cigarette_equivalent || 8.2).toFixed(1)} cigs`;
+    if (cigs) {
+      const cVal = d.cigarette_equivalent != null ? d.cigarette_equivalent : 0;
+      cigs.textContent = `${cVal.toFixed(1)} cigs`;
+    }
+
+    const inOut = $("indoor-outdoor-val");
+    if (inOut) inOut.textContent = `${this.currentOutdoorPm25} µg/m³`;
+
     const headline = $("brief-headline");
     if (headline) {
       const net = d.net_balance_ug ?? -1;
+      const isHi = this.currentLang === "hi";
       if (net < 0) {
-        const member = d.highest_debit_member ? ` – ${d.highest_debit_member} over limit` : "";
-        headline.textContent = `Air budget exceeded${member}`;
+        const member = d.highest_debit_member ? ` – ${d.highest_debit_member}` : "";
+        headline.textContent = isHi ? `एयर बजट पार हो गया${member}` : `Air budget exceeded${member}`;
         headline.className = "card-title text-debit";
       } else {
-        headline.textContent = "Within WHO budget ✓ – Household protected";
+        headline.textContent = isHi ? "WHO बजट के भीतर ✓ – परिवार सुरक्षित" : "Within WHO budget ✓ – Household protected";
         headline.className = "card-title text-saved";
       }
     }
@@ -375,6 +484,74 @@ class HawaKhataApp {
     if (recText && d.cleanest_window) {
       recText.textContent = `Cleanest window: ${d.cleanest_window}.`;
     }
+
+    this.renderActionStrip();
+  }
+
+  renderActionStrip() {
+    const pillsWrap = $("action-strip-pills");
+    const pmLbl = $("action-strip-pm");
+    if (!pillsWrap) return;
+    pillsWrap.replaceChildren();
+
+    const pm = this.currentOutdoorPm25 || 317;
+    const isHi = this.currentLang === "hi";
+    if (pmLbl) {
+      pmLbl.textContent = `${isHi ? "लाइव" : "Live"}: ${pm} µg/m³ · AQI ${this.currentAQI || 317}`;
+    }
+
+    // 1. Mask
+    const maskPill = el("span", "pill-status");
+    if (pm > 120) {
+      maskPill.className = "pill-status debit";
+      maskPill.textContent = isHi ? "😷 मास्क: बाहर N95 अनिवार्य" : "😷 Mask: N95 Required Outdoors";
+    } else if (pm > 60) {
+      maskPill.className = "pill-status warn";
+      maskPill.textContent = isHi ? "😷 मास्क: N95 अनुशंसित" : "😷 Mask: N95 Recommended";
+    } else {
+      maskPill.className = "pill-status saved";
+      maskPill.textContent = isHi ? "😊 मास्क: वैकल्पिक" : "😊 Mask: Optional";
+    }
+
+    // 2. Windows / Flush
+    const winPill = el("span", "pill-status");
+    const currentHour = new Date().getHours();
+    const isFlushTime = currentHour >= 12 && currentHour <= 15;
+    if (isFlushTime) {
+      winPill.className = "pill-status saved";
+      winPill.textContent = isHi ? "🪟 खिड़कियाँ: सुरक्षित फ्लश (1h खोलें)" : "🪟 Windows: Safe Flush Window (1h Open)";
+    } else {
+      winPill.className = "pill-status";
+      winPill.textContent = isHi ? "🪟 खिड़कियाँ: बंद रखें (स्मॉग सील)" : "🪟 Windows: Keep Sealed";
+    }
+
+    // 3. Purifier
+    const purPill = el("span", "pill-status");
+    if (pm > 120) {
+      purPill.className = "pill-status debit";
+      purPill.textContent = isHi ? "🌀 प्यूरीफायर: हाई / निरंतर" : "🌀 Purifier: High / Continuous";
+    } else if (pm > 60) {
+      purPill.className = "pill-status warn";
+      purPill.textContent = isHi ? "🌀 प्यूरीफायर: ऑटो / मीडियम" : "🌀 Purifier: Auto / Medium";
+    } else {
+      purPill.className = "pill-status saved";
+      purPill.textContent = isHi ? "🌀 प्यूरीफायर: लो / इको" : "🌀 Purifier: Low / Eco";
+    }
+
+    // 4. Outdoor / Pets
+    const petPill = el("span", "pill-status");
+    if (pm > 120) {
+      petPill.className = "pill-status debit";
+      petPill.textContent = isHi ? "🐾 पेट्स/सैर: 10m से कम · भारी श्रम रोकें" : "🐾 Outdoor/Pets: 10m Walks Only · Rest";
+    } else if (pm > 60) {
+      petPill.className = "pill-status warn";
+      petPill.textContent = isHi ? "🐾 पेट्स/सैर: दोपहर 12–15 बजे सुरक्षित" : "🐾 Outdoor/Pets: Moderate · Walk 12–15:00";
+    } else {
+      petPill.className = "pill-status saved";
+      petPill.textContent = isHi ? "🌳 बाहर: खेलकूद व सैर के लिए सुरक्षित" : "🌳 Outdoor: Safe for Play & Walks";
+    }
+
+    pillsWrap.append(maskPill, winPill, purPill, petPill);
   }
 
   renderMembers(entries = []) {
@@ -383,15 +560,33 @@ class HawaKhataApp {
     list.replaceChildren();
     this.familyProfile.members.forEach((m, idx) => {
       const e = entries.find((x) => x.member_id === m.id || x.member_label === m.name) || {};
-      const bVal = Math.round(e.budget_ug || 90), dVal = Math.round(e.debit_ug || 420);
+      const bVal = Math.round(e.budget_ug || 180), dVal = Math.round(e.debit_ug || 420);
+      const pct = bVal > 0 ? (dVal / bVal) * 100 : 100;
       const row = el("div", "balance-row"), info = el("div", "member-info"), details = el("div");
       info.append(el("div", "member-avatar", m.name.charAt(0).toUpperCase()), details);
       details.append(
         el("div", "font-semibold", m.name),
         el("div", "stat-lbl text-xs", `Budget: ${bVal} µg/d ${m.sensitivities?.length ? "· " + m.sensitivities.join(", ") : ""}`)
       );
-      const bar = el("div", "member-bar-wrap");
-      bar.append(el("div", "member-bar-fill w-full"));
+
+      const barWrap = el("div", "member-bar-wrap");
+      const barSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      barSvg.setAttribute("width", "100%");
+      barSvg.setAttribute("height", "10");
+      const barBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      barBg.setAttribute("width", "100%");
+      barBg.setAttribute("height", "10");
+      barBg.setAttribute("rx", "5");
+      barBg.setAttribute("fill", "#e2e8f0");
+      const barFill = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      barFill.setAttribute("width", `${Math.min(100, Math.max(2, pct))}%`);
+      barFill.setAttribute("height", "10");
+      barFill.setAttribute("rx", "5");
+      const fillColor = pct < 75 ? "#0F6E66" : (pct <= 100 ? "#C9A400" : "#C62828");
+      barFill.setAttribute("fill", fillColor);
+      barSvg.append(barBg, barFill);
+      barWrap.appendChild(barSvg);
+
       const del = el("button", "btn btn-sm btn-secondary", "✕");
       del.title = "Remove";
       del.addEventListener("click", async () => {
@@ -401,7 +596,7 @@ class HawaKhataApp {
       });
       const acts = el("div", "flex gap-05 items-center");
       acts.append(el("span", `pill-status ${dVal > bVal ? "debit" : "saved"}`, `${dVal} µg`), del);
-      row.append(info, bar, acts);
+      row.append(info, barWrap, acts);
       list.appendChild(row);
     });
   }
@@ -415,6 +610,118 @@ class HawaKhataApp {
       opt.value = m.id;
       sel.appendChild(opt);
     });
+  }
+
+  renderPlanHourlyChart(hourlyPm25 = []) {
+    const wrap = $("plan-hourly-svg-wrap");
+    if (!wrap) return;
+    wrap.replaceChildren();
+
+    const pts = hourlyPm25 && hourlyPm25.length >= 24
+      ? hourlyPm25.slice(0, 24)
+      : [320, 310, 300, 290, 330, 380, 420, 390, 310, 220, 160, 110, 95, 90, 105, 140, 210, 290, 350, 380, 390, 370, 350, 330];
+
+    const maxPm = Math.max(100, ...pts);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 500 120");
+    svg.setAttribute("class", "custom-viz");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "24-Hour PM2.5 Hourly Chart");
+
+    // Cleanest daytime window highlight (hours 12 to 15)
+    const hlRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    hlRect.setAttribute("x", `${12 * 20 + 2}`);
+    hlRect.setAttribute("y", "6");
+    hlRect.setAttribute("width", "60");
+    hlRect.setAttribute("height", "96");
+    hlRect.setAttribute("rx", "4");
+    hlRect.setAttribute("fill", "#0F6E66");
+    hlRect.setAttribute("fill-opacity", "0.12");
+    hlRect.setAttribute("stroke", "#0F6E66");
+    hlRect.setAttribute("stroke-width", "1");
+    hlRect.setAttribute("stroke-dasharray", "3 2");
+    svg.appendChild(hlRect);
+
+    const hlText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    hlText.setAttribute("x", "272");
+    hlText.setAttribute("y", "16");
+    hlText.setAttribute("fill", "#0F6E66");
+    hlText.setAttribute("font-size", "8");
+    hlText.setAttribute("font-weight", "700");
+    hlText.setAttribute("text-anchor", "middle");
+    hlText.textContent = this.currentLang === "hi" ? "स्वच्छ समय" : "CLEANEST";
+    svg.appendChild(hlText);
+
+    // Axis line
+    const axis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    axis.setAttribute("x1", "10");
+    axis.setAttribute("y1", "95");
+    axis.setAttribute("x2", "490");
+    axis.setAttribute("y2", "95");
+    axis.setAttribute("stroke", "var(--line, #cbd5e1)");
+    axis.setAttribute("stroke-width", "1");
+    svg.appendChild(axis);
+
+    // Dynamic info label
+    const infoText = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    infoText.setAttribute("x", "250");
+    infoText.setAttribute("y", "116");
+    infoText.setAttribute("fill", "var(--ink, #1e293b)");
+    infoText.setAttribute("font-size", "9");
+    infoText.setAttribute("font-weight", "600");
+    infoText.setAttribute("text-anchor", "middle");
+    infoText.textContent = this.currentLang === "hi"
+      ? "घंटे पर होवर या टैप करें · PM2.5 और NAQI देखें"
+      : "Hover/tap any hour bar to view PM2.5 and NAQI band";
+    svg.appendChild(infoText);
+
+    pts.forEach((pm, h) => {
+      const barH = Math.max(4, Math.round((pm / maxPm) * 70));
+      const barY = 95 - barH;
+      const barX = h * 20 + 5;
+
+      let color = "#6A1B4D";
+      let catName = "Severe";
+      if (pm <= 30) { color = "#2E7D32"; catName = "Good"; }
+      else if (pm <= 60) { color = "#7CB342"; catName = "Satisfactory"; }
+      else if (pm <= 90) { color = "#C9A400"; catName = "Moderate"; }
+      else if (pm <= 120) { color = "#E07B00"; catName = "Poor"; }
+      else if (pm <= 250) { color = "#C62828"; catName = "Very Poor"; }
+
+      const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.setAttribute("x", String(barX));
+      rect.setAttribute("y", String(barY));
+      rect.setAttribute("width", "14");
+      rect.setAttribute("height", String(barH));
+      rect.setAttribute("rx", "2");
+      rect.setAttribute("fill", color);
+      rect.setAttribute("class", "chart-bar-rect");
+      rect.setAttribute("tabindex", "0");
+      rect.setAttribute("role", "button");
+      rect.setAttribute("aria-label", `${h}:00 · ${Math.round(pm)} µg/m³ · ${catName}`);
+
+      const showHour = () => {
+        infoText.textContent = `${String(h).padStart(2, "0")}:00 · PM2.5: ${Math.round(pm)} µg/m³ · NAQI: ${catName}`;
+      };
+      rect.addEventListener("mouseenter", showHour);
+      rect.addEventListener("focus", showHour);
+      rect.addEventListener("click", showHour);
+
+      svg.appendChild(rect);
+
+      if (h % 3 === 0) {
+        const tick = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        tick.setAttribute("x", String(barX + 7));
+        tick.setAttribute("y", "105");
+        tick.setAttribute("fill", "var(--text-muted, #64748b)");
+        tick.setAttribute("font-size", "7");
+        tick.setAttribute("text-anchor", "middle");
+        tick.textContent = `${String(h).padStart(2, "0")}h`;
+        svg.appendChild(tick);
+      }
+    });
+
+    wrap.appendChild(svg);
   }
 
   _bindPlan() {
@@ -432,6 +739,9 @@ class HawaKhataApp {
         tabMulti.setAttribute("aria-selected", "false");
         if (multiContainer) multiContainer.hidden = true;
         if (shiftsContainer) shiftsContainer.hidden = false;
+        if ($("plan-savings-pill")) {
+          $("plan-savings-pill").textContent = `▲ Saves ${Math.round(this.todaySavings || 340)} µg`;
+        }
       });
       tabMulti.addEventListener("click", () => {
         tabMulti.className = "btn btn-sm btn-primary flex-1";
@@ -440,6 +750,10 @@ class HawaKhataApp {
         tabToday.setAttribute("aria-selected", "false");
         if (multiContainer) multiContainer.hidden = false;
         if (shiftsContainer) shiftsContainer.hidden = true;
+        if ($("plan-savings-pill")) {
+          const sVal = this.fourDayData?.top_slots?.[0]?.savings_ug || 420;
+          $("plan-savings-pill").textContent = `▲ Saves ${Math.round(sVal)} µg (4-Day Best)`;
+        }
       });
     }
 
@@ -479,6 +793,7 @@ class HawaKhataApp {
           const res = await resp.json();
           const shift = (res.data?.shifts || [])[0];
           const totalSavings = res.data?.total_savings_ug || 0;
+          this.todaySavings = totalSavings;
           if (shift) {
             const h = $("plan-shift-hours"), d = $("plan-shift-delta");
             const pmStr = shift.outdoor_pm25_at_optimized ? ` (${Math.round(shift.outdoor_pm25_at_optimized)} µg/m³)` : "";
@@ -528,19 +843,19 @@ class HawaKhataApp {
 
     const runEngineSim = async () => {
       const vol = parseFloat(vRng?.value || "60");
-      const cadr = on ? parseFloat(cRng?.value || "300") : 0;
+      const cadr = on ? parseFloat(cRng?.value || "300") : 0.0;
       const isWindowOpen = wSel?.value === "open";
+      const outPm = this.currentOutdoorPm25 || 317;
       const statusPill = $("indoor-sim-status");
-      if (statusPill) statusPill.textContent = this.currentLang === "hi" ? "सिम्युलेटिंग (इंजन)..." : "Simulating (engine)...";
+      if (statusPill) statusPill.textContent = this.currentLang === "hi" ? "सिम्युलेटिंग..." : "Simulating...";
 
       try {
         const resp = await fetch("/api/v1/indoor/simulate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             location: this.familyProfile.location,
             room: {
-              name: "Active Room",
+              name: "Living Room",
               volume_m3: vol,
               purifier_cadr_m3_per_h: cadr,
               purifier_on_hours: on ? Array.from({length: 24}, (_, i) => i) : [],
@@ -554,7 +869,6 @@ class HawaKhataApp {
           const d = res.data || {};
           const sim = d.simulation || {};
           const meanPm = Math.round(sim.mean_pm25_ug_m3 || 42);
-          const outPm = Math.round(this.airSeries?.points?.[0]?.pm25_ug_m3 || 340);
           const reqCadr = Math.round(d.purifier_recommendation?.required_cadr_m3_per_h || (vol * 5));
           const cleanPct = Math.max(0, Math.min(99, Math.round((1 - meanPm / Math.max(1, outPm)) * 100)));
 
@@ -573,16 +887,18 @@ class HawaKhataApp {
     const updatePreview = () => {
       const vol = parseFloat(vRng?.value || "60"), cadr = on ? parseFloat(cRng?.value || "300") : 0;
       const ach = wSel?.value === "sealed" ? 0.4 : (wSel?.value === "open" ? 2.5 : 0.8);
+      const outPm = this.currentOutdoorPm25 || 317;
       if ($("indoor-vol-label")) $("indoor-vol-label").textContent = `${vol} m³`;
       if ($("indoor-cadr-label")) $("indoor-cadr-label").textContent = `${cadr} m³/h`;
 
       const statusPill = $("indoor-sim-status");
       if (statusPill) statusPill.textContent = this.currentLang === "hi" ? "पूर्वावलोकन (स्लाइडिंग...)" : "Preview (sliding...)";
 
-      const cIn = Math.round((ach * 340.0) / (ach + cadr / vol + 0.2));
-      const pct = Math.max(0, Math.min(95, Math.round((1 - cIn / 340.0) * 100)));
+      const cIn = Math.round((ach * outPm) / (ach + cadr / vol + 0.2));
+      const pct = Math.max(0, Math.min(95, Math.round((1 - cIn / Math.max(1, outPm)) * 100)));
       if ($("indoor-pm25-val")) $("indoor-pm25-val").textContent = `${cIn} µg/m³`;
       if ($("indoor-preview-pm25")) $("indoor-preview-pm25").textContent = `${cIn} µg/m³`;
+      if ($("indoor-outdoor-val")) $("indoor-outdoor-val").textContent = `${outPm} µg/m³`;
       if ($("indoor-clean-pct")) $("indoor-clean-pct").textContent = `▲ ${pct}% Cleaner Air (Preview)`;
 
       clearTimeout(simTimer);
@@ -602,14 +918,16 @@ class HawaKhataApp {
     };
 
     if (vRng) vRng.addEventListener("input", updatePreview);
-    if (cRng) cRng.addEventListener("input", () => { updatePreview(); updatePlants(); });
+    if (cRng) cRng.addEventListener("input", updatePreview);
     if (wSel) wSel.addEventListener("change", updatePreview);
     if (pRng) pRng.addEventListener("input", updatePlants);
+
     if (pBtn) {
       pBtn.addEventListener("click", () => {
         on = !on;
         pBtn.textContent = on ? "Purifier ON" : "Purifier OFF";
         pBtn.className = `btn btn-sm ${on ? "btn-primary" : "btn-secondary"}`;
+        pBtn.setAttribute("aria-pressed", String(on));
         updatePreview();
       });
     }
@@ -623,14 +941,28 @@ class HawaKhataApp {
         try {
           const resp = await fetch("/api/v1/passbook/digest", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "Accept-Language": this.currentLang || "en"
+            },
             body: JSON.stringify({ profile: this.familyProfile })
           });
           if (resp.ok) {
             const digest = (await resp.json()).data?.digest_text || "";
-            await navigator.clipboard.writeText(digest);
-            copyBtn.textContent = "✓ Copied!";
-            setTimeout(() => { copyBtn.textContent = "📋 Share Passbook"; }, 2000);
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              await navigator.clipboard.writeText(digest);
+            } else {
+              const ta = document.createElement("textarea");
+              ta.value = digest;
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand("copy");
+              document.body.removeChild(ta);
+            }
+            copyBtn.textContent = this.currentLang === "hi" ? "✓ WhatsApp के लिए कॉपी हुआ!" : "✓ Copied for WhatsApp!";
+            setTimeout(() => {
+              copyBtn.textContent = this.currentLang === "hi" ? "📋 पासबुक साझा करें" : "📋 Share Passbook";
+            }, 2500);
           }
         } catch {
           copyBtn.textContent = "✓ Passbook Ready";
@@ -650,12 +982,13 @@ class HawaKhataApp {
     if (petClose && petModal) {
       petClose.addEventListener("click", () => { petModal.hidden = true; });
     }
+
     $$(".pet-tab-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         $$(".pet-tab-btn").forEach((b) => { b.className = "btn btn-sm btn-secondary flex-1 pet-tab-btn"; });
         btn.className = "btn btn-sm btn-primary flex-1 pet-tab-btn";
-        const species = btn.getAttribute("data-species") || "dog";
-        this._loadPetGuidance(species);
+        const sp = btn.getAttribute("data-species") || "dog";
+        this._loadPetGuidance(sp);
       });
     });
   }
@@ -774,20 +1107,33 @@ class HawaKhataApp {
     const update = () => {
       let co2 = 0, pm = 0;
       chks.forEach((c) => {
+        const row = c.closest(".balance-row");
+        const pill = row ? row.querySelector(".pill-status") : null;
         if (c.checked) {
           co2 += parseFloat(c.getAttribute("data-co2") || "0");
           pm += parseFloat(c.getAttribute("data-pm25") || "0");
+          if (pill) {
+            pill.textContent = this.currentLang === "hi" ? "सक्रिय" : "Active";
+            pill.className = "pill-status saved";
+          }
+        } else {
+          if (pill) {
+            pill.textContent = this.currentLang === "hi" ? "सक्षम करें" : "Enable";
+            pill.className = "pill-status";
+          }
         }
       });
       const count = parseInt(rng?.value || "50", 10);
-      if (cLbl) cLbl.textContent = `${count} homes`;
+      const isHi = this.currentLang === "hi";
+      if (cLbl) cLbl.textContent = `${count} ${isHi ? "घर" : "homes"}`;
       if (cVal) cVal.textContent = `${(count * co2).toFixed(1)} kg`;
       if (hVal) hVal.textContent = `${Math.round(pm)} µg`;
-      if (sPill) sPill.textContent = `▲ ${co2.toFixed(1)} kg avoided`;
+      if (sPill) sPill.textContent = `▲ ${co2.toFixed(1)} kg ${isHi ? "बचाया गया" : "avoided"}`;
     };
 
     if (rng) rng.addEventListener("input", update);
     chks.forEach((c) => c.addEventListener("change", update));
+    update();
   }
 
   _bindHours() {

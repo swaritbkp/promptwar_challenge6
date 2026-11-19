@@ -262,9 +262,14 @@ def test_passbook_triage_and_digest() -> None:
     assert triage[0].vulnerability_score >= triage[1].vulnerability_score
 
     digest = generate_shareable_digest(prof, pb, city_name="Gurugram")
-    assert "HawaKhata Passbook Digest" in digest
-    assert "WHO Air Budget" in digest
-    assert "Highest Priority" in digest
+    assert "HawaKhata" in digest and "Family Air Brief" in digest
+    assert "WHO Daily Budget" in digest
+    assert "Priority Member" in digest
+
+    digest_hi = generate_shareable_digest(prof, pb, city_name="Gurugram", language="hi")
+    assert "हवा खाता" in digest_hi
+    assert "WHO एयर बजट" in digest_hi
+    assert "सर्वोच्च प्राथमिकता" in digest_hi
 
 
 def test_extra_routes_coverage(client: TestClient, sample_profile_data: dict[str, Any]) -> None:

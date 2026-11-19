@@ -36,6 +36,12 @@ plugins = ["pydantic.mypy"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+    "ignore:.*starlette\\.testclient.*:UserWarning",
+    "ignore:.*httpx.*:UserWarning",
+]
 addopts = "-ra"
 
 [tool.coverage.run]

@@ -10,7 +10,7 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -145,6 +145,34 @@ def _normalise_raw_forecast_point(raw: dict[str, Any]) -> HourlyAirPoint:
     )
 
 
+CITY_CALIBRATED_SCALES: list[tuple[float, float, float]] = [
+    (28.4595, 77.0266, 1.00),  # Northern Plains primary baseline (~320-380 µg/m³, AQI 420-434)
+    (30.7333, 76.7794, 0.75),  # Northern Foothills baseline (~180-240 µg/m³, AQI 350)
+    (19.0760, 72.8777, 0.20),  # Mumbai (~64 µg/m³, AQI 113 Moderate)
+    (12.9716, 77.5946, 0.14),  # Bengaluru (~45 µg/m³, Satisfactory)
+    (22.5726, 88.3639, 0.50),  # Kolkata (~160 µg/m³, Very Poor)
+    (13.0827, 80.2707, 0.13),  # Chennai (~42 µg/m³, Satisfactory)
+    (17.3850, 78.4867, 0.20),  # Hyderabad (~64 µg/m³, Moderate)
+    (18.5204, 73.8567, 0.20),  # Pune (~64 µg/m³, Moderate)
+    (26.9124, 75.7873, 0.45),  # Jaipur (~144 µg/m³, Very Poor)
+    (26.8467, 80.9462, 0.88),  # Lucknow (~280 µg/m³, Severe)
+    (25.5941, 85.1376, 0.94),  # Patna (~300 µg/m³, Severe)
+    (23.0225, 72.5714, 0.40),  # Ahmedabad (~128 µg/m³, Very Poor)
+]
+
+
+def resolve_city_scale(lat: float, lng: float) -> float:
+    """Resolve calibrated scaling factor based on nearest Indian metro coordinates."""
+    min_dist, best_scale = float("inf"), 1.0
+    for c_lat, c_lng, s in CITY_CALIBRATED_SCALES:
+        d = _haversine_km(lat, lng, c_lat, c_lng)
+        if d < min_dist:
+            min_dist, best_scale = d, s
+    if min_dist <= 200.0:
+        return best_scale
+    return 0.20 if lat < 21.0 else 0.70
+
+
 def _load_nearest_fixture(
     lat: float, lng: float, hours: int, demo_clock_iso: str | None = None
 ) -> HourlyAirSeries:
@@ -157,23 +185,33 @@ def _load_nearest_fixture(
         with contextlib.suppress(ValueError):
             now_dt = datetime.fromisoformat(demo_clock_iso.replace("Z", "+00:00"))
 
-    scale = 0.45 if lat < 21.0 else 1.0
+    scale = resolve_city_scale(lat, lng)
+    # Day-to-day synoptic modifier: Today (1.0), Tomorrow (+10% inversion trap), Day 3 (-18% mixing lift), Day 4 (recovery)
+    synoptic_mods = [1.00, 1.10, 0.82, 0.92]
 
     pts = []
-    for i, rf in enumerate(raw[:hours]):
-        norm = _normalise_raw_forecast_point(rf)
-        p_pm25 = round(norm.pm25_ug_m3 * scale, 1)
+    num_raw = len(raw) if raw else 1
+    for i in range(hours):
+        tod = i % num_raw
+        day_idx = min(3, i // 24)
+        day_mod = synoptic_mods[day_idx]
+        norm = _normalise_raw_forecast_point(raw[tod])
+        p_pm25 = round(norm.pm25_ug_m3 * scale * day_mod, 1)
+        p_pm10 = (
+            round(norm.pm10_ug_m3 * scale * day_mod, 1) if norm.pm10_ug_m3 is not None else None
+        )
         sub_idx = pm25_to_sub_index(p_pm25)
         cat = pm25_to_naqi_category(p_pm25)
+        pt_dt = now_dt + timedelta(hours=i)
         pts.append(
             HourlyAirPoint(
-                norm.time_utc,
+                pt_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 f"{(now_dt.hour + i) % 24:02d}:00",
                 p_pm25,
-                norm.pm10_ug_m3,
-                sub_idx if scale != 1.0 else norm.aqi_local,
+                p_pm10,
+                sub_idx,
                 norm.aqi_universal,
-                cat.display_name if scale != 1.0 else norm.category_local,
+                cat.display_name,
                 norm.dominant_pollutant,
                 norm.health_recs,
             )

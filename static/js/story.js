@@ -27,6 +27,11 @@ export class StoryController {
 
   async start(storyId = "ncr") {
     try {
+      if (storyId === "chd" && this.app?.applyLocation) {
+        this.app.applyLocation("Chandigarh / Mohali", 30.7333, 76.7794);
+      } else if (this.app?.applyLocation && storyId === "ncr") {
+        this.app.applyLocation("Delhi NCR / Gurugram", 28.4595, 77.0266);
+      }
       const resp = await fetch(`/api/v1/story/${storyId}`);
       if (!resp.ok) return;
       const json = await resp.json();

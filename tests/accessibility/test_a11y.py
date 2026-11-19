@@ -73,5 +73,26 @@ def test_pages_and_static_assets(client: TestClient) -> None:
             "WHO 2021",
             "Berkeley Earth",
             "Inhalation Volume",
+            "16.0",  # Adult inhalation rate m3/day
         ]
     )
+
+
+def test_static_js_has_no_undefined_variables_or_banned_sinks() -> None:
+    js_files = list((ROOT / "static" / "js").glob("*.js"))
+    assert len(js_files) >= 2
+    for js_path in js_files:
+        code = js_path.read_text("utf-8")
+        assert "onCity(" not in code, f"Undefined reference onCity found in {js_path.name}"
+        assert ".innerHTML" not in code, f"Banned DOM sink innerHTML in {js_path.name}"
+        assert "eval(" not in code, f"Banned sink eval in {js_path.name}"
+
+
+def test_index_template_has_interactive_features() -> None:
+    index_html = (ROOT / "templates" / "index.html").read_text("utf-8")
+    assert "today-action-strip" in index_html
+    assert "plan-hourly-svg-wrap" in index_html
+    assert "plan-chart-container" in index_html
+    assert "has-tooltip" in index_html
+    assert "tooltip-bubble" in index_html
+    assert "btn-copy-digest" in index_html

@@ -167,11 +167,24 @@ def replan_if_needed(
 def _compute_cleanest_window(
     pts: list[HourlyAirPoint], pm25_vals: list[float]
 ) -> tuple[str, float]:
-    best_start, best_avg = 0, float("inf")
+    best_start, best_avg = -1, float("inf")
+    # Waking daytime hours 06:00 to 20:00 (start 6 to 18)
     for i in range(len(pm25_vals) - 1):
-        win_avg = (pm25_vals[i] + pm25_vals[i + 1]) / 2.0
-        if win_avg < best_avg:
-            best_avg, best_start = win_avg, i
+        hr = -1
+        if i < len(pts) and pts[i].time_local:
+            try:
+                hr = int(pts[i].time_local.split(":")[0])
+            except ValueError:
+                hr = i % 24
+        else:
+            hr = i % 24
+        if 6 <= hr <= 18:
+            win_avg = (pm25_vals[i] + pm25_vals[i + 1]) / 2.0
+            if win_avg < best_avg:
+                best_avg, best_start = win_avg, i
+    if best_start == -1:
+        best_start = 0
+        best_avg = (pm25_vals[0] + pm25_vals[1]) / 2.0 if len(pm25_vals) > 1 else pm25_vals[0]
     end_idx = min(len(pts) - 1, best_start + 2)
     return f"{pts[best_start].time_local}-{pts[end_idx].time_local}", round(
         best_avg if best_avg < float("inf") else 0.0, 1

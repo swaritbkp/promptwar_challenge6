@@ -249,13 +249,36 @@ class HawaKhataAgent:
                 reply_text, urgent=health.urgent, canary=CANARY_TOKEN, language=lang
             )
             final_reply = out_v.sanitized_text
-            if not final_reply.strip():
+            canary_detected = (
+                not out_v.safe
+                or "canary_leak" in out_v.blocked_reasons
+                or CANARY_TOKEN.lower() in reply_text.lower()
+                or "canary_7x9q" in reply_text.lower()
+                or CANARY_TOKEN.lower() in final_reply.lower()
+                or "canary_7x9q" in final_reply.lower()
+            )
+            if canary_detected:
+                logger.warning(
+                    "Security event: Canary token leak detected in model output. Discarding reply and falling back."
+                )
+                fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
+                final_reply = fb["reply"]
+                tool_calls = [fb["tool_name"]]
+                tool_outputs = [fb["tool_output"]]
+                fb_used = True
+            elif not final_reply.strip():
                 logger.info("Empty final_reply after output policy; using deterministic fallback.")
                 fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
                 final_reply = fb["reply"]
                 tool_calls = [fb["tool_name"]]
                 tool_outputs = [fb["tool_output"]]
                 fb_used = True
+
+            # Final sanitize to guarantee zero canary substring reaches response
+            if "canary_7x9q" in final_reply.lower() or CANARY_TOKEN.lower() in final_reply.lower():
+                final_reply = re.sub(
+                    r"(?i)<*HAWAKHATA_SEC_CANARY_[A-Z0-9]+>*", "", final_reply
+                ).strip()
             nums = [n.value for n in extract_numbers(final_reply)]
             self.sessions.add_message(session_id, "user", user_message)
             self.sessions.add_message(session_id, "model", final_reply)

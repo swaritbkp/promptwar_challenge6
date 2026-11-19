@@ -2,7 +2,7 @@
 
 > Air passbook for winter smog: debit (inhaled PM2.5), savings (exposure avoided), and balance under WHO 2021 guidelines.
 
-[![Tests](https://img.shields.io/badge/tests-200%20passed-brightgreen.svg)]() [![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen.svg)]() [![Security](https://img.shields.io/badge/security-verified-blue.svg)]() [![WCAG](https://img.shields.io/badge/a11y-WCAG%202.2%20AA-success.svg)]()
+[![Tests](https://img.shields.io/badge/tests-205%20passed-brightgreen.svg)]() [![Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen.svg)]() [![Security](https://img.shields.io/badge/security-verified-blue.svg)]() [![WCAG](https://img.shields.io/badge/a11y-WCAG%202.2%20AA-success.svg)]()
 
 ## 1. Problem → Solution
 | Brief Clause | Feature | Engine Citation |

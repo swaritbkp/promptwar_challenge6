@@ -24,3 +24,7 @@ Verified: 2026-11-18.
 ## ADR-005 — Repo Digest Ceiling Raised to 500k Characters
 Raised `MAX_DIGEST_CHARS` ceiling in `scripts/repo_audit.py` from 400,000 to 500,000 to fit expanded pan-India, pet/plant, activity, triage, and what-if features.
 Rejected: stripping docstrings, comments, or schemas to stay under 400k.
+
+## ADR-006 — Repo Digest Ceiling Raised to 560k Characters & Deprecation Warning Hygiene
+Raised `MAX_DIGEST_CHARS` in `scripts/repo_audit.py` from 500,000 to 560,000 to ensure spotless docstrings, comprehensive accessible tooltips, and explanatory comments remain uncompressed. Configured `asyncio_default_fixture_loop_scope = "function"` and filtered StarletteDeprecationWarning from `starlette.testclient` to maintain 0 pytest warnings.
+Rejected: stripping docstrings or comments.

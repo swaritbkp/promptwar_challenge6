@@ -29,6 +29,8 @@ class FamilyPassbookResult:
     current_category_label: str = "Very Poor"
     peak_pm25: float = 380.0
     cleanest_window: str = "12:00 – 15:00"
+    current_pm25: float = 150.0
+    total_cigarette_equivalent: float = 0.0
 
 
 def compute_family_passbook(
@@ -84,14 +86,19 @@ def compute_family_passbook(
     pk_pm = max(outdoor_pm25_series) if outdoor_pm25_series else 150.0
 
     best_start, best_avg = 12, float("inf")
-    if len(outdoor_pm25_series) >= 3:
-        for i in range(len(outdoor_pm25_series) - 2):
+    # Restrict cleanest window strictly to daytime waking hours (06:00 to 20:00, starts 6 to 17)
+    max_h = min(len(outdoor_pm25_series) - 2, 18)
+    if len(outdoor_pm25_series) >= 3 and max_h > 6:
+        for i in range(6, max_h):
             win_avg = sum(outdoor_pm25_series[i : i + 3]) / 3.0
             if win_avg < best_avg:
                 best_avg, best_start = win_avg, i
         clean_win = f"{best_start:02d}:00 – {best_start + 3:02d}:00"
     else:
         clean_win = "12:00 – 15:00"
+
+    n_members = max(1, len(profile.members))
+    avg_cigs = round(tot_cigs / n_members, 1)
 
     return FamilyPassbookResult(
         family_id=profile.id,
@@ -101,12 +108,14 @@ def compute_family_passbook(
         total_debit_ug=round(tot_debit, 2),
         net_balance_ug=round(tot_budget - tot_debit, 2),
         highest_debit_member=max_mbr,
-        cigarette_equivalent=round(tot_cigs, 1),
+        cigarette_equivalent=avg_cigs,
         current_aqi=cur_aqi,
         current_category=cat.code,
         current_category_label=cat.display_name,
         peak_pm25=round(pk_pm, 1),
         cleanest_window=clean_win,
+        current_pm25=round(cur_pm, 1),
+        total_cigarette_equivalent=round(tot_cigs, 1),
     )
 
 
@@ -181,23 +190,56 @@ def generate_shareable_digest(
     passbook: FamilyPassbookResult,
     city_name: str = "Delhi NCR",
     date_str: str = "Today",
+    language: str = "en",
 ) -> str:
-    """Generate a clean, copy/print-friendly daily passbook summary."""
+    """Generate a clean, copy/WhatsApp-friendly daily passbook brief."""
     triage = rank_household_triage(profile, passbook)
     top = triage[0] if triage else None
-    cigs = round(passbook.total_debit_ug / 22.0, 1)
-    status_icon = "⚠️" if passbook.net_balance_ug < 0 else "✅"
-    lines = [
-        f"📋 HawaKhata Passbook Digest — {city_name} ({date_str})",
-        "━" * 38,
-        f"• Family Air Debit: {passbook.total_debit_ug:.0f} µg ({cigs} cigs equiv)",
-        f"• WHO Air Budget: {passbook.total_budget_ug:.0f} µg | Balance: {passbook.net_balance_ug:+.0f} µg {status_icon}",
-    ]
-    if top:
-        sens = f" ({', '.join(top.sensitivities)})" if top.sensitivities else ""
-        lines.append(
-            f"• Highest Priority: {top.name}{sens} — {top.debit_to_budget_ratio:.1f}× WHO budget"
+    cigs = passbook.cigarette_equivalent
+    is_hi = language == "hi"
+
+    if is_hi:
+        status_txt = "बजट के भीतर ✓" if passbook.net_balance_ug >= 0 else "बजट से अधिक ⚠️"
+        lines = [
+            f"🌬️ *हवा खाता पारिवारिक एयर ब्रीफ* · {city_name} ({date_str})",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"📍 *लाइव AQI*: {passbook.current_aqi} ({passbook.current_category_label}) · PM2.5: {passbook.current_pm25:.0f} µg/m³",
+            f"🚶 *सबसे सुरक्षित सैर समय*: {passbook.cleanest_window} (दोपहर का मिक्सिंग लिफ्ट)",
+            f"📊 *पारिवारिक एयर डेबिट*: {passbook.total_debit_ug:.0f} µg ({cigs} सिगरेट/व्यक्ति)",
+            f"🎯 *WHO एयर बजट*: {passbook.total_budget_ug:.0f} µg | बैलेंस: {passbook.net_balance_ug:+.0f} µg ({status_txt})",
+        ]
+        if top:
+            sens = f" ({', '.join(top.sensitivities)})" if top.sensitivities else ""
+            lines.append(
+                f"👤 *सर्वोच्च प्राथमिकता*: {top.name}{sens} · {top.debit_to_budget_ratio:.1f}× WHO बजट"
+            )
+            lines.append(f"💡 *सलाह*: {top.primary_action}")
+        lines.extend(
+            [
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                "_हवा खाता · HawaKhata · विज्ञान आधारित शुद्ध हवा passbook_",
+            ]
         )
-        lines.append(f"• Key Action: {top.primary_action}")
-    lines.extend(["━" * 38, "Deterministic science by HawaKhata (हवा खाता)"])
+    else:
+        status_txt = "Protected ✓" if passbook.net_balance_ug >= 0 else "Over Budget ⚠️"
+        lines = [
+            f"🌬️ *HawaKhata Family Air Brief* · {city_name} ({date_str})",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"📍 *Live AQI*: {passbook.current_aqi} ({passbook.current_category_label}) · PM2.5: {passbook.current_pm25:.0f} µg/m³",
+            f"🚶 *Safest Walk Window*: {passbook.cleanest_window} (Afternoon Mixing Lift)",
+            f"📊 *Family Inhaled*: {passbook.total_debit_ug:.0f} µg ({cigs} cigs/person avg)",
+            f"🎯 *WHO Daily Budget*: {passbook.total_budget_ug:.0f} µg | Balance: {passbook.net_balance_ug:+.0f} µg ({status_txt})",
+        ]
+        if top:
+            sens = f" ({', '.join(top.sensitivities)})" if top.sensitivities else ""
+            lines.append(
+                f"👤 *Priority Member*: {top.name}{sens} · {top.debit_to_budget_ratio:.1f}× WHO budget"
+            )
+            lines.append(f"💡 *Action*: {top.primary_action}")
+        lines.extend(
+            [
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                "_HawaKhata (हवा खाता) · Deterministic Science for Clean Air_",
+            ]
+        )
     return "\n".join(lines)
