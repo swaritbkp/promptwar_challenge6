@@ -30,16 +30,20 @@ TEMPLATES_PATH = ROOT / "data" / "templates.v1.json"
 
 @functools.lru_cache(maxsize=1)
 def _load_lexicon() -> dict[str, Any]:
-    if not LEXICON_PATH.exists():
-        return {"intents": {}, "default_intent": "brief"}
-    return json.loads(LEXICON_PATH.read_text("utf-8"))  # type: ignore[no-any-return]
+    return (
+        json.loads(LEXICON_PATH.read_text("utf-8"))
+        if LEXICON_PATH.exists()
+        else {"intents": {}, "default_intent": "brief"}
+    )
 
 
 @functools.lru_cache(maxsize=1)
 def _load_templates() -> dict[str, Any]:
-    if not TEMPLATES_PATH.exists():
-        return {"templates": {}}
-    return json.loads(TEMPLATES_PATH.read_text("utf-8"))  # type: ignore[no-any-return]
+    return (
+        json.loads(TEMPLATES_PATH.read_text("utf-8"))
+        if TEMPLATES_PATH.exists()
+        else {"templates": {}}
+    )
 
 
 def detect_language(text: str) -> str:
@@ -65,8 +69,7 @@ def compose_reply(intent: str, lang: str, params: dict[str, Any]) -> str:
     templates = _load_templates().get("templates", {}).get(intent, {})
     t_str = templates.get(lang) or templates.get("en", "")
     if not t_str:
-        city = params.get("city", "your location")
-        pm = params.get("current_pm25", 0)
+        city, pm = params.get("city", "your area"), params.get("current_pm25", 0)
         return f"Air data for {city}: PM2.5 is {pm} µg/m³."
     try:
         return str(t_str.format(**params))
@@ -83,42 +86,24 @@ async def _dispatch_intent(
 
     if intent == "passbook":
         res = await get_family_passbook(date_iso)
-        d = res.get("result", {})
-        p = {
-            "total_debit_ug": d.get("total_debit_ug", 0.0),
-            "total_budget_ug": d.get("total_budget_ug", 0.0),
-            "net_balance_ug": d.get("net_balance_ug", 0.0),
-            "status": d.get("status", "within budget"),
-            "cigarette_equivalent": d.get("cigarette_equivalent", 0.0),
-        }
         reply, tool_name, tool_output = (
-            compose_reply("passbook", lang, p),
+            compose_reply("passbook", lang, res.get("result", {})),
             "get_family_passbook",
             res,
         )
     elif intent == "indoor":
         res = await simulate_indoor_air()
-        d = res.get("result", {})
-        p = {
-            "room_name": d.get("room_name", "Living Room"),
-            "mean_pm25_ug_m3": d.get("mean_pm25_ug_m3", 0.0),
-            "peak_pm25_ug_m3": d.get("peak_pm25_ug_m3", 0.0),
-            "purifier_cadr_needed_m3_h": d.get("purifier_cadr_needed_m3_h", 0.0),
-            "ventilation_safe_hours": str(d.get("ventilation_safe_hours", [])),
-        }
         reply, tool_name, tool_output = (
-            compose_reply("indoor", lang, p),
+            compose_reply("indoor", lang, res.get("result", {})),
             "simulate_indoor_air",
             res,
         )
     elif intent == "health":
-        reply = compose_reply("health", lang, {})
-        tool_name = "health_guidance"
-        tool_output = {
-            "result": "consult doctor",
-            "explanation": "Medical disclaimer",
-            "missing_fields": [],
-        }
+        reply, tool_name, tool_output = (
+            compose_reply("health", lang, {}),
+            "health_guidance",
+            {"result": "consult doctor", "explanation": "Medical disclaimer", "missing_fields": []},
+        )
     elif intent == "plan":
         ctx = get_current_context()
         if (
@@ -148,15 +133,8 @@ async def _dispatch_intent(
             )
     elif intent == "swap":
         res = await evaluate_swaps()
-        d = res.get("result", {})
-        p = {
-            "total_emissions_avoided_kg": d.get("total_emissions_avoided_kg", 0.0),
-            "total_exposure_saved_ug": d.get("total_exposure_saved_ug", 0.0),
-            "community_households": d.get("community_households", 1),
-            "community_emissions_avoided_kg": d.get("community_emissions_avoided_kg", 0.0),
-        }
         reply, tool_name, tool_output = (
-            compose_reply("swap", lang, p),
+            compose_reply("swap", lang, res.get("result", {})),
             "evaluate_swaps",
             res,
         )
@@ -183,11 +161,7 @@ async def _dispatch_intent(
             "cleanest_window_end": cw.get("end", "15:00"),
             "cleanest_window_pm25": cw.get("pm25", 0.0),
         }
-        reply, tool_name, tool_output = (
-            compose_reply("brief", lang, p),
-            "get_smog_brief",
-            brief_res,
-        )
+        reply, tool_name, tool_output = compose_reply("brief", lang, p), "get_smog_brief", brief_res
 
     return reply, tool_name, tool_output
 
@@ -204,7 +178,7 @@ async def execute_fallback_turn(
     token = set_current_context(ToolContext(profile, location, aq_client, date_iso))
     try:
         reply, tool_name, tool_output = await _dispatch_intent(
-            intent, lang, location.city_name or "your city", date_iso
+            intent, lang, location.city_name or "your area", date_iso
         )
         return {
             "reply": reply,

@@ -4,11 +4,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from hawakhata.engine.dose import ScheduleBlock
-from hawakhata.engine.planner import (
-    FlexibleActivity,
-    _is_valid_slot,
-    optimise_day_plan,
-)
+from hawakhata.engine.planner import FlexibleActivity, _is_valid_slot, optimise_day_plan
 
 
 def test_optimise_day_plan_shifts_morning_walk_to_afternoon() -> None:
@@ -64,5 +60,4 @@ def test_property_planner_dose_never_exceeds_usual(
     outdoor[7], outdoor[14] = morning_peak, afternoon_trough
     flex = [FlexibleActivity("walk", "m", "Walk", 1, 6, 20, "outdoor", "moderate", 7)]
     res = optimise_day_plan("31_41", [], flex, outdoor)
-    assert res.optimized_dose_ug <= res.usual_dose_ug + 1e-4
-    assert res.total_savings_ug >= 0.0
+    assert res.optimized_dose_ug <= res.usual_dose_ug + 1e-4 and res.total_savings_ug >= 0.0

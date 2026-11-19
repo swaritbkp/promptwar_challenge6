@@ -1,13 +1,4 @@
-"""Repository quality audit: python scripts/repo_audit.py.
-
-Checks (all cheap, deterministic, cross-platform):
-1. Banned patterns in ``src/`` (env reads outside config, TODOs, prints, sampling params,
-   bare excepts, NotImplementedError, persona/city names from demo fixtures).
-2. Repo hygiene: junk files, oversized files/fixtures, total digest size.
-3. README "Code Map": every ``path: function()`` citation must really exist.
-
-Use ``--digest`` to write ``.digest.txt`` (git-ignored): the full-repo text a reviewer reads.
-"""
+"""Repository quality audit: python scripts/repo_audit.py."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Indoor air quality hacks, purifier sizing heuristics, and natural ventilation timing."""
+"""Indoor air hacks and purifier sizing utilities."""
 
 from __future__ import annotations
 
@@ -45,9 +45,7 @@ class IndoorHack:
 
 
 def recommend_ventilation_hours(
-    outdoor_series: list[float],
-    indoor_baseline_series: list[float],
-    max_hours: int = 3,
+    outdoor_series: list[float], indoor_baseline_series: list[float], max_hours: int = 3
 ) -> VentilationRecommendation:
     """Identify windows where airing the house reduces indoor PM2.5 (C_out < C_in)."""
     qualifying = [
@@ -57,26 +55,22 @@ def recommend_ventilation_hours(
     ]
     qualifying.sort(key=lambda x: x[1])
     chosen = [h for h, _ in qualifying[:max_hours]]
-
-    if chosen:
-        formatted = ", ".join(f"{h:02d}:00" for h in sorted(chosen))
-        reason = (
-            f"Outdoor air is cleaner than indoor during {formatted}. "
-            "Open windows during these cleanest hours to flush indoor particulates."
-        )
-    else:
-        reason = "Outdoor air is more polluted than indoor throughout the day. Keep windows closed."
-
+    win_str = ", ".join(f"{h:02d}:00" for h in sorted(chosen))
+    reason = (
+        f"Outdoor air is cleaner than indoor during {win_str}. Open windows."
+        if chosen
+        else "Outdoor air is more polluted than indoor throughout the day. Keep windows closed."
+    )
     return VentilationRecommendation(
         recommended_hours=chosen,
         qualifying_count=len(qualifying),
         reason=reason,
         explanation=Explanation(
-            "C_out(h) < C_in(h), sorted by min C_out",
-            {"qualifying_count": len(qualifying), "chosen_hours": chosen},
+            "C_out(h) < C_in(h)",
+            {"count": len(qualifying), "hours": chosen},
             ["air_exchange_open", "air_exchange_closed"],
-            ["EPA/WHO indoor-outdoor exchange guidance"],
-            ["Cross-ventilation achieves 3.0 ACH when open"],
+            ["EPA/WHO"],
+            ["Cross-ventilation 3 ACH"],
         ),
     )
 
@@ -91,18 +85,10 @@ def recommend_purifier_cadr(
     required = v * target_ach
     deficit = max(0.0, required - current_cadr_m3_per_h)
     sufficient = current_cadr_m3_per_h >= required
-
     if sufficient:
-        advice = (
-            f"Your purifier ({current_cadr_m3_per_h:.0f} m³/h CADR) is sufficient for this "
-            f"{v:.0f} m³ room. Run continuously in bedroom."
-        )
+        advice = f"Your purifier is sufficient for this {v:.0f} m³ room. Run in bedroom."
     else:
-        advice = (
-            f"This {v:.0f} m³ room needs at least {required:.0f} m³/h CADR "
-            f"(deficit of {deficit:.0f} m³/h). Move closer to bed or add CADR."
-        )
-
+        advice = f"Room needs {required:.0f} m³/h CADR (deficit {deficit:.0f} m³/h). Add CADR."
     return PurifierRecommendation(
         required_cadr_m3_per_h=required,
         current_cadr_m3_per_h=current_cadr_m3_per_h,
@@ -111,14 +97,9 @@ def recommend_purifier_cadr(
         advice=advice,
         explanation=Explanation(
             "Required_CADR = Room_Volume * Target_ACH",
-            {
-                "room_volume_m3": v,
-                "current_cadr": current_cadr_m3_per_h,
-                "target_ach": target_ach,
-                "required_cadr": required,
-            },
+            {"volume": v, "target_ach": target_ach, "cadr": current_cadr_m3_per_h},
             ["purifier_target_ach"],
-            ["AHAM AC-1", "US EPA Guide to Air Cleaners in the Home"],
+            ["AHAM AC-1", "US EPA"],
             ["5 ACH for severe smog"],
         ),
     )
@@ -158,13 +139,13 @@ def _eval_hack(
         explanation=Explanation(
             formula,
             {
-                "baseline_mean_pm25": round(base_mean, 1),
-                "intervention_mean_pm25": round(res.mean_pm25_ug_m3, 1),
-                "delta_saved": round(delta, 1),
+                "base": round(base_mean, 1),
+                "sim": round(res.mean_pm25_ug_m3, 1),
+                "saved": round(delta, 1),
             },
             ["indoor_emission_rate"],
             [source_citation],
-            ["Intervention applied across full 24h cycle"],
+            ["24h cycle"],
         ),
     )
 
@@ -182,7 +163,6 @@ def rank_indoor_hacks(
     v = max(1.0, room_volume_m3)
     p_hours = set(purifier_on_hours or set())
     w_hours = set(windows_open_hours or set())
-
     base_res = simulate_indoor_pm25(
         room_volume_m3=v,
         outdoor_pm25_series=outdoor_series,
@@ -226,23 +206,21 @@ def rank_indoor_hacks(
     if any(e.kind == "src_mosquito_coil" for e in baseline_events):
         _run(
             "hack_no_mosquito_coil",
-            "Switch from mosquito coil to bed nets or vaporiser",
-            "A mosquito coil emits PM2.5 equivalent to 75-100 cigarettes.",
-            "Liu et al. (2003)",
-            "delta_pm25 = Base - Sim_No_Coil",
+            "Switch mosquito coil to vaporiser",
+            "Mosquito coil emits 75-100 cigarettes.",
+            "Liu (2003)",
+            "Base - No_Coil",
             ev=[e for e in baseline_events if e.kind != "src_mosquito_coil"],
         )
-
     if any(e.kind == "src_incense_stick" for e in baseline_events):
         _run(
             "hack_no_incense",
-            "Pause burning incense sticks indoors on smoggy days",
-            "Incense sticks emit fine particulate bursts over 100 mg/h.",
-            "Lin et al. (2008)",
-            "delta_pm25 = Base - Sim_No_Incense",
+            "Pause incense sticks on smoggy days",
+            "Incense emits bursts >100 mg/h.",
+            "Lin (2008)",
+            "Base - No_Incense",
             ev=[e for e in baseline_events if e.kind != "src_incense_stick"],
         )
-
     if any(e.kind in ("src_frying", "src_tadka") for e in baseline_events):
         reduced = [
             IndoorSourceEvent(e.kind, e.start_hour, e.minutes * 0.3, e.count)
@@ -252,35 +230,31 @@ def rank_indoor_hacks(
         ]
         _run(
             "hack_kitchen_exhaust",
-            "Turn on kitchen exhaust and lid pans during tadka/frying",
-            "Kitchen exhaust captures ~70% of frying aerosols.",
-            "Buonanno et al. (2009)",
-            "delta_pm25 = Base - Sim_Exhaust",
+            "Turn on kitchen exhaust and lid pans",
+            "Exhaust captures ~70% frying aerosols.",
+            "Buonanno (2009)",
+            "Base - Exhaust",
             ev=reduced,
         )
-
-    peak_hours = {6, 7, 8, 9, 18, 19, 20, 21}
-    bad_windows = w_hours.intersection(peak_hours)
+    bad_windows = w_hours.intersection({6, 7, 8, 9, 18, 19, 20, 21})
     if bad_windows:
         _run(
             "hack_close_peak_windows",
-            "Keep windows shut during morning and evening smog peaks",
-            "Inversions trap severe pollution near ground during peaks.",
-            "Goel et al. (2015)",
-            "delta_pm25 = Base - Sim_Closed_Peaks",
+            "Keep windows shut during smog peaks",
+            "Inversions trap peak pollution.",
+            "Goel (2015)",
+            "Base - Closed_Peaks",
             win=w_hours - bad_windows,
         )
-
     sleep_hours = {22, 23, 0, 1, 2, 3, 4, 5}
     if sleep_hours - p_hours:
-        effective_cadr = purifier_cadr_m3_per_h if purifier_cadr_m3_per_h > 0 else (v * 5.0)
         _run(
             "hack_night_purifier",
-            "Run air purifier continuously in the bedroom during sleep",
+            "Run air purifier in bedroom during sleep",
             "Clean bedroom air cuts overnight exposure.",
-            "US EPA Guide to Air Cleaners",
-            "delta_pm25 = Base - Sim_Night_Purifier",
-            cadr=effective_cadr,
+            "US EPA",
+            "Base - Night_Purifier",
+            cadr=purifier_cadr_m3_per_h if purifier_cadr_m3_per_h > 0 else (v * 5.0),
             p_h=p_hours.union(sleep_hours),
         )
 

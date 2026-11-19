@@ -16,18 +16,14 @@ def test_allows_burst_up_to_capacity_then_blocks(clock: FakeClock) -> None:
 
 def test_tokens_refill_over_time(clock: FakeClock) -> None:
     limiter = TokenBucketLimiter(per_minute=60, max_clients=10, clock=clock)
-    for _ in range(60):
-        limiter.allow("c")
-    assert limiter.allow("c") is False
+    assert [limiter.allow("c") for _ in range(61)][-1] is False
     clock.advance(1.0)
-    assert limiter.allow("c") is True
-    assert limiter.retry_after_s("unknown") == 0
+    assert limiter.allow("c") is True and limiter.retry_after_s("unknown") == 0
 
 
 def test_client_key_hides_raw_identifier() -> None:
     key = TokenBucketLimiter.client_key("203.0.113.9")
-    assert "203" not in key
-    assert len(key) == 16
+    assert "203" not in key and len(key) == 16
 
 
 def test_invalid_configuration_rejected() -> None:
@@ -49,8 +45,7 @@ def test_daily_quota_blocks_after_limit_and_resets_next_day() -> None:
     assert [quota.try_consume("c") for _ in range(3)] == [True, True, False]
     assert quota.remaining("c") == 0
     clock.advance(86_400)
-    assert quota.remaining("c") == 2
-    assert quota.try_consume("c") is True
+    assert quota.remaining("c") == 2 and quota.try_consume("c") is True
 
 
 def test_daily_quota_rejects_invalid_configuration() -> None:
@@ -63,4 +58,4 @@ def test_daily_quota_client_table_is_bounded(clients: list[str], bound: int) -> 
     quota = DailyQuota(max_per_day=3, max_clients=bound)
     for client in clients:
         quota.try_consume(client)
-    assert len(quota._usage) <= bound  # verifying the memory bound
+    assert len(quota._usage) <= bound

@@ -24,8 +24,6 @@ from hawakhata.api.schemas import (
     MemberInput,
     PassbookRequest,
     PlanRequest,
-    RoomInput,
-    ScheduleBlockInput,
     SensitiveAlert,
     SwapsImpactRequest,
 )
@@ -41,6 +39,11 @@ from hawakhata.services.swap_service import compute_swap_impact, list_available_
 api_router = APIRouter(prefix="/api/v1")
 AqClientDep = Annotated[AirQualityClient, Depends(get_aq_client)]
 AgentDep = Annotated[HawaKhataAgent, Depends(get_agent)]
+
+
+async def _get_series(client: AirQualityClient, loc: LocationInput) -> tuple[Any, list[float]]:
+    s = await client.get_hourly_forecast(lat=loc.lat, lng=loc.lng, hours=24)
+    return s, [pt.pm25_ug_m3 for pt in s.points]
 
 
 @api_router.post("/air/forecast", response_model=Envelope[dict[str, Any]], tags=["air"])
@@ -64,9 +67,7 @@ async def post_passbook(
     aq_client: AqClientDep,
 ) -> Envelope[dict[str, Any]]:
     """Compute per-member inhaled dose, daily air budget, and balance."""
-    loc = req.profile.location
-    series = await aq_client.get_hourly_forecast(lat=loc.lat, lng=loc.lng, hours=24)
-    pm25_series = [pt.pm25_ug_m3 for pt in series.points]
+    series, pm25_series = await _get_series(aq_client, req.profile.location)
     result = compute_family_passbook(req.profile, pm25_series)
     meta = make_meta(request, data_mode=series.data_mode)
     return Envelope(data=asdict(result), meta=meta)
@@ -79,13 +80,9 @@ async def post_indoor_simulate(
     aq_client: AqClientDep,
 ) -> Envelope[dict[str, Any]]:
     """Simulate 24-hour indoor PM2.5, evaluate purifier, and rank hacks."""
-    loc = req.location
-    series = await aq_client.get_hourly_forecast(lat=loc.lat, lng=loc.lng, hours=24)
-    pm25_series = [pt.pm25_ug_m3 for pt in series.points]
+    series, pm25_series = await _get_series(aq_client, req.location)
     result = simulate_indoor_environment(
-        room=req.room,
-        sources=req.sources,
-        outdoor_pm25_series=pm25_series,
+        room=req.room, sources=req.sources, outdoor_pm25_series=pm25_series
     )
     meta = make_meta(request, data_mode=series.data_mode)
     return Envelope(data=asdict(result), meta=meta)
@@ -98,9 +95,7 @@ async def post_plan(
     aq_client: AqClientDep,
 ) -> Envelope[dict[str, Any]]:
     """Optimise member routines into clean forecast windows."""
-    loc = req.profile.location
-    series = await aq_client.get_hourly_forecast(lat=loc.lat, lng=loc.lng, hours=24)
-    pm25_series = [pt.pm25_ug_m3 for pt in series.points]
+    series, pm25_series = await _get_series(aq_client, req.profile.location)
     result = compute_optimized_plan(
         profile=req.profile,
         member_id=req.member_id,
@@ -193,26 +188,9 @@ async def get_story_tour(story_id: str, request: Request) -> Envelope[dict[str, 
 def _default_profile() -> FamilyProfileInput:
     return FamilyProfileInput(
         id="fam_default",
-        name="Delhi Household",
+        name="Household",
         location=LocationInput(lat=28.4595, lng=77.0266),
-        rooms=[RoomInput(name="Living Room", volume_m3=60.0)],
-        sources=[],
-        members=[
-            MemberInput(
-                id="m1",
-                name="Family Member",
-                age_band="31_41",
-                sensitivities=[],
-                schedule_blocks=[
-                    ScheduleBlockInput(
-                        start_hour=0,
-                        end_hour=24,
-                        micro_env="indoor_home",
-                        activity="sedentary",
-                    )
-                ],
-            )
-        ],
+        members=[MemberInput(id="m1", name="Family Member", age_band="31_41")],
     )
 
 

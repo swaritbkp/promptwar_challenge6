@@ -1,4 +1,4 @@
-"""Clean-Window Activity Planner — shifts flexible routines to cleanest forecast hours."""
+"""Clean-Window Planner."""
 
 from __future__ import annotations
 
@@ -61,21 +61,12 @@ class OptimizedPlanResult:
 
 
 def _build_schedule_blocks(
-    fixed_blocks: list[ScheduleBlock],
-    activity_slots: dict[str, tuple[int, FlexibleActivity]],
+    fixed_blocks: list[ScheduleBlock], activity_slots: dict[str, tuple[int, FlexibleActivity]]
 ) -> list[ScheduleBlock]:
-    blocks = list(fixed_blocks)
-    for act_id, (start_h, act) in activity_slots.items():
-        blocks.append(
-            ScheduleBlock(
-                start_hour=start_h,
-                end_hour=start_h + act.duration_hours,
-                micro_env=act.micro_env,
-                activity=act.activity,
-                label=act.title or act_id,
-            )
-        )
-    return blocks
+    return list(fixed_blocks) + [
+        ScheduleBlock(h, h + a.duration_hours, a.micro_env, a.activity, a.title or aid)
+        for aid, (h, a) in activity_slots.items()
+    ]
 
 
 def _is_valid_slot(
@@ -100,41 +91,32 @@ def _find_best_slot_for_activity(
     robust_series: list[float],
     indoor_home_series: list[float] | None,
 ) -> int:
-    best_hour = act.usual_start_hour
-    best_cost = float("inf")
+    def _eval(h: int) -> float:
+        tl = build_member_timeline(
+            _build_schedule_blocks(fixed_blocks, {**chosen_assignments, act.id: (h, act)})
+        )
+        return compute_member_dose(age_band, tl, robust_series, indoor_home_series).total_dose_ug
 
+    best_hour, best_cost = act.usual_start_hour, float("inf")
     for h in range(act.earliest_start_hour, act.latest_start_hour + 1):
-        if not _is_valid_slot(
+        if _is_valid_slot(
             h, act.duration_hours, occupied_hours, act.earliest_start_hour, act.latest_start_hour
         ):
-            continue
-        test_assignments = dict(chosen_assignments)
-        test_assignments[act.id] = (h, act)
-        test_blocks = _build_schedule_blocks(fixed_blocks, test_assignments)
-        test_tl = build_member_timeline(test_blocks)
-        cost = compute_member_dose(
-            age_band, test_tl, robust_series, indoor_home_series
-        ).total_dose_ug
-        if cost < best_cost:
-            best_cost = cost
-            best_hour = h
+            cost = _eval(h)
+            if cost < best_cost:
+                best_cost, best_hour = cost, h
 
-    if _is_valid_slot(
-        act.usual_start_hour,
-        act.duration_hours,
-        occupied_hours,
-        act.earliest_start_hour,
-        act.latest_start_hour,
+    if (
+        _is_valid_slot(
+            act.usual_start_hour,
+            act.duration_hours,
+            occupied_hours,
+            act.earliest_start_hour,
+            act.latest_start_hour,
+        )
+        and abs(_eval(act.usual_start_hour) - best_cost) < EPSILON_DOSE
     ):
-        test_usual = dict(chosen_assignments)
-        test_usual[act.id] = (act.usual_start_hour, act)
-        u_tl = build_member_timeline(_build_schedule_blocks(fixed_blocks, test_usual))
-        u_cost = compute_member_dose(
-            age_band, u_tl, robust_series, indoor_home_series
-        ).total_dose_ug
-        if abs(u_cost - best_cost) < EPSILON_DOSE:
-            return act.usual_start_hour
-
+        return act.usual_start_hour
     return best_hour
 
 
@@ -151,10 +133,9 @@ def optimise_day_plan(
 ) -> OptimizedPlanResult:
     """Find schedule allocations that minimize expected dose under uncertainty."""
     if robust_lambda > 0.0 and uncertainty_spread > 0.0:
-        paths = sample_forecast_paths(
-            outdoor_pm25_series, spread=uncertainty_spread, n=30, seed=seed
+        p50, p90 = p50_p90(
+            sample_forecast_paths(outdoor_pm25_series, spread=uncertainty_spread, n=30, seed=seed)
         )
-        p50, p90 = p50_p90(paths)
         robust_series = [
             p50[i] + robust_lambda * max(0.0, p90[i] - p50[i]) for i in range(len(p50))
         ]
@@ -162,20 +143,19 @@ def optimise_day_plan(
         robust_series = list(outdoor_pm25_series)
 
     usual_assignments = {a.id: (a.usual_start_hour, a) for a in flexible_activities}
-    usual_blocks = _build_schedule_blocks(fixed_blocks, usual_assignments)
-    usual_tl = build_member_timeline(usual_blocks)
     usual_dose = compute_member_dose(
-        age_band, usual_tl, robust_series, indoor_home_series
+        age_band,
+        build_member_timeline(_build_schedule_blocks(fixed_blocks, usual_assignments)),
+        robust_series,
+        indoor_home_series,
     ).total_dose_ug
 
     occupied: set[int] = set()
     for b in fixed_blocks:
         occupied.update(range(max(0, b.start_hour), min(HOURS_IN_DAY, b.end_hour)))
 
-    sorted_activities = sorted(flexible_activities, key=lambda a: a.duration_hours, reverse=True)
     chosen: dict[str, tuple[int, FlexibleActivity]] = {}
-
-    for act in sorted_activities:
+    for act in sorted(flexible_activities, key=lambda a: a.duration_hours, reverse=True):
         best_h = _find_best_slot_for_activity(
             act,
             chosen,
@@ -188,16 +168,16 @@ def optimise_day_plan(
         chosen[act.id] = (best_h, act)
         occupied.update(range(best_h, best_h + act.duration_hours))
 
-    opt_blocks = _build_schedule_blocks(fixed_blocks, chosen)
-    opt_tl = build_member_timeline(opt_blocks)
+    opt_tl = build_member_timeline(_build_schedule_blocks(fixed_blocks, chosen))
     opt_dose = compute_member_dose(
         age_band, opt_tl, robust_series, indoor_home_series
     ).total_dose_ug
-
     if opt_dose > usual_dose:
-        opt_tl = usual_tl
-        opt_dose = usual_dose
-        chosen = usual_assignments
+        opt_tl, opt_dose, chosen = (
+            build_member_timeline(_build_schedule_blocks(fixed_blocks, usual_assignments)),
+            usual_dose,
+            usual_assignments,
+        )
 
     total_savings = max(0.0, usual_dose - opt_dose)
     is_already_optimal = total_savings < EPSILON_DOSE
@@ -221,10 +201,6 @@ def optimise_day_plan(
         else:
             act_savings = total_savings / max(1, len(flexible_activities))
             pct = (act_savings / max(0.1, usual_dose)) * 100.0
-            shift_expl = (
-                f"Shifted from {act.usual_start_hour:02d}:00 smog peak "
-                f"to {opt_start:02d}:00 clean window."
-            )
             shifts.append(
                 PlannedShift(
                     act.id,
@@ -234,7 +210,8 @@ def optimise_day_plan(
                     opt_start,
                     round(act_savings, 1),
                     round(pct, 1),
-                    shift_expl,
+                    f"Shifted from {act.usual_start_hour:02d}:00 "
+                    f"to {opt_start:02d}:00 clean window.",
                 )
             )
 

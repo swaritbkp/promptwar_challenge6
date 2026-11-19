@@ -1,13 +1,4 @@
-"""Seeded Monte Carlo forecast uncertainty sampling and percentile estimation.
-
-Generates realistic, temporally correlated air quality forecast trajectories
-using an autoregressive log-normal multiplicative noise process:
-    C_sample(t) = C_base(t) * exp(sigma * z(t) - 0.5 * sigma^2)
-    z(t) = rho * z(t-1) + sqrt(1 - rho^2) * eps(t),  eps ~ N(0, 1)
-
-Guarantees non-negative concentrations and exact deterministic reproducibility
-for identical seeds.
-"""
+"""Monte Carlo forecast uncertainty utilities."""
 
 from __future__ import annotations
 

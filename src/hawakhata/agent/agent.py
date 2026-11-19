@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,12 +22,16 @@ from hawakhata.agent.sessions import SessionStore
 from hawakhata.agent.tools import (
     ALL_TOOLS,
     ToolContext,
+    get_smog_brief,
     reset_current_context,
     set_current_context,
 )
 from hawakhata.api.schemas import FamilyProfileInput, LocationInput
+from hawakhata.core.logging import get_logger
 from hawakhata.integrations.air_quality import AirQualityClient
 from hawakhata.integrations.gemini import GeminiCascadeClient
+
+logger = get_logger(__name__)
 
 CANARY_TOKEN = "HAWAKHATA_SEC_CANARY_7X9Q"  # noqa: S105
 
@@ -98,6 +103,7 @@ class HawaKhataAgent:
         self,
         safe_input: str,
         lang: str,
+        session_id: str,
         *,
         profile: FamilyProfileInput,
         location: LocationInput,
@@ -114,20 +120,47 @@ class HawaKhataAgent:
         self._get_adk_agent(sys_prompt)
 
         try:
+            brief_tool = await get_smog_brief()
+            tool_outputs: list[Any] = [brief_tool]
+            tool_calls = ["get_smog_brief"]
+            facts = dict(brief_tool.get("result", {}))
+            city = location.city_name or "your area"
+            facts["city"] = city
+            facts_str = json.dumps(facts)
+            history_entries = self.sessions.get_history(session_id)[-4:]
+            hist_str = "\n".join(f"{h['role']}: {h['content']}" for h in history_entries)
+
+            prompt = (
+                f"<verified_engine_facts>\n{facts_str}\n</verified_engine_facts>\n"
+                f"The user is located in {city}.\n"
+                f"<conversation_history>\n{hist_str}\n</conversation_history>\n"
+                f"<untrusted_user_input>\n{safe_input}\n</untrusted_user_input>"
+            )
+
             llm_resp = await self.client.generate_content(
-                prompt=f"<untrusted_user_input>\n{safe_input}\n</untrusted_user_input>",
+                prompt=prompt,
                 system_instruction=sys_prompt,
                 client_id=client_ip,
             )
-            reply = llm_resp.text.strip()
-            tool_outputs: list[Any] = []
-            if not check_numeric_grounding(reply, tool_outputs).passed:
-                fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
-                return fb["reply"], [fb["tool_name"]], [fb["tool_output"]], True
-            return reply, [], tool_outputs, False
-        except Exception:
-            fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
-            return fb["reply"], [fb["tool_name"]], [fb["tool_output"]], True
+            raw = llm_resp.text.strip()
+            clean = (
+                raw.split("\n", 1)[-1].rsplit("```", 1)[0].strip() if raw.startswith("```") else raw
+            )
+            try:
+                reply = (
+                    str(json.loads(clean).get("reply", raw))
+                    if clean.startswith("{") and clean.endswith("}")
+                    else raw
+                )
+            except Exception:
+                reply = raw
+
+            if check_numeric_grounding(reply, tool_outputs, user_text=safe_input).passed:
+                return reply, tool_calls, tool_outputs, False
+        except Exception as exc:
+            logger.debug("Gemini live execution fallback: %s", exc)
+        fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
+        return fb["reply"], [fb["tool_name"]], [fb["tool_output"]], True
 
     async def run_turn(
         self,
@@ -160,6 +193,7 @@ class HawaKhataAgent:
             reply_text, tool_calls, tool_outputs, fb_used = await self._execute_turn_body(
                 safe_input,
                 lang,
+                session_id,
                 profile=profile,
                 location=location,
                 aq_client=aq_client,

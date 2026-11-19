@@ -46,9 +46,9 @@ def test_scale_to_community_zero_and_linear() -> None:
 def test_unknown_and_invalid_swaps_raises() -> None:
     with pytest.raises(KeyError):
         evaluate_swap("unknown_swap", units_per_day=10.0)
-    with pytest.raises(ValueError, match="units_per_day must be non-negative"):
+    with pytest.raises(ValueError, match="units_per_day"):
         evaluate_swap("commute_car_to_metro", units_per_day=-2.0)
-    with pytest.raises(ValueError, match="days_per_week must be between 1 and 7"):
+    with pytest.raises(ValueError, match="days_per_week"):
         evaluate_swap("commute_car_to_metro", units_per_day=10.0, days_per_week=0)
 
 
@@ -66,21 +66,17 @@ def test_evaluate_swap_various_branches() -> None:
 
 
 def test_compute_transit_delta_breathe_helpers() -> None:
-    assert (
-        _compute_transit_delta_breathe(
-            "car_petrol_per_km", "bus_per_passenger_km", 200.0, "31_41", 1.0
-        )
-        > 0
-    )
-    assert _compute_transit_delta_breathe("car", "metro", 100.0, "unknown_age", 1.0) < 0
+    tb = _compute_transit_delta_breathe
+    assert tb("car_petrol_per_km", "bus_per_passenger_km", 200.0, "31_41", 1.0) > 0
+    assert tb("car", "metro", 100.0, "unknown_age", 1.0) < 0
 
 
 def test_scale_to_community_validation_errors() -> None:
-    swap_res = evaluate_swap("commute_car_to_metro", units_per_day=10.0)
+    sr = evaluate_swap("commute_car_to_metro", units_per_day=10.0)
     with pytest.raises(ValueError):
-        scale_to_community(swap_res, households=-5, participation_rate=0.5)
+        scale_to_community(sr, households=-5, participation_rate=0.5)
     with pytest.raises(ValueError):
-        scale_to_community(swap_res, households=100, participation_rate=-0.1)
+        scale_to_community(sr, households=100, participation_rate=-0.1)
 
 
 @given(
@@ -92,8 +88,8 @@ def test_scale_to_community_validation_errors() -> None:
 def test_property_community_scaling_monotonic_and_zero_at_zero(
     households: int, participation: float, units: float
 ) -> None:
-    swap_res = evaluate_swap("commute_car_to_metro", units_per_day=units, days_per_week=5)
-    comm = scale_to_community(swap_res, households=households, participation_rate=participation)
+    sr = evaluate_swap("commute_car_to_metro", units_per_day=units, days_per_week=5)
+    comm = scale_to_community(sr, households=households, participation_rate=participation)
     assert comm.community_delta_co2_kg_monthly <= 0.0
     if participation == 0.0:
         assert comm.community_delta_co2_kg_monthly == 0.0

@@ -1,9 +1,4 @@
-"""Compute personal inhaled fine particulate (PM2.5) dose across daily activities.
-
-Implements the micro-environmental exposure model:
-    dose_ug = sum(C_micro(t) * InhalationRate(age, activity) * dt)
-with age-stratified physiological ventilation rates from US EPA (2011).
-"""
+"""Personal inhaled PM2.5 dose calculations."""
 
 from __future__ import annotations
 
@@ -78,30 +73,19 @@ def build_member_timeline(
     schedule_blocks: list[ScheduleBlock] | None = None,
 ) -> list[TimelineSlot]:
     """Construct a full 24-hour member timeline applying sensible defaults for unassigned hours."""
-    timeline: list[TimelineSlot] = []
-
-    for h in range(24):
-        # Default schedule
-        if h in (22, 23, 0, 1, 2, 3, 4, 5):
-            env = "indoor_home"
-            act = "sleep"
-            label = "Sleep"
-        else:
-            env = "indoor_home"
-            act = "sedentary"
-            label = "Home / Rest"
-        timeline.append(TimelineSlot(hour=h, micro_env=env, activity=act, label=label))
-
+    timeline = [
+        TimelineSlot(
+            hour=h,
+            micro_env="indoor_home",
+            activity="sleep" if h in (22, 23, 0, 1, 2, 3, 4, 5) else "sedentary",
+            label="Sleep" if h in (22, 23, 0, 1, 2, 3, 4, 5) else "Home / Rest",
+        )
+        for h in range(24)
+    ]
     if schedule_blocks:
-        for block in schedule_blocks:
-            for h in range(max(0, block.start_hour), min(24, block.end_hour)):
-                timeline[h] = TimelineSlot(
-                    hour=h,
-                    micro_env=block.micro_env,
-                    activity=block.activity,
-                    label=block.label or block.micro_env,
-                )
-
+        for b in schedule_blocks:
+            for h in range(max(0, b.start_hour), min(24, b.end_hour)):
+                timeline[h] = TimelineSlot(h, b.micro_env, b.activity, b.label or b.micro_env)
     return timeline
 
 

@@ -66,16 +66,17 @@ class CircuitBreaker:
         clock: Callable[[], float] | None = None,
     ) -> None:
         """Initialize circuit breaker with threshold and recovery time."""
-        self._threshold = failure_threshold
-        self._recovery_s = recovery_time_s
-        self._clock = clock or time.monotonic
-        self._state = CircuitState.CLOSED
-        self._failures = 0
-        self._last_failure = 0.0
+        self._threshold, self._recovery_s = failure_threshold, recovery_time_s
+        self._clock, self._state, self._failures, self._last_failure = (
+            clock or time.monotonic,
+            CircuitState.CLOSED,
+            0,
+            0.0,
+        )
 
     @property
     def state(self) -> CircuitState:
-        """Current operational state."""
+        """Current circuit state."""
         if (
             self._state == CircuitState.OPEN
             and (self._clock() - self._last_failure) >= self._recovery_s
@@ -84,15 +85,15 @@ class CircuitBreaker:
         return self._state
 
     def can_execute(self) -> bool:
-        """Return True if requests are allowed through."""
+        """Return True if requests are permitted."""
         return self.state != CircuitState.OPEN
 
     def record_success(self) -> None:
-        """Reset failures upon successful response."""
+        """Record successful call and reset failures."""
         self._failures, self._state = 0, CircuitState.CLOSED
 
     def record_failure(self) -> None:
-        """Register a network failure or 5xx response."""
+        """Record failed call and trip breaker if threshold exceeded."""
         self._failures += 1
         self._last_failure = self._clock()
         if self._failures >= self._threshold:
@@ -126,14 +127,16 @@ class HourlyAirSeries:
 
 
 def _normalise_raw_forecast_point(raw: dict[str, Any]) -> HourlyAirPoint:
-    """Transform Google Maps AQ forecast point into normalized HourlyAirPoint."""
     dt = str(raw.get("dateTime", ""))
     aqi_l, cat_l, dom, aqi_u = None, "MODERATE", "pm25", None
     for idx in raw.get("indexes", []):
         code = str(idx.get("code", "")).lower()
         if code in ("ind_cpcb", "cpcb"):
-            aqi_l, cat_l = idx.get("aqi"), str(idx.get("category", "MODERATE"))
-            dom = str(idx.get("dominantPollutant", dom))
+            aqi_l, cat_l, dom = (
+                idx.get("aqi"),
+                str(idx.get("category", "MODERATE")),
+                str(idx.get("dominantPollutant", dom)),
+            )
         elif code == "uaqi":
             aqi_u = idx.get("aqi")
 
@@ -147,19 +150,26 @@ def _normalise_raw_forecast_point(raw: dict[str, Any]) -> HourlyAirPoint:
                 pm10 = float(val)
 
     recs = {k: v for k, v in raw.get("healthRecommendations", {}).items() if isinstance(v, str)}
-    t_loc = dt[11:16] if len(dt) >= MIN_ISO_TIME_LEN else dt
-    return HourlyAirPoint(dt, t_loc, pm25, pm10, aqi_l, aqi_u, cat_l, dom, recs)
+    return HourlyAirPoint(
+        dt,
+        dt[11:16] if len(dt) >= MIN_ISO_TIME_LEN else dt,
+        pm25,
+        pm10,
+        aqi_l,
+        aqi_u,
+        cat_l,
+        dom,
+        recs,
+    )
 
 
 def _load_nearest_fixture(
     lat: float, lng: float, hours: int, demo_clock_iso: str | None = None
 ) -> HourlyAirSeries:
-    """Load and time-shift geographically closest winter fixture."""
     d_n = _haversine_km(lat, lng, DELHI_NCR_COORDS[0], DELHI_NCR_COORDS[1])
     d_c = _haversine_km(lat, lng, CHANDIGARH_COORDS[0], CHANDIGARH_COORDS[1])
     p = DATA_ROOT / ("chandigarh_mohali_winter.json" if d_c < d_n else "delhi_gurugram_winter.json")
-    payload = json.loads(p.read_text("utf-8"))
-    raw = payload.get("hourlyForecasts", [])
+    raw = json.loads(p.read_text("utf-8")).get("hourlyForecasts", [])
     now_dt = datetime.now(UTC)
     if demo_clock_iso:
         with contextlib.suppress(ValueError):
@@ -197,6 +207,8 @@ class AirQualityClient:
         self._breaker = breaker or CircuitBreaker()
 
     async def _save_cache(self, key: str, series: HourlyAirSeries) -> None:
+        if self._cache is None:
+            return
         await self._cache.set(
             key,
             {
@@ -216,7 +228,7 @@ class AirQualityClient:
         now_bucket = int(time.time() // 1800)
         cache_key = f"aq:forecast:{r_lat}:{r_lng}:{hours}:{language_code}:{now_bucket}"
 
-        cached = await self._cache.get(cache_key)
+        cached = await self._cache.get(cache_key) if self._cache is not None else None
         if isinstance(cached, dict):
             pts_raw = cached.get("points")
             points = (
@@ -277,17 +289,13 @@ class AirQualityClient:
                     )
                     await self._save_cache(cache_key, s)
                     return s
-                if resp.status_code in (429, 500, 502, 503, 504) and attempt < MAX_RETRY_ATTEMPTS:
-                    await asyncio.sleep(0.1 + random.uniform(0.05, 0.15))  # noqa: S311
-                    continue
-                self._breaker.record_failure()
-                break
             except (httpx.TimeoutException, httpx.NetworkError):
-                if attempt < MAX_RETRY_ATTEMPTS:
-                    await asyncio.sleep(0.1 + random.uniform(0.05, 0.15))  # noqa: S311
-                    continue
-                self._breaker.record_failure()
-                break
+                pass
+            if attempt < MAX_RETRY_ATTEMPTS:
+                await asyncio.sleep(0.1 + random.uniform(0.05, 0.15))  # noqa: S311
+                continue
+            self._breaker.record_failure()
+            break
 
         s = _load_nearest_fixture(r_lat, r_lng, hours, demo_clock_iso=self._settings.demo_clock_iso)
         await self._save_cache(cache_key, s)

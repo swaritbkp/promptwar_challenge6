@@ -11,8 +11,6 @@ from hawakhata.config import Settings
 
 
 class FakeClock:
-    """Manually advanced monotonic clock for deterministic time-based tests."""
-
     def __init__(self, start: float = 1000.0) -> None:
         self.now = start
 
@@ -43,7 +41,7 @@ def client(settings: Settings) -> Iterator[TestClient]:
 def sample_profile_data() -> dict[str, Any]:
     return {
         "id": "fam_delhi",
-        "name": "Delhi Household",
+        "name": "Household",
         "location": {"lat": 28.46, "lng": 77.03},
         "rooms": [{"name": "Living Room", "volume_m3": 50.0}],
         "sources": [],

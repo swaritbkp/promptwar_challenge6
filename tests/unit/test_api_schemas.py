@@ -43,15 +43,7 @@ def test_room_input_bounds() -> None:
 
 
 def test_envelope_structure() -> None:
-    meta = ResponseMeta(
-        request_id="req-123",
-        data_mode="fixture",
-        engine_version="0.1.0",
-        constants_version="v1",
-        prompt_version="v1.0",
-        agent_version="0.1.0",
-        degraded=False,
-    )
+    meta = ResponseMeta(request_id="req-123", data_mode="fixture")
     env = Envelope(data={"status": "ok"}, meta=meta)
     assert (
         env.data["status"] == "ok"

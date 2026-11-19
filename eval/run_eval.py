@@ -29,80 +29,65 @@ from hawakhata.config import Settings  # noqa: E402
 from hawakhata.core.cache import TTLCache  # noqa: E402
 from hawakhata.integrations.air_quality import AirQualityClient  # noqa: E402
 from hawakhata.integrations.gemini import GeminiCascadeClient  # noqa: E402
+from hawakhata.services.story_service import load_demo_profiles  # noqa: E402
 
 GOLDEN = ROOT / "eval" / "golden.jsonl"
-PROFILES = ROOT / "data" / "fixtures" / "profiles.json"
 REPORT = ROOT / "eval" / "report.json"
 
 
 def _load_profiles() -> dict[str, FamilyProfileInput]:
     res: dict[str, FamilyProfileInput] = {}
-    if PROFILES.exists():
-        raw = json.loads(PROFILES.read_text("utf-8")).get("profiles", {})
-        for pid, d in raw.items():
-            loc = d.get("location", {"lat": 28.4595, "lng": 77.0266, "label": "Gurugram"})
-            mems = [
-                MemberInput(
-                    id=f"m{i}",
-                    name=str(m.get("label", f"M{i}")),
-                    age_band=str(m.get("age_band", "31_41")),
-                    sensitivities=list(m.get("sensitivities", [])),
-                    schedule_blocks=[
-                        ScheduleBlockInput(
-                            start_hour=int(b.get("start", 0)),
-                            end_hour=int(b.get("end", 1)),
-                            micro_env=str(b.get("micro_env", "indoor_home")),
-                            activity=str(b.get("activity", "sedentary")),
-                            label=str(b.get("note", "")),
-                            flexible=not bool(b.get("fixed", True)),
-                        )
-                        for b in m.get("schedule", [])
-                    ],
-                )
-                for i, m in enumerate(d.get("members", []))
-            ]
-            rms = [
-                RoomInput(
-                    name=str(r.get("id", "Room")),
-                    volume_m3=float(r.get("area_m2", 20.0)) * float(r.get("height_m", 3.0)),
-                    purifier_cadr_m3_per_h=float(r.get("purifier_cadr_m3_per_h", 0.0)),
-                )
-                for r in d.get("home", {}).get("rooms", [])
-            ]
-            res[pid] = FamilyProfileInput(
-                id=pid,
-                name=str(d.get("display_name", "Family")),
-                location=LocationInput(
-                    lat=float(loc["lat"]),
-                    lng=float(loc["lng"]),
-                    city_name=str(loc.get("label", "City")),
-                ),
-                members=mems
-                or [
-                    MemberInput(
-                        id="m0", name="User", age_band="31_41", sensitivities=[], schedule_blocks=[]
+    for pid, d in load_demo_profiles().items():
+        loc = d.get("location", {"lat": 28.4595, "lng": 77.0266, "label": "Area"})
+        mems = [
+            MemberInput(
+                id=f"m{i}",
+                name=str(m.get("label", f"M{i}")),
+                age_band=str(m.get("age_band", "31_41")),
+                sensitivities=list(m.get("sensitivities", [])),
+                schedule_blocks=[
+                    ScheduleBlockInput(
+                        start_hour=int(b.get("start", 0)),
+                        end_hour=int(b.get("end", 1)),
+                        micro_env=str(b.get("micro_env", "indoor_home")),
+                        activity=str(b.get("activity", "sedentary")),
+                        label=str(b.get("note", "")),
+                        flexible=not bool(b.get("fixed", True)),
                     )
+                    for b in m.get("schedule", [])
                 ],
-                rooms=rms,
-                sources=[],
             )
+            for i, m in enumerate(d.get("members", []))
+        ] or [MemberInput(id="m0", name="U", age_band="31_41")]
+        rms = [
+            RoomInput(
+                name=str(r.get("id", "R")),
+                volume_m3=float(r.get("area_m2", 20.0)) * float(r.get("height_m", 3.0)),
+                purifier_cadr_m3_per_h=float(r.get("purifier_cadr_m3_per_h", 0.0)),
+            )
+            for r in d.get("home", {}).get("rooms", [])
+        ]
+        res[pid] = FamilyProfileInput(
+            id=pid,
+            name=str(d.get("display_name", "F")),
+            location=LocationInput(
+                lat=float(loc["lat"]),
+                lng=float(loc["lng"]),
+                city_name=str(loc.get("label", "City")),
+            ),
+            members=mems,
+            rooms=rms,
+        )
     res["empty"] = FamilyProfileInput(
         id="empty",
         name="Empty",
-        location=LocationInput(lat=28.4595, lng=77.0266, city_name="Gurugram"),
-        members=[
-            MemberInput(
-                id="m0", name="User", age_band="31_41", sensitivities=[], schedule_blocks=[]
-            )
-        ],
-        rooms=[],
-        sources=[],
+        location=LocationInput(lat=28.4595, lng=77.0266, city_name="Area"),
+        members=[MemberInput(id="m0", name="U", age_band="31_41")],
     )
     return res
 
 
 async def run_eval(mode: str = "fake", output_path: Path = REPORT) -> int:
-    """Run golden evaluation suite and output report.json."""
     if not GOLDEN.exists():
         return 1
     lines = [json.loads(ln) for ln in GOLDEN.read_text("utf-8").splitlines() if ln.strip()]
@@ -116,7 +101,6 @@ async def run_eval(mode: str = "fake", output_path: Path = REPORT) -> int:
             g._client = None
         agent = HawaKhataAgent(g)
         results: list[dict[str, Any]] = []
-        print(f"\nEvaluating {len(lines)} cases (mode={mode})...\n")
         for cs in lines:
             cid, lang, msg, exp = cs["id"], cs["lang"], cs["message"], cs["expect"]
             p = profs.get(cs.get("profile_ref", "demo_ncr"), profs["empty"])
@@ -144,12 +128,10 @@ async def run_eval(mode: str = "fake", output_path: Path = REPORT) -> int:
                 if exp.get("no_dosing")
                 else True,
             }
-            ok = all(chks.values())
-            print(f"{cid} {lang} {'PASS' if ok else 'FAIL'} {el:4.2f}s")
             results.append(
                 {
                     "id": cid,
-                    "passed": ok,
+                    "passed": all(chks.values()),
                     "checks": chks,
                     "reply": t.reply,
                     "elapsed_s": round(el, 3),
@@ -183,7 +165,6 @@ async def run_eval(mode: str = "fake", output_path: Path = REPORT) -> int:
         }
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
-        print(f"\nResult: {passed}/{len(results)} ({pass_rate:.1f}%) Grounding: {g_rate:.1f}%\n")
         return 0 if passed == len(results) else 1
 
 

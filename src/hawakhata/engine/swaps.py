@@ -92,8 +92,12 @@ def _compute_transit_delta_breathe(
         float(ir_mean_const.get(member_age_band, 16.0)) if isinstance(ir_mean_const, dict) else 16.0
     )
     ir_hourly = daily_mean / 24.0
-    c_diff = (outdoor_pm25_mean * r_after) - (outdoor_pm25_mean * r_before)
-    return round(c_diff * ir_hourly * duration_hours, 2)
+    return round(
+        ((outdoor_pm25_mean * r_after) - (outdoor_pm25_mean * r_before))
+        * ir_hourly
+        * duration_hours,
+        2,
+    )
 
 
 def evaluate_swap(
@@ -116,22 +120,27 @@ def evaluate_swap(
     if swap_def is None:
         raise KeyError(f"Unknown swap_id '{swap_id}' in catalogue")
 
-    before_act, after_act = swap_def.get("before"), swap_def.get("after")
-    before_co2, before_pm = _safe_activity_emissions(before_act, units_per_day)
-    after_co2, after_pm = _safe_activity_emissions(after_act, units_per_day)
+    before_co2, before_pm = _safe_activity_emissions(swap_def.get("before"), units_per_day)
+    after_co2, after_pm = _safe_activity_emissions(swap_def.get("after"), units_per_day)
 
-    d_co2_daily = round(after_co2 - before_co2, 4)
-    d_pm_daily = round(after_pm - before_pm, 4)
-    d_co2_weekly = round(d_co2_daily * days_per_week, 4)
-    d_pm_weekly = round(d_pm_daily * days_per_week, 4)
+    d_co2_daily, d_pm_daily = round(after_co2 - before_co2, 4), round(after_pm - before_pm, 4)
+    d_co2_weekly, d_pm_weekly = (
+        round(d_co2_daily * days_per_week, 4),
+        round(d_pm_daily * days_per_week, 4),
+    )
     d_co2_monthly = round(d_co2_weekly * MONTHS_IN_WEEKS_MULTIPLIER, 4)
     d_pm_monthly = round(d_pm_weekly * MONTHS_IN_WEEKS_MULTIPLIER, 4)
-
-    delta_breathe_daily = 0.0
-    if "breathe_transit" in swap_def.get("affects", []):
-        delta_breathe_daily = _compute_transit_delta_breathe(
-            before_act, after_act, outdoor_pm25_mean, member_age_band, transit_duration_hours
+    delta_breathe_daily = (
+        _compute_transit_delta_breathe(
+            swap_def.get("before"),
+            swap_def.get("after"),
+            outdoor_pm25_mean,
+            member_age_band,
+            transit_duration_hours,
         )
+        if "breathe_transit" in swap_def.get("affects", [])
+        else 0.0
+    )
 
     return SwapImpactResult(
         swap_id=swap_id,
@@ -144,10 +153,10 @@ def evaluate_swap(
             "Delta_emit = Emission(after) - Emission(before)",
             {
                 "swap_id": swap_id,
-                "units_per_day": units_per_day,
-                "days_per_week": days_per_week,
-                "delta_co2_monthly": d_co2_monthly,
-                "delta_pm25_monthly": d_pm_monthly,
+                "units": units_per_day,
+                "days": days_per_week,
+                "co2": d_co2_monthly,
+                "pm25": d_pm_monthly,
             },
             ["emission_factor", "in_vehicle_ratio", "inhalation_rate_daily_mean"],
             ["ARAI (2018)", "Goel & Kumar (2015)"],
@@ -157,9 +166,7 @@ def evaluate_swap(
 
 
 def scale_to_community(
-    swap_result: SwapImpactResult,
-    households: int,
-    participation_rate: float,
+    swap_result: SwapImpactResult, households: int, participation_rate: float
 ) -> CommunityImpactResult:
     """Scale a household swap delta to community (Mohalla) level linearly."""
     if households < 0:
@@ -169,11 +176,14 @@ def scale_to_community(
             f"participation_rate must be between 0.0 and 1.0, got {participation_rate}"
         )
 
-    effective_units = float(households) * participation_rate
-    co2_monthly = round(swap_result.delta_emit_monthly.kg_co2 * effective_units, 2)
-    pm25_monthly = round(swap_result.delta_emit_monthly.g_pm25 * effective_units, 2)
-    daily_avoided_ug = max(0.0, -swap_result.delta_breathe_daily_ug)
-    monthly_dose_mg = round((daily_avoided_ug * 30.0 * effective_units) / 1000.0, 2)
+    eff = float(households) * participation_rate
+    co2_monthly, pm25_monthly = (
+        round(swap_result.delta_emit_monthly.kg_co2 * eff, 2),
+        round(swap_result.delta_emit_monthly.g_pm25 * eff, 2),
+    )
+    monthly_dose_mg = round(
+        (max(0.0, -swap_result.delta_breathe_daily_ug) * 30.0 * eff) / 1000.0, 2
+    )
 
     return CommunityImpactResult(
         households=households,

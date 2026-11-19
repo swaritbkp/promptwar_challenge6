@@ -107,6 +107,13 @@ class FlexibleActivityInput(StrictBaseModel):
     usual_start_hour: int = Field(ge=0, le=23)
 
 
+class BaseComputeRequest(StrictBaseModel):
+    """Base payload with optional fixed clock and data source selector."""
+
+    now: str | None = Field(default=None, max_length=35)
+    data_source: Literal["auto", "fixture"] = "auto"
+
+
 class ForecastRequest(StrictBaseModel):
     """Request payload for hourly air forecast."""
 
@@ -116,32 +123,26 @@ class ForecastRequest(StrictBaseModel):
     language_code: str = Field(default="en", max_length=5)
 
 
-class PassbookRequest(StrictBaseModel):
+class PassbookRequest(BaseComputeRequest):
     """Request payload for multi-member family air passbook."""
 
     profile: FamilyProfileInput
-    now: str | None = Field(default=None, max_length=35)
-    data_source: Literal["auto", "fixture"] = "auto"
 
 
-class PlanRequest(StrictBaseModel):
+class PlanRequest(BaseComputeRequest):
     """Request payload for clean-window optimization."""
 
     profile: FamilyProfileInput
     member_id: str = Field(max_length=50)
     flexible_activities: list[FlexibleActivityInput] = Field(max_length=10)
-    now: str | None = Field(default=None, max_length=35)
-    data_source: Literal["auto", "fixture"] = "auto"
 
 
-class IndoorSimulateRequest(StrictBaseModel):
+class IndoorSimulateRequest(BaseComputeRequest):
     """Request payload for indoor PM2.5 simulation."""
 
     room: RoomInput
     sources: list[SourceEventInput] = Field(default_factory=list, max_length=20)
     location: LocationInput
-    now: str | None = Field(default=None, max_length=35)
-    data_source: Literal["auto", "fixture"] = "auto"
 
 
 class SwapsImpactRequest(StrictBaseModel):
@@ -197,13 +198,11 @@ class BriefResponse(StrictBaseModel):
     explanation: dict[str, Any]
 
 
-class BriefRequest(StrictBaseModel):
+class BriefRequest(BaseComputeRequest):
     """Request payload for morning proactive brief."""
 
     profile: FamilyProfileInput
     previous_forecast_pm25: list[float] | None = Field(default=None, max_length=96)
-    now: str | None = Field(default=None, max_length=35)
-    data_source: Literal["auto", "fixture"] = "auto"
 
 
 class ChatMessageInput(StrictBaseModel):
@@ -213,15 +212,14 @@ class ChatMessageInput(StrictBaseModel):
     content: str = Field(max_length=4000)
 
 
-class ChatRequest(StrictBaseModel):
+class ChatRequest(BaseComputeRequest):
     """Request payload for Ask HawaKhata chat endpoint."""
 
     session_id: str | None = Field(default=None, max_length=64)
     message: str = Field(min_length=1, max_length=1000)
     history: list[ChatMessageInput] = Field(default_factory=list, max_length=20)
     profile: FamilyProfileInput | None = None
-    now: str | None = Field(default=None, max_length=35)
-    data_source: Literal["auto", "fixture"] = "auto"
+    language: str = Field(default="en", max_length=5)
 
 
 class ChatResponse(StrictBaseModel):

@@ -6,11 +6,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from hawakhata.engine.indoor_model import (
-    IndoorSourceEvent,
-    simulate_indoor_pm25,
-    steady_state_pm25,
-)
+from hawakhata.engine.indoor_model import IndoorSourceEvent, simulate_indoor_pm25, steady_state_pm25
 
 
 def test_steady_state_calculation() -> None:
@@ -62,20 +58,15 @@ def test_property_more_cadr_never_increases_indoor_pm25(
         purifier_on_hours=set(range(12)),
     )
     for h in range(12):
-        # Higher CADR must never increase concentration
         assert res_higher.hourly_pm25_ug_m3[h] <= res_lower.hourly_pm25_ug_m3[h] + 1e-6
 
 
-@given(
-    c_out=st.floats(min_value=10.0, max_value=400.0),
-)
+@given(c_out=st.floats(min_value=10.0, max_value=400.0))
 @settings(max_examples=50, deadline=None)
 def test_property_adding_source_never_lowers_indoor_pm25(c_out: float) -> None:
     outdoor = [c_out] * 6
     res_clean = simulate_indoor_pm25(
-        room_volume_m3=40.0,
-        outdoor_pm25_series=outdoor,
-        start_c_ug_m3=50.0,
+        room_volume_m3=40.0, outdoor_pm25_series=outdoor, start_c_ug_m3=50.0
     )
     res_smoke = simulate_indoor_pm25(
         room_volume_m3=40.0,

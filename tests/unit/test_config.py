@@ -8,16 +8,14 @@ from hawakhata.config import Settings, get_settings
 
 def test_defaults_run_without_any_keys() -> None:
     cfg = Settings(_env_file=None)
-    assert cfg.has_live_air_data is False
-    assert cfg.has_llm is False
+    assert cfg.has_live_air_data is False and cfg.has_llm is False
 
 
 def test_blank_env_values_are_treated_as_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GOOGLE_MAPS_API_KEY", "")
     monkeypatch.setenv("REDIS_URL", "   ")
     cfg = Settings(_env_file=None)
-    assert cfg.google_maps_api_key is None
-    assert cfg.redis_url is None
+    assert cfg.google_maps_api_key is None and cfg.redis_url is None
 
 
 def test_llm_requires_key_and_model() -> None:
@@ -26,8 +24,9 @@ def test_llm_requires_key_and_model() -> None:
 
 
 def test_secret_is_never_rendered_in_repr() -> None:
-    cfg = Settings(_env_file=None, google_maps_api_key="super-secret-value")
-    assert "super-secret-value" not in repr(cfg)
+    assert "super-secret-value" not in repr(
+        Settings(_env_file=None, google_maps_api_key="super-secret-value")
+    )
 
 
 @pytest.mark.parametrize(

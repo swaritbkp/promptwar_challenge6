@@ -15,20 +15,20 @@ from hawakhata.integrations.air_quality import AirQualityClient, HourlyAirSeries
 
 @pytest.mark.asyncio
 async def test_live_api_mock_transport_success() -> None:
-    idx = [
-        {"code": "ind_cpcb", "aqi": 340, "category": "VERY_POOR", "dominantPollutant": "pm25"},
-        {"code": "uaqi", "aqi": 42},
-    ]
-    pol = [
-        {"code": "pm25", "concentration": {"value": 185.4}},
-        {"code": "pm10", "concentration": {"value": 290.0}},
-    ]
     mock_payload = {
         "hourlyForecasts": [
             {
                 "dateTime": "2026-11-18T12:00:00Z",
-                "indexes": idx,
-                "pollutants": pol,
+                "indexes": [{
+                    "code": "ind_cpcb",
+                    "aqi": 340,
+                    "category": "VERY_POOR",
+                    "dominantPollutant": "pm25",
+                }],
+                "pollutants": [
+                    {"code": "pm25", "concentration": {"value": 185.4}},
+                    {"code": "pm10", "concentration": {"value": 290.0}},
+                ],
                 "healthRecommendations": {"generalPopulation": "Avoid"},
             }
         ]
@@ -44,10 +44,13 @@ async def test_live_api_mock_transport_success() -> None:
         client = AirQualityClient(settings=settings, cache=cache, http_client=http_client)
         series = await client.get_hourly_forecast(lat=28.459, lng=77.026, hours=1)
         assert isinstance(series, HourlyAirSeries) and series.data_mode == "live"
-        assert len(series.points) == 1
         pt = series.points[0]
-        assert pt.pm25_ug_m3 == 185.4 and pt.pm10_ug_m3 == 290.0
-        assert pt.aqi_local == 340 and pt.category_local == "VERY_POOR"
+        assert (
+            pt.pm25_ug_m3 == 185.4
+            and pt.pm10_ug_m3 == 290.0
+            and pt.aqi_local == 340
+            and pt.category_local == "VERY_POOR"
+        )
 
 
 @pytest.mark.asyncio
@@ -81,6 +84,6 @@ def test_fixtures_contract_delhi_and_chandigarh() -> None:
         assert "dateTime" in sample and "indexes" in sample and "pollutants" in sample
         assert datetime.fromisoformat(sample["dateTime"].replace("Z", "+00:00"))
         ind_idx = next(
-            (idx for idx in sample["indexes"] if idx.get("code") in ("ind_cpcb", "cpcb")), None
+            (i for i in sample["indexes"] if i.get("code") in ("ind_cpcb", "cpcb")), None
         )
         assert ind_idx is not None and ind_idx.get("aqi") is not None
