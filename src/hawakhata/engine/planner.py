@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
+from typing import Any, Literal
 
+from hawakhata.engine.aqi import pm25_to_naqi_category, pm25_to_sub_index
 from hawakhata.engine.dose import (
     ScheduleBlock,
     TimelineSlot,
     build_member_timeline,
     compute_member_dose,
+    inhalation_rate_m3_per_h,
 )
 from hawakhata.engine.explain import Explanation
 from hawakhata.engine.uncertainty import p50_p90, sample_forecast_paths
@@ -229,3 +233,246 @@ def optimise_day_plan(
             ["Fixed commitments immovable", "Exertion level constant"],
         ),
     )
+
+
+def classify_dispersion(
+    wind_kmh: float, blh_m: float, humidity_pct: float, precip_mm: float
+) -> tuple[str, str]:
+    """Classify physical atmospheric dispersion regimes for winter smog."""
+    if precip_mm >= 1.0:
+        return ("Rain Washout", "Precipitation scavenges fine particles via wet deposition.")
+    if wind_kmh >= 18.0:
+        return ("Wind Clearing", "Strong convective advection flushes stagnant air accumulation.")
+    if blh_m >= 800.0 and wind_kmh >= 8.0:
+        return (
+            "Afternoon Mixing Lift",
+            "Solar convection elevates mixing layer, diluting pollution.",
+        )
+    if blh_m <= 350.0:
+        return (
+            "Inversion Trap",
+            "Radiation inversion clamps pollutants under shallow boundary layer.",
+        )
+    return ("Stagnant Air", "Weak horizontal ventilation and shallow layer trap urban emissions.")
+
+
+@dataclass(frozen=True, slots=True)
+class DayOutlook:
+    day_index: int
+    day_label: str
+    peak_pm25: float
+    peak_aqi: int
+    naqi_category: str
+    cleanest_window_start: str
+    cleanest_window_end: str
+    cleanest_pm25: float
+    dispersion_regime: str
+    dispersion_explanation: str
+    wind_kmh: float
+    blh_m: float
+    rain_washout: bool
+    uncertainty_p50: float
+    uncertainty_p90: float
+
+
+@dataclass(frozen=True, slots=True)
+class SafeFlushWindow:
+    day_index: int
+    day_label: str
+    start_hour: str
+    end_hour: str
+    outdoor_pm25: float
+    dispersion_regime: str
+    rationale: str
+
+
+@dataclass(frozen=True, slots=True)
+class MultiDaySlot:
+    rank: int
+    day_index: int
+    day_label: str
+    start_hour: int
+    end_hour: int
+    time_label: str
+    outdoor_pm25: float
+    dose_ug: float
+    savings_ug: float
+    savings_pct: float
+    dispersion_regime: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class FourDayOutlook:
+    tomorrow_watch_headline: str
+    tomorrow_watch_direction: Literal["worsens", "improves", "stable"]
+    days: list[DayOutlook]
+    safe_house_flush: SafeFlushWindow
+
+
+def build_four_day_outlook(
+    hourly_pm25: list[float],
+    hourly_weather: list[Any] | None = None,
+    seed: int = 42,
+) -> FourDayOutlook:
+    """Group 96-hour series into 4 daily cards with NAQI categories and dispersion regimes."""
+    pm = (
+        (hourly_pm25 * (96 // max(1, len(hourly_pm25)) + 1))[:96]
+        if len(hourly_pm25) < 96
+        else hourly_pm25[:96]
+    )
+    day_labels = ["Today", "Tomorrow", "Day 3", "Day 4"]
+    cards: list[DayOutlook] = []
+
+    for d in range(4):
+        day_pm = pm[d * 24 : (d + 1) * 24]
+        peak_pm = max(day_pm)
+        best_avg, best_start = min((sum(day_pm[h : h + 3]) / 3.0, h) for h in range(6, 17))
+
+        if hourly_weather and len(hourly_weather) >= (d + 1) * 24:
+            day_w = hourly_weather[d * 24 : (d + 1) * 24]
+            daytime = [day_w[i] for i in range(len(day_w)) if 9 <= (i % 24) <= 17]
+            wind = round(
+                sum(getattr(w, "wind_speed_kmh", 8.0) for w in daytime) / max(1, len(daytime)), 1
+            )
+            blh = round(max(getattr(w, "boundary_layer_height_m", 500.0) for w in day_w), 1)
+            rain = any(getattr(w, "precipitation_mm", 0.0) >= 1.0 for w in day_w)
+        else:
+            wind, blh, rain = (11.0 if d == 2 else 7.5), (950.0 if d in (1, 2) else 320.0), False
+
+        regime, exp = classify_dispersion(wind, blh, 50.0, 1.0 if rain else 0.0)
+        samples = sample_forecast_paths(day_pm, spread=0.12 + (0.10 * d), n=20, seed=seed + d)
+        p50_l, p90_l = p50_p90(samples)
+        p50 = round(sum(p50_l) / max(1, len(p50_l)), 1) if p50_l else round(peak_pm * 0.9, 1)
+        p90 = round(sum(p90_l) / max(1, len(p90_l)), 1) if p90_l else round(peak_pm * 1.2, 1)
+
+        cards.append(
+            DayOutlook(
+                day_index=d,
+                day_label=day_labels[d],
+                peak_pm25=round(peak_pm, 1),
+                peak_aqi=pm25_to_sub_index(peak_pm),
+                naqi_category=pm25_to_naqi_category(peak_pm).display_name,
+                cleanest_window_start=f"{best_start:02d}:00",
+                cleanest_window_end=f"{(best_start + 3):02d}:00",
+                cleanest_pm25=round(best_avg, 1),
+                dispersion_regime=regime,
+                dispersion_explanation=exp,
+                wind_kmh=wind,
+                blh_m=blh,
+                rain_washout=rain,
+                uncertainty_p50=p50,
+                uncertainty_p90=p90,
+            )
+        )
+
+    d0_mean, d1_mean = sum(pm[:24]) / 24.0, sum(pm[24:48]) / 24.0
+    delta_pct = ((d1_mean - d0_mean) / max(1.0, d0_mean)) * 100.0
+    dir_lbl: Literal["worsens", "improves", "stable"]
+    if delta_pct >= 10.0:
+        dir_lbl, hl = (
+            "worsens",
+            f"Tomorrow Watch: Smog worsens (+{delta_pct:.0f}%) due to shallow inversion trap.",
+        )
+    elif delta_pct <= -10.0:
+        dir_lbl, hl = (
+            "improves",
+            f"Tomorrow Watch: Air improves ({delta_pct:.0f}%) with convective mixing lift.",
+        )
+    else:
+        dir_lbl, hl = (
+            "stable",
+            "Tomorrow Watch: Persistent inversion trap; air quality remains comparable to today.",
+        )
+
+    flush_h, flush_pm = min(
+        ((h, pm[h]) for h in range(96) if 11 <= (h % 24) <= 16), key=lambda x: x[1]
+    )
+    safe_flush = SafeFlushWindow(
+        day_index=flush_h // 24,
+        day_label=day_labels[flush_h // 24],
+        start_hour=f"{(flush_h % 24):02d}:00",
+        end_hour=f"{(flush_h % 24 + 1):02d}:00",
+        outdoor_pm25=round(flush_pm, 1),
+        dispersion_regime="Afternoon Mixing Lift",
+        rationale=f"Cleanest 1-hour slot across 4 days ({round(flush_pm, 1)} µg/m³) during peak convective lift.",
+    )
+    return FourDayOutlook(
+        tomorrow_watch_headline=hl,
+        tomorrow_watch_direction=dir_lbl,
+        days=cards,
+        safe_house_flush=safe_flush,
+    )
+
+
+def optimize_multi_day_activity(
+    age_band: str,
+    activity_type: str,
+    duration_min: int,
+    hourly_pm25: list[float],
+    hourly_weather: list[Any] | None = None,
+) -> list[MultiDaySlot]:
+    """Evaluate daytime hours (06:00-20:00) across 4 days and return top 3 cleanest slots."""
+    if not hourly_pm25:
+        return []
+    pm = (
+        (hourly_pm25 * (96 // max(1, len(hourly_pm25)) + 1))[:96]
+        if len(hourly_pm25) < 96
+        else hourly_pm25[:96]
+    )
+    dur_h, step_h = max(0.5, duration_min / 60.0), max(1, math.ceil(duration_min / 60.0))
+    ir = inhalation_rate_m3_per_h(age_band, activity_type)
+    base_h = 17 if activity_type in ("market_shopping", "transit_auto") else 7
+    base_dose = (sum(pm[base_h : base_h + step_h]) / step_h) * ir * dur_h
+    day_labels = ["Today", "Tomorrow", "Day 3", "Day 4"]
+    cands: list[dict[str, Any]] = []
+
+    for d in range(4):
+        for tod in range(6, 21 - step_h):
+            g = d * 24 + tod
+            s_pm = sum(pm[g : g + step_h]) / step_h
+            s_dose = s_pm * ir * dur_h
+            sav_ug = max(0.0, base_dose - s_dose)
+            regime = "Afternoon Mixing Lift" if 11 <= tod <= 16 else "Stagnant Air"
+            if hourly_weather and g < len(hourly_weather):
+                w = hourly_weather[g]
+                regime, _ = classify_dispersion(
+                    getattr(w, "wind_speed_kmh", 8.0),
+                    getattr(w, "boundary_layer_height_m", 500.0),
+                    getattr(w, "relative_humidity_pct", 50.0),
+                    getattr(w, "precipitation_mm", 0.0),
+                )
+            cands.append(
+                {
+                    "day_index": d,
+                    "day_label": day_labels[d],
+                    "start_hour": tod,
+                    "end_hour": tod + step_h,
+                    "time_label": f"{tod:02d}:00 – {(tod + step_h):02d}:00",
+                    "outdoor_pm25": round(s_pm, 1),
+                    "dose_ug": round(s_dose, 1),
+                    "savings_ug": round(sav_ug, 1),
+                    "savings_pct": round((sav_ug / max(0.1, base_dose)) * 100.0, 1),
+                    "dispersion_regime": regime,
+                    "reason": f"Dilutes PM2.5 to {round(s_pm, 1)} µg/m³; saves {round((sav_ug / max(0.1, base_dose)) * 100.0, 1)}% vs {base_h:02d}:00.",
+                }
+            )
+
+    cands.sort(key=lambda c: c["dose_ug"])
+    selected: list[MultiDaySlot] = []
+    seen_days: set[int] = set()
+    for c in cands:
+        if len(selected) >= 3:
+            break
+        if c["day_index"] not in seen_days:
+            seen_days.add(c["day_index"])
+            selected.append(MultiDaySlot(rank=len(selected) + 1, **c))
+    for c in cands:
+        if len(selected) >= 3:
+            break
+        if not any(
+            s.day_index == c["day_index"] and abs(s.start_hour - c["start_hour"]) < 2
+            for s in selected
+        ):
+            selected.append(MultiDaySlot(rank=len(selected) + 1, **c))
+    return selected

@@ -15,6 +15,7 @@ from hawakhata.agent.tools import (
     get_air_forecast,
     get_current_context,
     get_family_passbook,
+    get_four_day_schedule,
     get_pet_air_guidance,
     get_smog_brief,
     plan_clean_windows,
@@ -155,6 +156,24 @@ async def _dispatch_intent(
             "percent_removal_by_plants": pr.get("percent_removal_by_plants", 0.8),
         }
         return compose_reply("plants", lang, p), "check_indoor_plants_impact", plants_res
+    if intent == "forecast_4day":
+        sched_res = await get_four_day_schedule()
+        res_data = sched_res.get("result", {})
+        flush = res_data.get("safe_house_flush", {})
+        top = res_data.get("top_recommended_slots", [])
+        top_slot = top[0] if top else {}
+        p = {
+            "tomorrow_watch": res_data.get("tomorrow_watch", ""),
+            "flush_day": flush.get("day", "Tomorrow"),
+            "flush_time": flush.get("time", "13:00–14:00"),
+            "flush_pm25": flush.get("pm25_ug_m3", 95.0),
+            "activity": "walk",
+            "best_day": top_slot.get("day", "Tomorrow"),
+            "best_time": top_slot.get("time", "13:00–14:00"),
+            "best_savings_ug": top_slot.get("savings_ug", 120.0),
+            "best_savings_pct": top_slot.get("savings_pct", 45.0),
+        }
+        return compose_reply("forecast_4day", lang, p), "get_four_day_schedule", sched_res
 
     brief_res = await get_smog_brief()
     d = brief_res.get("result", {})

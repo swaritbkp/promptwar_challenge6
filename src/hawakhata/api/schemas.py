@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from hawakhata.engine.planner import DayOutlook, MultiDaySlot, SafeFlushWindow
+
 
 class StrictBaseModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -97,6 +99,15 @@ class ForecastRequest(StrictBaseModel):
     lng: float = Field(ge=-180.0, le=180.0)
     hours: int = Field(default=24, ge=1, le=96)
     language_code: str = Field(default="en", max_length=5)
+
+
+class FourDayForecastResponse(StrictBaseModel):
+    city: str
+    tomorrow_watch_headline: str
+    tomorrow_watch_direction: Literal["worsens", "improves", "stable"]
+    days: list[DayOutlook] = Field(min_length=4, max_length=4)
+    safe_house_flush: SafeFlushWindow
+    top_slots: list[MultiDaySlot] = Field(default_factory=list, max_length=3)
 
 
 class PassbookRequest(BaseComputeRequest):

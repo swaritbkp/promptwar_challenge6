@@ -294,3 +294,14 @@ def test_extra_routes_coverage(client: TestClient, sample_profile_data: dict[str
     resp = client.post("/api/v1/air/outlook", json=outlook_req)
     assert resp.status_code == 200
     assert "days" in resp.json()["data"]
+
+    # 5. /forecast/4day
+    resp_4d = client.get(
+        "/api/v1/forecast/4day?lat=28.4595&lng=77.0266&activity=walk&duration_min=60"
+    )
+    assert resp_4d.status_code == 200
+    d_4d = resp_4d.json()["data"]
+    assert len(d_4d["days"]) == 4
+    assert "tomorrow_watch_headline" in d_4d
+    assert "safe_house_flush" in d_4d
+    assert len(d_4d["top_slots"]) <= 3

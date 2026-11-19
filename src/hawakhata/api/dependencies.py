@@ -14,6 +14,7 @@ from hawakhata.config import Settings
 from hawakhata.core.cache import CacheBackend
 from hawakhata.integrations.air_quality import AirQualityClient
 from hawakhata.integrations.gemini import GeminiCascadeClient
+from hawakhata.integrations.weather import WeatherClient
 
 
 def get_settings(request: Request) -> Settings:
@@ -45,6 +46,22 @@ def get_gemini_client(request: Request) -> GeminiCascadeClient:
     if client is None:
         client = GeminiCascadeClient(request.app.state.settings)
         request.app.state.gemini_client = client
+    return client
+
+
+def get_weather_client(request: Request) -> WeatherClient:
+    client = getattr(request.app.state, "weather_client", None)
+    if client is None:
+        http_client = getattr(request.app.state, "http", None)
+        if http_client is None:
+            http_client = httpx.AsyncClient(timeout=request.app.state.settings.aq_timeout_s)
+            request.app.state.http = http_client
+        client = WeatherClient(
+            settings=request.app.state.settings,
+            cache=request.app.state.cache,
+            http_client=http_client,
+        )
+        request.app.state.weather_client = client
     return client
 
 

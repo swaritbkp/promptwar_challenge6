@@ -27,6 +27,7 @@ from hawakhata.agent.tools import (
     explain_number,
     get_air_forecast,
     get_family_passbook,
+    get_four_day_schedule,
     get_smog_brief,
     plan_clean_windows,
     reset_current_context,
@@ -203,6 +204,9 @@ async def test_tools_execution_with_context(
         )
         assert plan_ok["result"] is not None and "shifts" in plan_ok["result"]
         assert (await explain_number("daily_budget"))["result"]["value"] == 15.0
+        f4 = await get_four_day_schedule(activity="walk", duration_min=60)
+        assert "tomorrow_watch" in f4["result"]
+        assert len(f4["result"]["four_day_outlook"]) == 4
     finally:
         reset_current_context(token)
 

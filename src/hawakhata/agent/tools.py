@@ -18,7 +18,9 @@ from hawakhata.engine.aqi import aqi_to_category
 from hawakhata.engine.constants import load_constants
 from hawakhata.engine.indoor_model import compare_plants_vs_hepa
 from hawakhata.engine.pets import evaluate_pet_walk_risk, get_indoor_pet_guidance
+from hawakhata.engine.planner import build_four_day_outlook, optimize_multi_day_activity
 from hawakhata.integrations.air_quality import AirQualityClient
+from hawakhata.integrations.weather import WeatherClient
 from hawakhata.services.brief_service import generate_morning_brief
 from hawakhata.services.indoor_service import simulate_indoor_environment
 from hawakhata.services.passbook_service import (
@@ -38,6 +40,7 @@ class ToolContext:
     location: LocationInput
     aq_client: AirQualityClient
     date_iso: str = "2026-11-18"
+    weather_client: WeatherClient | None = None
 
 
 _current_tool_context: contextvars.ContextVar[ToolContext | None] = contextvars.ContextVar(
@@ -416,6 +419,68 @@ async def get_shareable_passbook_digest() -> dict[str, Any]:
     return _wrap({"digest_text": text}, "Shareable passbook digest.")
 
 
+async def get_four_day_schedule(
+    activity: str = "walk", duration_min: int = 60, member_name: str | None = None
+) -> dict[str, Any]:
+    """Retrieve 4-day predictive schedule, Tomorrow Watch alert, and cleanest day+hour slots."""
+    c = get_current_context()
+    s = await c.aq_client.get_hourly_forecast(lat=c.location.lat, lng=c.location.lng, hours=96)
+    w_pts = (
+        (await c.weather_client.get_hourly_weather(c.location.lat, c.location.lng, 96)).points
+        if c.weather_client
+        else None
+    )
+    pm = [p.pm25_ug_m3 for p in s.points]
+    outlook = build_four_day_outlook(pm, w_pts)
+
+    age_band = "31_41"
+    if member_name and c.profile:
+        for m in c.profile.members:
+            if member_name.lower() in m.name.lower():
+                age_band = m.age_band
+                break
+
+    top = optimize_multi_day_activity(age_band, activity, duration_min, pm, w_pts)
+    return _wrap(
+        {
+            "tomorrow_watch": outlook.tomorrow_watch_headline,
+            "tomorrow_direction": outlook.tomorrow_watch_direction,
+            "safe_house_flush": {
+                "day": outlook.safe_house_flush.day_label,
+                "time": f"{outlook.safe_house_flush.start_hour}–{outlook.safe_house_flush.end_hour}",
+                "pm25_ug_m3": outlook.safe_house_flush.outdoor_pm25,
+                "regime": outlook.safe_house_flush.dispersion_regime,
+            },
+            "four_day_outlook": [
+                {
+                    "day": d.day_label,
+                    "peak_aqi": d.peak_aqi,
+                    "category": d.naqi_category,
+                    "cleanest_window": f"{d.cleanest_window_start}–{d.cleanest_window_end}",
+                    "cleanest_pm25": d.cleanest_pm25,
+                    "regime": d.dispersion_regime,
+                    "wind_kmh": d.wind_kmh,
+                }
+                for d in outlook.days
+            ],
+            "top_recommended_slots": [
+                {
+                    "rank": sl.rank,
+                    "day": sl.day_label,
+                    "time": sl.time_label,
+                    "pm25_ug_m3": sl.outdoor_pm25,
+                    "savings_ug": sl.savings_ug,
+                    "savings_pct": sl.savings_pct,
+                    "regime": sl.dispersion_regime,
+                    "reason": sl.reason,
+                }
+                for sl in top
+            ],
+        },
+        "4-day predictive schedule and atmospheric dispersion outlook.",
+    )
+
+
 ALL_TOOLS = [
     get_air_forecast,
     get_family_passbook,
@@ -428,4 +493,5 @@ ALL_TOOLS = [
     check_indoor_plants_impact,
     get_household_priority_triage,
     get_shareable_passbook_digest,
+    get_four_day_schedule,
 ]
