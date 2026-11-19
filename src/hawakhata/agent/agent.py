@@ -195,6 +195,10 @@ class HawaKhataAgent:
             )
             reply = unwrap_agent_reply(llm_resp.text.strip())
 
+            if not reply.strip():
+                logger.info("Empty reply from Gemini; falling back to deterministic.")
+                raise ValueError("Empty Gemini reply")
+
             if check_numeric_grounding(reply, tool_outputs, user_text=safe_input).passed:
                 return reply, tool_calls, tool_outputs, False
             logger.info("Live Gemini reply ungrounded; falling back to deterministic.")
@@ -245,6 +249,13 @@ class HawaKhataAgent:
                 reply_text, urgent=health.urgent, canary=CANARY_TOKEN, language=lang
             )
             final_reply = out_v.sanitized_text
+            if not final_reply.strip():
+                logger.info("Empty final_reply after output policy; using deterministic fallback.")
+                fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
+                final_reply = fb["reply"]
+                tool_calls = [fb["tool_name"]]
+                tool_outputs = [fb["tool_output"]]
+                fb_used = True
             nums = [n.value for n in extract_numbers(final_reply)]
             self.sessions.add_message(session_id, "user", user_message)
             self.sessions.add_message(session_id, "model", final_reply)

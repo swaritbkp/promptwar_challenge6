@@ -99,15 +99,17 @@ def _find_best_slot_for_activity(
             if cost < best_cost:
                 best_cost, best_hour = cost, h
 
-    if _is_valid_slot(
-        act.usual_start_hour,
-        act.duration_hours,
-        occupied,
-        act.earliest_start_hour,
-        act.latest_start_hour,
+    if (
+        _is_valid_slot(
+            act.usual_start_hour,
+            act.duration_hours,
+            occupied,
+            act.earliest_start_hour,
+            act.latest_start_hour,
+        )
+        and abs(_eval(act.usual_start_hour) - best_cost) < 1e-4
     ):
-        if abs(_eval(act.usual_start_hour) - best_cost) < 1e-4:
-            return act.usual_start_hour
+        return act.usual_start_hour
     return best_hour
 
 

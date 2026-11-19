@@ -54,6 +54,10 @@ export class StoryController {
     const dAsk = $("ask-drawer");
     if (dAsk) dAsk.hidden = s.id === "s6_ask" || s.action === "open_ask" ? false : true;
 
+    if (s.action === "apply_plan") {
+      const runBtn = $("btn-run-plan");
+      if (runBtn) runBtn.click();
+    }
     if (s.action === "set_mohalla") {
       const rng = $("mohalla-range");
       if (rng) {
@@ -70,6 +74,9 @@ export class StoryController {
   }
 
   next() {
+    // If modal-why is open, close it first (keeps tour card above backdrop)
+    const mWhy = $("modal-why");
+    if (mWhy && !mWhy.hidden) { mWhy.hidden = true; }
     if (this.currentStep < this.steps.length - 1) {
       this.currentStep++;
       this.render();
@@ -79,6 +86,8 @@ export class StoryController {
   }
 
   prev() {
+    const mWhy = $("modal-why");
+    if (mWhy && !mWhy.hidden) { mWhy.hidden = true; }
     if (this.currentStep > 0) {
       this.currentStep--;
       this.render();

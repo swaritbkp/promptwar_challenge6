@@ -6,7 +6,7 @@ Checks build against `docs/SECURITY.md`. Pass with exact file/function proof.
 |---|---|
 | Audited by | Antigravity AI (Gemini 3.8 Flash, autonomous verification gate) |
 | Date | 2026-11-19 |
-| Commit | b14c59b |
+| Commit | 7974d8d |
 
 ## Part 1 — Checklist
 | # | Check | Rule | Result | Proof |

@@ -14,6 +14,7 @@ from hawakhata.api.schemas import (
     RoomInput,
     SwapsImpactRequest,
 )
+from hawakhata.engine.aqi import aqi_to_category
 from hawakhata.engine.constants import load_constants
 from hawakhata.engine.indoor_model import compare_plants_vs_hepa
 from hawakhata.engine.pets import evaluate_pet_walk_risk, get_indoor_pet_guidance
@@ -78,16 +79,23 @@ async def get_air_forecast(hours: int = 24) -> dict[str, Any]:
             "hour": int(p.time_local[11:13]) if len(p.time_local) >= 13 else 0,
             "pm25_ug_m3": round(p.pm25_ug_m3, 1),
             "aqi": p.aqi_local,
-            "category": p.category_local,
+            "category": (
+                aqi_to_category(p.aqi_local).display_name if p.aqi_local else p.category_local
+            ),
         }
         for p in s.points
     ]
+    cur_cat = (
+        aqi_to_category(cur.aqi_local).display_name
+        if cur and cur.aqi_local
+        else (cur.category_local if cur else "Moderate")
+    )
     return _wrap(
         {
             "city": c.location.city_name,
             "current_pm25": round(cur.pm25_ug_m3, 1) if cur else 0.0,
             "current_aqi": cur.aqi_local if cur else 0,
-            "category": cur.category_local if cur else "Moderate",
+            "category": cur_cat,
             "hourly": pts,
         },
         "Hourly forecast.",
@@ -259,6 +267,7 @@ async def get_smog_brief() -> dict[str, Any]:
     brief = generate_morning_brief(profile=c.profile, air_series=s)
     cur_pm = round(s.points[0].pm25_ug_m3, 1) if s.points else 0.0
     cur_aqi = s.points[0].aqi_local if s.points else 0
+    cur_cat = aqi_to_category(cur_aqi).display_name if cur_aqi else "Moderate"
     parts = str(brief.cleanest_window_local).split("-")
     alerts = [{"name": a.name, "message": a.alert_text} for a in brief.sensitive_member_alerts]
     return _wrap(
@@ -267,6 +276,7 @@ async def get_smog_brief() -> dict[str, Any]:
             "headline": brief.headline,
             "current_pm25": cur_pm,
             "current_aqi": cur_aqi,
+            "category": cur_cat,
             "cleanest_window": {
                 "start": parts[0] if parts else "12:00",
                 "end": parts[1] if len(parts) > 1 else "15:00",

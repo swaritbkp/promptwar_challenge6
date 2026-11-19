@@ -7,6 +7,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from hawakhata.api.schemas import FamilyProfileInput, LocationInput, MemberInput
 from hawakhata.app import create_app
 from hawakhata.config import Settings
 from hawakhata.core.cache import TTLCache
@@ -18,6 +19,11 @@ from hawakhata.services.brief_service import (
     detect_forecast_shift,
     generate_morning_brief,
     replan_if_needed,
+)
+from hawakhata.services.passbook_service import (
+    compute_family_passbook,
+    generate_shareable_digest,
+    rank_household_triage,
 )
 
 
@@ -149,3 +155,142 @@ def test_chat_endpoint_fallback_and_guardrails(client: TestClient) -> None:
     assert "112" in p2["data"]["reply"]
     p3 = client.post("/api/v1/chat", json={"message": "हवा कैसी है?"}).json()
     assert p3["data"]["language"] == "hi"
+
+
+def test_passbook_distinct_member_doses_and_cigarettes(client: TestClient) -> None:
+    profile = {
+        "id": "fam_multi",
+        "name": "Multi-member",
+        "location": {"lat": 28.4595, "lng": 77.0266, "city_name": "Delhi NCR / Gurugram"},
+        "rooms": [],
+        "sources": [],
+        "members": [
+            {
+                "id": "m_child",
+                "name": "Child",
+                "age_band": "child",
+                "sensitivities": ["asthma"],
+                "schedule_blocks": [
+                    {"start_hour": 8, "end_hour": 10, "micro_env": "outdoor", "activity": "light"}
+                ],
+            },
+            {
+                "id": "m_adult",
+                "name": "Adult",
+                "age_band": "31_41",
+                "sensitivities": [],
+                "schedule_blocks": [
+                    {
+                        "start_hour": 8,
+                        "end_hour": 10,
+                        "micro_env": "outdoor",
+                        "activity": "moderate",
+                    }
+                ],
+            },
+        ],
+    }
+    resp = client.post("/api/v1/passbook", json={"profile": profile})
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert "cigarette_equivalent" in data
+    assert data["cigarette_equivalent"] > 0
+    assert "current_aqi" in data and data["current_aqi"] > 0
+    assert "peak_pm25" in data and data["peak_pm25"] > 0
+    assert "cleanest_window" in data
+    entries = data["entries"]
+    assert len(entries) == 2
+    child_entry = next(e for e in entries if e["member_id"] == "m_child")
+    adult_entry = next(e for e in entries if e["member_id"] == "m_adult")
+    # Child ventilation volume is 6 m3/d vs adult 16 m3/d, so adult debit > child debit
+    assert adult_entry["debit_ug"] > child_entry["debit_ug"]
+    assert child_entry["budget_ug"] == 180.0
+    assert adult_entry["budget_ug"] == 240.0
+
+
+def test_city_switch_dynamic_values(client: TestClient) -> None:
+    def get_city_passbook(lat: float, lng: float, name: str) -> dict[str, Any]:
+        p = {
+            "id": "fam_test",
+            "name": "Fam",
+            "location": {"lat": lat, "lng": lng, "city_name": name},
+            "rooms": [],
+            "sources": [],
+            "members": [{"id": "m1", "name": "A", "age_band": "31_41", "schedule_blocks": []}],
+        }
+        res = client.post("/api/v1/passbook", json={"profile": p})
+        assert res.status_code == 200
+        return res.json()["data"]
+
+    ncr = get_city_passbook(28.4595, 77.0266, "Delhi NCR / Gurugram")
+    chd = get_city_passbook(30.7333, 76.7794, "Chandigarh / Mohali")
+    mum = get_city_passbook(19.0760, 72.8777, "Mumbai")
+
+    # Verify that different cities produce dynamic values
+    assert ncr["peak_pm25"] != chd["peak_pm25"]
+    assert ncr["current_aqi"] != mum["current_aqi"]
+    assert mum["peak_pm25"] < ncr["peak_pm25"]
+    assert mum["total_debit_ug"] < ncr["total_debit_ug"]
+
+
+def test_passbook_triage_and_digest() -> None:
+    loc = LocationInput(lat=28.4595, lng=77.0266, city_name="Gurugram")
+    m1 = MemberInput(
+        id="m1", name="Riya", age_band="child", sensitivities=["asthma"], schedule_blocks=[]
+    )
+    m2 = MemberInput(
+        id="m2",
+        name="Dadi",
+        age_band="senior",
+        sensitivities=["cardiovascular"],
+        schedule_blocks=[],
+    )
+    m3 = MemberInput(id="m3", name="Papa", age_band="31_41", sensitivities=[], schedule_blocks=[])
+    prof = FamilyProfileInput(
+        id="fam1", name="Family 1", location=loc, members=[m1, m2, m3], rooms=[]
+    )
+    pm25_series = [250.0] * 24
+
+    pb = compute_family_passbook(prof, pm25_series)
+    assert pb.cigarette_equivalent > 0
+    assert pb.current_aqi > 0
+    assert pb.peak_pm25 == 250.0
+
+    triage = rank_household_triage(prof, pb)
+    assert len(triage) == 3
+    assert triage[0].priority_rank == 1
+    assert triage[0].vulnerability_score >= triage[1].vulnerability_score
+
+    digest = generate_shareable_digest(prof, pb, city_name="Gurugram")
+    assert "HawaKhata Passbook Digest" in digest
+    assert "WHO Air Budget" in digest
+    assert "Highest Priority" in digest
+
+
+def test_extra_routes_coverage(client: TestClient, sample_profile_data: dict[str, Any]) -> None:
+    # 1. /pets/guidance
+    pet_req = {
+        "species": "dog",
+        "location": sample_profile_data["location"],
+    }
+    resp = client.post("/api/v1/pets/guidance", json=pet_req)
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["species"] == "dog"
+    assert "safe_walk_duration_min" in data
+
+    # 2. /passbook/triage
+    resp = client.post("/api/v1/passbook/triage", json={"profile": sample_profile_data})
+    assert resp.status_code == 200
+    assert "triage" in resp.json()["data"]
+
+    # 3. /passbook/digest
+    resp = client.post("/api/v1/passbook/digest", json={"profile": sample_profile_data})
+    assert resp.status_code == 200
+    assert "digest_text" in resp.json()["data"]
+
+    # 4. /air/outlook
+    outlook_req = {"lat": 28.4595, "lng": 77.0266, "hours": 48}
+    resp = client.post("/api/v1/air/outlook", json=outlook_req)
+    assert resp.status_code == 200
+    assert "days" in resp.json()["data"]

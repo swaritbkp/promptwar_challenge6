@@ -6,7 +6,12 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from hawakhata.engine.indoor_model import IndoorSourceEvent, simulate_indoor_pm25, steady_state_pm25
+from hawakhata.engine.indoor_model import (
+    IndoorSourceEvent,
+    compare_plants_vs_hepa,
+    simulate_indoor_pm25,
+    steady_state_pm25,
+)
 
 
 def test_steady_state_calculation() -> None:
@@ -76,3 +81,23 @@ def test_property_adding_source_never_lowers_indoor_pm25(c_out: float) -> None:
     )
     for h in range(6):
         assert res_smoke.hourly_pm25_ug_m3[h] >= res_clean.hourly_pm25_ug_m3[h] - 1e-6
+
+
+def test_compare_plants_vs_hepa_standard() -> None:
+    res = compare_plants_vs_hepa(room_volume_m3=60.0, plant_count=5, hepa_cadr_m3_per_h=300.0)
+    assert res.plant_count == 5
+    assert res.plant_cadr_m3_per_h == 0.5
+    assert res.hepa_cadr_m3_per_h == 300.0
+    assert res.hepa_to_plant_ratio == pytest.approx(600.0, rel=1e-2)
+    assert res.percent_removal_by_plants < 1.0
+    assert "more powerful" in res.verdict
+    assert len(res.care_tips) == 3
+
+
+def test_compare_plants_vs_hepa_zero_plants() -> None:
+    res = compare_plants_vs_hepa(room_volume_m3=50.0, plant_count=0, hepa_cadr_m3_per_h=250.0)
+    assert res.plant_count == 0
+    assert res.plant_cadr_m3_per_h == 0.0
+    assert res.hepa_to_plant_ratio == 0.0
+    assert "No plants modeled" in res.verdict
+    assert len(res.care_tips) == 3

@@ -23,6 +23,7 @@ from hawakhata.agent.tools import (
     simulate_indoor_air,
 )
 from hawakhata.api.schemas import FamilyProfileInput, LocationInput
+from hawakhata.engine.aqi import aqi_to_category
 from hawakhata.integrations.air_quality import AirQualityClient
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -118,9 +119,14 @@ async def _dispatch_intent(
     if intent == "mask":
         brief_res = await get_smog_brief()
         d = brief_res.get("result", {})
-        cat = d.get("headline", "").split("-")[-1].strip() or "Poor"
+        cur_aqi = int(d.get("current_aqi", 0))
+        cat = (
+            aqi_to_category(cur_aqi).display_name
+            if cur_aqi > 0
+            else d.get("category") or d.get("headline", "").split("-")[-1].strip() or "Poor"
+        )
         return (
-            compose_reply("mask", lang, {"current_aqi": d.get("current_aqi", 0), "category": cat}),
+            compose_reply("mask", lang, {"current_aqi": cur_aqi, "category": cat}),
             "get_smog_brief",
             brief_res,
         )
@@ -135,7 +141,7 @@ async def _dispatch_intent(
             "current_pm25": pr.get("current_pm25", pm),
             "walk_advice": pr.get("walk_advice", ""),
             "post_walk_wipe": "Recommended" if pr.get("post_walk_wipe_needed") else "Not needed",
-            "indoor_steps": (pr.get("indoor_warnings", []) + [""])[0],
+            "indoor_steps": [*pr.get("indoor_warnings", []), ""][0],
         }
         return compose_reply("pet", lang, p), "get_pet_air_guidance", pet_res
     if intent == "plants":
@@ -154,11 +160,14 @@ async def _dispatch_intent(
     d = brief_res.get("result", {})
     cw = d.get("cleanest_window", {})
     fc_res = await get_air_forecast(hours=1)
+    fc_d = fc_res.get("result", {})
+    cur_aqi = int(d.get("current_aqi") or fc_d.get("current_aqi", 0))
+    cat = aqi_to_category(cur_aqi).display_name if cur_aqi > 0 else fc_d.get("category") or "Poor"
     p = {
         "city": d.get("city", location_city),
-        "category": fc_res.get("result", {}).get("category", "Poor"),
+        "category": cat,
         "current_pm25": d.get("current_pm25", 0.0),
-        "current_aqi": d.get("current_aqi", 0),
+        "current_aqi": cur_aqi,
         "cleanest_window_start": cw.get("start", "12:00"),
         "cleanest_window_end": cw.get("end", "15:00"),
         "cleanest_window_pm25": cw.get("pm25", 0.0),

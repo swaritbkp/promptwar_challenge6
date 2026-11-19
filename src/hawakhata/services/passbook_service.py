@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from hawakhata.api.schemas import FamilyProfileInput
+from hawakhata.engine.aqi import pm25_to_naqi_category, pm25_to_sub_index
 from hawakhata.engine.budget import PassbookEntry, build_passbook_entry
 from hawakhata.engine.dose import ScheduleBlock, build_member_timeline, compute_member_dose
 from hawakhata.engine.indoor_model import IndoorSourceEvent, simulate_indoor_pm25
@@ -22,6 +23,12 @@ class FamilyPassbookResult:
     total_debit_ug: float
     net_balance_ug: float
     highest_debit_member: str
+    cigarette_equivalent: float
+    current_aqi: int = 317
+    current_category: str = "very_poor"
+    current_category_label: str = "Very Poor"
+    peak_pm25: float = 380.0
+    cleanest_window: str = "12:00 – 15:00"
 
 
 def compute_family_passbook(
@@ -47,6 +54,7 @@ def compute_family_passbook(
 
     entries: list[dict[str, Any]] = []
     tot_budget, tot_debit, max_debit, max_mbr = 0.0, 0.0, -1.0, ""
+    tot_cigs = 0.0
 
     for m in profile.members:
         blocks = [
@@ -56,13 +64,34 @@ def compute_family_passbook(
         tl = build_member_timeline(blocks)
         dose = compute_member_dose(m.age_band, tl, outdoor_pm25_series, indoor_home_series)
         entry: PassbookEntry = build_passbook_entry(
-            m.name, m.age_band, dose.total_dose_ug, dose.hourly_doses_ug, dose.top_contributors
+            m.id,
+            m.name,
+            m.age_band,
+            dose.total_dose_ug,
+            dose.hourly_doses_ug,
+            dose.top_contributors,
         )
         entries.append(asdict(entry))
         tot_budget += entry.budget_ug
         tot_debit += entry.debit_ug
+        tot_cigs += entry.cigarette_equivalent
         if entry.debit_ug > max_debit:
             max_debit, max_mbr = entry.debit_ug, m.name
+
+    cur_pm = outdoor_pm25_series[0] if outdoor_pm25_series else 150.0
+    cur_aqi = pm25_to_sub_index(cur_pm)
+    cat = pm25_to_naqi_category(cur_pm)
+    pk_pm = max(outdoor_pm25_series) if outdoor_pm25_series else 150.0
+
+    best_start, best_avg = 12, float("inf")
+    if len(outdoor_pm25_series) >= 3:
+        for i in range(len(outdoor_pm25_series) - 2):
+            win_avg = sum(outdoor_pm25_series[i : i + 3]) / 3.0
+            if win_avg < best_avg:
+                best_avg, best_start = win_avg, i
+        clean_win = f"{best_start:02d}:00 – {best_start + 3:02d}:00"
+    else:
+        clean_win = "12:00 – 15:00"
 
     return FamilyPassbookResult(
         family_id=profile.id,
@@ -72,6 +101,12 @@ def compute_family_passbook(
         total_debit_ug=round(tot_debit, 2),
         net_balance_ug=round(tot_budget - tot_debit, 2),
         highest_debit_member=max_mbr,
+        cigarette_equivalent=round(tot_cigs, 1),
+        current_aqi=cur_aqi,
+        current_category=cat.code,
+        current_category_label=cat.display_name,
+        peak_pm25=round(pk_pm, 1),
+        cleanest_window=clean_win,
     )
 
 

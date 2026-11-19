@@ -13,6 +13,7 @@ from hawakhata.engine.explain import Explanation
 class PassbookEntry:
     """Passbook ledger line item for a single family member."""
 
+    member_id: str
     member_label: str
     age_band: str
     budget_ug: float
@@ -29,12 +30,21 @@ class PassbookEntry:
 
 def daily_air_budget_ug(age_band: str) -> float:
     """Calculate the personal WHO-based daily permissible PM2.5 inhalation budget."""
+    aliases = {
+        "child": "6_11",
+        "teen": "11_16",
+        "adult": "31_41",
+        "senior": "61_71",
+        "elder": "61_71",
+    }
+    band = aliases.get(age_band.lower(), age_band)
     who_guideline = float(get_constant("who_aqg_pm25_24h").value)
     daily_means = get_constant("inhalation_rate_daily_mean").value
-    return who_guideline * float(daily_means.get(age_band, 16.0))
+    return who_guideline * float(daily_means.get(band, 16.0))
 
 
 def build_passbook_entry(
+    member_id: str,
     member_label: str,
     age_band: str,
     debit_ug: float,
@@ -77,6 +87,7 @@ def build_passbook_entry(
     )
 
     return PassbookEntry(
+        member_id=member_id,
         member_label=member_label,
         age_band=age_band,
         budget_ug=budget,

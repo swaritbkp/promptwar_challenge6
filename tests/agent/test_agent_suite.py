@@ -7,7 +7,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from hawakhata.agent.agent import HawaKhataAgent
+from hawakhata.agent.agent import HawaKhataAgent, unwrap_agent_reply
 from hawakhata.agent.grounding import (
     check_numeric_grounding,
     collect_allowed_numbers,
@@ -239,3 +239,48 @@ async def test_agent_end_to_end_grounded_turn(
     kw = {"profile": sample_profile, "location": sample_location, "aq_client": sample_aq_client}
     res = await agent.run_turn(session_id="live_s1", user_message="What should we do?", **kw)
     assert res.grounded and len(agent.sessions.get_history("live_s1")) == 2
+
+
+def test_unwrap_agent_reply_cases() -> None:
+    assert unwrap_agent_reply("") == ""
+    assert unwrap_agent_reply("   ") == ""
+    assert unwrap_agent_reply("Plain direct text.") == "Plain direct text."
+    json_wrapped = '```json\n{"reply": "Safe outdoor window is 12:00."}\n```'
+    assert unwrap_agent_reply(json_wrapped) == "Safe outdoor window is 12:00."
+    nested = '{"reply": "{\\"reply\\": \\"Inner unnested message.\\"}"}'
+    assert unwrap_agent_reply(nested) == "Inner unnested message."
+
+
+@pytest.mark.asyncio
+async def test_empty_gemini_reply_triggers_deterministic_fallback(
+    sample_profile: FamilyProfileInput,
+    sample_location: LocationInput,
+    sample_aq_client: AirQualityClient,
+) -> None:
+    client = GeminiCascadeClient(settings=_make_gemini_settings(has_key=True))
+    agent = HawaKhataAgent(gemini_client=client)
+    mock_sdk = MagicMock()
+    mock_sdk.aio.models.generate_content = AsyncMock(return_value=MagicMock(text="   \n\t  "))
+    client._client = mock_sdk
+    kw = {"profile": sample_profile, "location": sample_location, "aq_client": sample_aq_client}
+    res = await agent.run_turn(
+        session_id="empty_test_s1", user_message="What is the forecast?", **kw
+    )
+    assert res.fallback_used is True
+    assert res.reply.strip() != ""
+    assert (
+        "air" in res.reply.lower()
+        or "forecast" in res.reply.lower()
+        or "pm2.5" in res.reply.lower()
+    )
+
+
+def test_naqi_category_strings_consistency() -> None:
+    from hawakhata.engine.aqi import aqi_to_category
+
+    assert aqi_to_category(45).display_name == "Good"
+    assert aqi_to_category(80).display_name == "Satisfactory"
+    assert aqi_to_category(150).display_name == "Moderate"
+    assert aqi_to_category(250).display_name == "Poor"
+    assert aqi_to_category(317).display_name == "Very Poor"
+    assert aqi_to_category(405).display_name == "Severe"

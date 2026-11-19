@@ -198,9 +198,6 @@ class HawaKhataApp {
       });
     }
 
-    const onCity = (id, fn) => { const b = $(id); if (b) b.addEventListener("click", fn); };
-    onCity("btn-load-ncr", () => this.applyLocation("Delhi NCR / Gurugram", 28.4595, 77.0266));
-    onCity("btn-load-chd", () => this.applyLocation("Chandigarh / Mohali", 30.7333, 76.7794));
     onCity("btn-apply-custom-loc", () => {
       const lat = parseFloat($("custom-lat")?.value) || 28.4595;
       const lng = parseFloat($("custom-lng")?.value) || 77.0266;
@@ -268,6 +265,48 @@ class HawaKhataApp {
       bal.className = `stat-val ${net < 0 ? "debit" : "saved"}`;
     }
     if (cigs) cigs.textContent = `${(d.cigarette_equivalent || 8.2).toFixed(1)} cigs`;
+    const headline = $("brief-headline");
+    if (headline) {
+      const net = d.net_balance_ug ?? -1;
+      if (net < 0) {
+        const member = d.highest_debit_member ? ` – ${d.highest_debit_member} over limit` : "";
+        headline.textContent = `Air budget exceeded${member}`;
+        headline.className = "card-title text-debit";
+      } else {
+        headline.textContent = "Within WHO budget ✓ – Household protected";
+        headline.className = "card-title text-saved";
+      }
+    }
+    const topAqiChip = $("top-aqi-chip");
+    const topAqiVal = $("top-aqi-val");
+    const topAqiCat = $("top-aqi-cat");
+    if (d.current_aqi != null && topAqiVal) {
+      topAqiVal.textContent = String(d.current_aqi);
+    }
+    if (d.current_category_label && topAqiCat) {
+      topAqiCat.textContent = d.current_category_label;
+    }
+    if (topAqiChip && d.current_category) {
+      const catClass = d.current_category.replace(/_/g, "-");
+      topAqiChip.className = `chip-aqi ${catClass}`;
+      topAqiChip.setAttribute("aria-label", `Air Quality: ${d.current_category_label || d.current_category}`);
+      const iconUse = topAqiChip.querySelector("use");
+      if (iconUse) {
+        iconUse.setAttribute("href", `#icon-naqi-${catClass}`);
+      }
+    }
+    const peakTag = $("peak-warning-tag");
+    if (peakTag && d.peak_pm25 != null) {
+      peakTag.textContent = `▼ Peak PM2.5: ${Math.round(d.peak_pm25)} µg/m³`;
+    }
+    const cleanTag = $("clean-window-tag");
+    if (cleanTag && d.cleanest_window) {
+      cleanTag.textContent = `▲ Cleanest: ${d.cleanest_window}`;
+    }
+    const recText = $("brief-recommendation");
+    if (recText && d.cleanest_window) {
+      recText.textContent = `Cleanest window: ${d.cleanest_window}.`;
+    }
   }
 
   renderMembers(entries = []) {
@@ -275,7 +314,7 @@ class HawaKhataApp {
     if (!list) return;
     list.replaceChildren();
     this.familyProfile.members.forEach((m, idx) => {
-      const e = entries.find((x) => x.member_id === m.id) || {};
+      const e = entries.find((x) => x.member_id === m.id || x.member_label === m.name) || {};
       const bVal = Math.round(e.budget_ug || 90), dVal = Math.round(e.debit_ug || 420);
       const row = el("div", "balance-row"), info = el("div", "member-info"), details = el("div");
       info.append(el("div", "member-avatar", m.name.charAt(0).toUpperCase()), details);
@@ -336,8 +375,9 @@ class HawaKhataApp {
             profile: this.familyProfile, member_id: mid,
             flexible_activities: [{
               id: `act_${actType}`, member_id: mid, title: actConfig.title,
-              duration_hours: Math.max(1, Math.round(dur / 60)), earliest_start_hour: 6, latest_start_hour: 19,
-              micro_env: actConfig.micro_env, activity: actConfig.activity, usual_start_hour: 7
+              duration_hours: Math.max(1, Math.round(dur / 60)), earliest_start_hour: 11, latest_start_hour: 17,
+              micro_env: actConfig.micro_env, activity: actConfig.activity,
+              usual_start_hour: actType === "market_shopping" ? 10 : (actType === "park_terrace" ? 17 : 7)
             }]
           })
         });
@@ -357,6 +397,19 @@ class HawaKhataApp {
         }
       } catch {}
     });
+
+    const applyBtn = $("btn-apply-plan");
+    if (applyBtn) {
+      applyBtn.addEventListener("click", () => {
+        const isHi = this.currentLang === "hi";
+        applyBtn.textContent = isHi ? "✓ योजना में जोड़ा गया" : "✓ Added to plan";
+        applyBtn.className = "btn btn-sm btn-secondary";
+        setTimeout(() => {
+          applyBtn.textContent = isHi ? "योजना में जोड़ें" : "Add to plan";
+          applyBtn.className = "btn btn-sm btn-primary";
+        }, 2000);
+      });
+    }
   }
 
   _bindIndoor() {
@@ -370,7 +423,7 @@ class HawaKhataApp {
       const cadr = on ? parseFloat(cRng?.value || "300") : 0;
       const isWindowOpen = wSel?.value === "open";
       const statusPill = $("indoor-sim-status");
-      if (statusPill) statusPill.textContent = "Simulating (engine)...";
+      if (statusPill) statusPill.textContent = this.currentLang === "hi" ? "सिम्युलेटिंग (इंजन)..." : "Simulating (engine)...";
 
       try {
         const resp = await fetch("/api/v1/indoor/simulate", {
@@ -402,7 +455,7 @@ class HawaKhataApp {
           if ($("indoor-outdoor-val")) $("indoor-outdoor-val").textContent = `${outPm} µg/m³`;
           if ($("indoor-cadr-val")) $("indoor-cadr-val").textContent = `${reqCadr} m³/h`;
           if ($("indoor-clean-pct")) $("indoor-clean-pct").textContent = `▲ ${cleanPct}% Cleaner Air`;
-          if (statusPill) statusPill.textContent = "Simulated (engine)";
+          if (statusPill) statusPill.textContent = this.currentLang === "hi" ? "सिम्युलेटेड (इंजन)" : "Simulated (engine)";
         }
       } catch {
         if (statusPill) statusPill.textContent = "Simulated (offline)";
@@ -416,7 +469,7 @@ class HawaKhataApp {
       if ($("indoor-cadr-label")) $("indoor-cadr-label").textContent = `${cadr} m³/h`;
 
       const statusPill = $("indoor-sim-status");
-      if (statusPill) statusPill.textContent = "Preview (sliding...)";
+      if (statusPill) statusPill.textContent = this.currentLang === "hi" ? "पूर्वावलोकन (स्लाइडिंग...)" : "Preview (sliding...)";
 
       const cIn = Math.round((ach * 340.0) / (ach + cadr / vol + 0.2));
       const pct = Math.max(0, Math.min(95, Math.round((1 - cIn / 340.0) * 100)));
@@ -554,7 +607,7 @@ class HawaKhataApp {
         const json = await resp.json();
         if (json.data) {
           this.sessionId = json.data.session_id;
-          aMsg.textContent = json.data.reply;
+          this._renderMarkdown(aMsg, json.data.reply);
           const modeLbl = json.data.degraded ? "Deterministic Fallback" : "Live Gemini Propose";
           const pillCls = json.data.degraded ? "warn" : "saved";
           const tag = (json.data.grounded ? "✓ Grounded · " : "") + modeLbl;
@@ -566,6 +619,43 @@ class HawaKhataApp {
         aMsg.textContent = "Offline. Showing local verified air recommendations.";
       }
       log.scrollTop = log.scrollHeight;
+    });
+  }
+
+  _renderMarkdown(container, text) {
+    container.textContent = '';
+    if (!text) return;
+    const lines = text.split('\n');
+    let currentUl = null;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) { currentUl = null; continue; }
+      if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+        if (!currentUl) { currentUl = document.createElement('ul'); container.appendChild(currentUl); }
+        const li = document.createElement('li');
+        li.textContent = '';
+        this._appendBoldText(li, trimmed.slice(2));
+        currentUl.appendChild(li);
+      } else {
+        currentUl = null;
+        const p = document.createElement('p');
+        p.textContent = '';
+        this._appendBoldText(p, trimmed);
+        container.appendChild(p);
+      }
+    }
+  }
+
+  _appendBoldText(container, text) {
+    const parts = text.split(/\*\*(.*?)\*\*/g);
+    parts.forEach((part, i) => {
+      if (i % 2 === 1) {
+        const strong = document.createElement('strong');
+        strong.textContent = part;
+        container.appendChild(strong);
+      } else if (part) {
+        container.appendChild(document.createTextNode(part));
+      }
     });
   }
 

@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import httpx
 
 from hawakhata.core.logging import get_logger
+from hawakhata.engine.aqi import pm25_to_naqi_category, pm25_to_sub_index
 
 if TYPE_CHECKING:
     from hawakhata.config import Settings
@@ -156,20 +157,27 @@ def _load_nearest_fixture(
         with contextlib.suppress(ValueError):
             now_dt = datetime.fromisoformat(demo_clock_iso.replace("Z", "+00:00"))
 
-    pts = [
-        HourlyAirPoint(
-            pt.time_utc,
-            f"{(now_dt.hour + i) % 24:02d}:00",
-            pt.pm25_ug_m3,
-            pt.pm10_ug_m3,
-            pt.aqi_local,
-            pt.aqi_universal,
-            pt.category_local,
-            pt.dominant_pollutant,
-            pt.health_recs,
+    scale = 0.45 if lat < 21.0 else 1.0
+
+    pts = []
+    for i, rf in enumerate(raw[:hours]):
+        norm = _normalise_raw_forecast_point(rf)
+        p_pm25 = round(norm.pm25_ug_m3 * scale, 1)
+        sub_idx = pm25_to_sub_index(p_pm25)
+        cat = pm25_to_naqi_category(p_pm25)
+        pts.append(
+            HourlyAirPoint(
+                norm.time_utc,
+                f"{(now_dt.hour + i) % 24:02d}:00",
+                p_pm25,
+                norm.pm10_ug_m3,
+                sub_idx if scale != 1.0 else norm.aqi_local,
+                norm.aqi_universal,
+                cat.display_name if scale != 1.0 else norm.category_local,
+                norm.dominant_pollutant,
+                norm.health_recs,
+            )
         )
-        for i, pt in enumerate(_normalise_raw_forecast_point(rf) for rf in raw[:hours])
-    ]
     return HourlyAirSeries(pts, f"{lat:.2f},{lng:.2f}", "fixture", now_dt.isoformat())
 
 

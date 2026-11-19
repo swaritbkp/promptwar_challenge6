@@ -13,7 +13,9 @@ def test_daily_air_budget_calculation() -> None:
 
 
 def test_build_passbook_entry_under_budget() -> None:
-    entry = build_passbook_entry(member_label="Ananya", age_band="6_11", debit_ug=90.0)
+    entry = build_passbook_entry(
+        member_id="m_ananya", member_label="Ananya", age_band="6_11", debit_ug=90.0
+    )
     assert entry.budget_ug == 180.0 and entry.debit_ug == 90.0 and entry.balance_ug == 90.0
     assert entry.is_over_budget is False and entry.overspend_ratio == 0.5
     assert (
@@ -23,7 +25,9 @@ def test_build_passbook_entry_under_budget() -> None:
 
 
 def test_build_passbook_entry_over_budget() -> None:
-    entry = build_passbook_entry(member_label="Rajesh", age_band="31_41", debit_ug=2400.0)
+    entry = build_passbook_entry(
+        member_id="m_rajesh", member_label="Rajesh", age_band="31_41", debit_ug=2400.0
+    )
     assert (
         entry.budget_ug == 240.0
         and entry.balance_ug == -2160.0
@@ -39,6 +43,6 @@ def test_build_passbook_entry_over_budget() -> None:
 )
 @settings(max_examples=100, deadline=None)
 def test_property_overspend_ratio_invariant(debit: float, age_band: str) -> None:
-    entry = build_passbook_entry("Member", age_band, debit)
+    entry = build_passbook_entry("m_member", "Member", age_band, debit)
     assert pytest.approx(entry.overspend_ratio, rel=1e-4) == debit / entry.budget_ug
     assert entry.balance_ug == entry.budget_ug - debit

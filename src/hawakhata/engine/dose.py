@@ -53,9 +53,17 @@ class MemberDoseResult:
 
 def inhalation_rate_m3_per_h(age_band: str, activity: str) -> float:
     """Calculate hourly air breathing volume based on age band and exertion level."""
+    aliases = {
+        "child": "6_11",
+        "teen": "11_16",
+        "adult": "31_41",
+        "senior": "61_71",
+        "elder": "61_71",
+    }
+    band = aliases.get(age_band.lower(), age_band)
     daily_means = get_constant("inhalation_rate_daily_mean").value
     multipliers = get_constant("activity_multiplier").value
-    mean_daily = float(daily_means.get(age_band, 16.0))
+    mean_daily = float(daily_means.get(band, 16.0))
     m_default = (
         "moderate"
         if activity in ("run", "play", "pet_walk")

@@ -78,7 +78,7 @@ html[lang="hi"] body{font-size:1.0625rem;line-height:1.7;}
 .fab-ask:hover{transform:scale(1.06);}
 @media (min-width:900px){.fab-ask{bottom:2rem;right:2rem;}}
 .story-banner{background:var(--surface-2);border-left:4px solid var(--accent);padding:.75rem 1rem;border-radius:8px;margin-bottom:1.25rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem;}
-.story-tour-card{position:fixed;bottom:5.5rem;left:1rem;right:1rem;max-width:500px;margin:0 auto;z-index:95;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--radius-card);padding:1rem 1.25rem;box-shadow:0 8px 30px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:space-between;gap:1rem;}
+.story-tour-card{position:fixed;bottom:5.5rem;left:1rem;right:1rem;max-width:500px;margin:0 auto;z-index:110;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--radius-card);padding:1rem 1.25rem;box-shadow:0 8px 30px rgba(0,0,0,.15);display:flex;align-items:center;justify-content:space-between;gap:1rem;}
 .story-step-text{font-size:.75rem;font-weight:700;color:var(--accent);}
 .story-caption-text{font-size:.875rem;margin-top:.25rem;color:var(--ink);}
 .custom-viz{display:block;width:100%;height:auto;border-radius:10px;}
