@@ -38,7 +38,9 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 filterwarnings = [
-    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+    # Message-based (not a class path): the warning class name differs across starlette
+    # versions and an unknown class in filterwarnings is a pytest collection error.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
     "ignore:.*starlette\\.testclient.*:UserWarning",
     "ignore:.*httpx.*:UserWarning",
 ]

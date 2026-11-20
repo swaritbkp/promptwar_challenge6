@@ -6,7 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from hawakhata.engine.planner import DayOutlook, MultiDaySlot, SafeFlushWindow
+from hawakhata.engine.aqi import GrapStage
+from hawakhata.engine.planner import DayOutlook, DayPartSummary, MultiDaySlot, SafeFlushWindow
 
 
 class StrictBaseModel(BaseModel):
@@ -124,8 +125,31 @@ class FourDayForecastResponse(StrictBaseModel):
     current_pm25: float = 150.0
     current_category: str = "very_poor"
     current_category_label: str = "Very Poor"
+    current_pm10: float | None = None
     data_mode: str = "fixture"
+    data_source: str = Field(default="Offline Synthetic Fixture", max_length=60)
+    fetched_at_ist: str = Field(default="", max_length=12)
+    grap: GrapStage | None = None
+    day_parts: list[DayPartSummary] = Field(default_factory=list, max_length=3)
+    # Clock-aligned: index h is local clock hour h (next upcoming reading).
     hourly_pm25_24h: list[float] = Field(default_factory=list, max_length=24)
+
+
+class MaskedActivityRequest(StrictBaseModel):
+    location: LocationInput
+    age_band: str = Field(default="31_41", max_length=20)
+    activity: str = Field(default="walk", max_length=50)
+    duration_min: int = Field(default=60, ge=10, le=240)
+    start_hour: int = Field(default=7, ge=0, le=23)
+    mask: Literal["none", "surgical", "n95"] = "none"
+
+
+class LocationResult(StrictBaseModel):
+    name: str = Field(max_length=120)
+    admin1: str = Field(default="", max_length=120)
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    source: Literal["open_meteo_geocoding", "builtin"]
 
 
 class PassbookRequest(BaseComputeRequest):

@@ -16,7 +16,10 @@ _ENV_FILE = _PROJECT_ROOT / ".env"
 class Settings(BaseSettings):
     """Typed, validated application settings loaded from env vars / .env."""
 
-    # extra="ignore" permits ambient Cloud Run and OS environment variables without raising ValidationError
+    # extra="ignore" (deliberately not "forbid"): Cloud Run injects ambient env vars such as
+    # PORT, K_SERVICE, K_REVISION and K_CONFIGURATION that this app does not declare; "forbid"
+    # would crash the container at boot. Request bodies stay strict: every API schema uses
+    # StrictBaseModel(extra="forbid") in api/schemas.py.
     model_config = SettingsConfigDict(
         env_file=(_ENV_FILE, ".env"), env_file_encoding="utf-8", extra="ignore", frozen=True
     )
@@ -62,7 +65,8 @@ class Settings(BaseSettings):
 
     @property
     def has_live_air_data(self) -> bool:
-        return self.google_maps_api_key is not None
+        """Keyless Open-Meteo AQ is live everywhere except the offline test environment."""
+        return self.app_env != "test"
 
     @property
     def has_llm(self) -> bool:

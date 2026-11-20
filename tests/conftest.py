@@ -10,6 +10,12 @@ from hawakhata.app import create_app
 from hawakhata.config import Settings
 
 
+@pytest.fixture(autouse=True)
+def _offline_app_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default every Settings() to app_env=test so no test can reach a live provider."""
+    monkeypatch.setenv("APP_ENV", "test")
+
+
 class FakeClock:
     def __init__(self, start: float = 1000.0) -> None:
         self.now = start

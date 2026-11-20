@@ -37,15 +37,22 @@ async def test_live_api_mock_transport_success() -> None:
     }
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host.endswith("open-meteo.com"):
+            return httpx.Response(503)  # primary down -> Google secondary must answer
         assert request.headers.get("X-Goog-Api-Key") == "test_secret_key"
         return httpx.Response(200, json=mock_payload)
 
-    settings = Settings(google_maps_api_key=SecretStr("test_secret_key"), app_env="test")
+    settings = Settings(
+        _env_file=None, google_maps_api_key=SecretStr("test_secret_key"), app_env="dev"
+    )
     cache = TTLCache(max_entries=100, default_ttl_s=3600)
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
         client = AirQualityClient(settings=settings, cache=cache, http_client=http_client)
         series = await client.get_hourly_forecast(lat=28.459, lng=77.026, hours=1)
         assert isinstance(series, HourlyAirSeries) and series.data_mode == "live"
+        assert (
+            series.provider == "google_aq_live" and series.data_source == "Google Air Quality API"
+        )
         pt = series.points[0]
         assert (
             pt.pm25_ug_m3 == 185.4
@@ -64,13 +71,14 @@ async def test_live_api_retry_and_fixture_fallback_on_500() -> None:
         calls += 1
         return httpx.Response(500, json={"error": "server error"})
 
-    settings = Settings(google_maps_api_key=SecretStr("test_key"), app_env="test")
+    settings = Settings(_env_file=None, google_maps_api_key=SecretStr("test_key"), app_env="dev")
     cache = TTLCache(max_entries=100, default_ttl_s=3600)
     async with httpx.AsyncClient(transport=httpx.MockTransport(error_handler)) as http_client:
         client = AirQualityClient(settings=settings, cache=cache, http_client=http_client)
         series = await client.get_hourly_forecast(lat=28.459, lng=77.026, hours=2)
         assert isinstance(series, HourlyAirSeries) and series.data_mode == "fixture"
-        assert len(series.points) == 2 and calls == 2
+        # 2 Open-Meteo attempts + 2 Google attempts, then the offline fixture.
+        assert len(series.points) == 2 and calls == 4 and series.provider == "fixture"
 
 
 def test_fixtures_contract_delhi_and_chandigarh() -> None:

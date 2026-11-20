@@ -7,12 +7,13 @@ import math
 import random
 import time
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Literal
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 
 from hawakhata.core.logging import get_logger
-from hawakhata.integrations.air_quality import CircuitBreaker, round_coordinates
+from hawakhata.integrations.air_quality import IST, CircuitBreaker, round_coordinates
 
 if TYPE_CHECKING:
     from hawakhata.config import Settings
@@ -45,12 +46,16 @@ class HourlyWeatherSeries:
 
 
 def generate_synthetic_winter_weather(
-    lat: float, lng: float, hours: int = 96
+    lat: float, lng: float, hours: int = 96, start_hour: int = 0
 ) -> HourlyWeatherSeries:
-    """Generate deterministic synthetic winter weather series for northern Indian plains."""
+    """Generate deterministic synthetic winter weather for northern Indian plains.
+
+    ``start_hour`` is the local clock hour of the first point so the series lines up with
+    the AQ series (both start "now").
+    """
     points: list[HourlyWeatherPoint] = []
     for h in range(hours):
-        tod, day = h % 24, h // 24
+        tod, day = (start_hour + h) % 24, (start_hour + h) // 24
         temp = round(17.0 + 7.0 * math.sin((tod - 8) * math.pi / 12) + (day * 0.3), 1)
         rh = round(max(20.0, min(95.0, 60.0 - 22.0 * math.sin((tod - 8) * math.pi / 12) - day)), 1)
         wind_base = 4.0 if (tod < 10 or tod > 19) else 11.5
@@ -74,6 +79,38 @@ def generate_synthetic_winter_weather(
     return HourlyWeatherSeries(
         points, f"{round(lat, 2)},{round(lng, 2)}", "fixture", "2026-11-19T00:00:00Z"
     )
+
+
+def _num(values: list[Any], i: int, default: float) -> float:
+    v = values[i] if i < len(values) else None
+    return default if v is None else float(v)
+
+
+def parse_open_meteo_weather(
+    payload: dict[str, Any], hours: int, now_ist: datetime
+) -> list[HourlyWeatherPoint]:
+    """Normalise Open-Meteo hourly weather (IST) starting at the current hour.
+
+    Null cells fall back to neutral defaults; raises ValueError if no hours remain.
+    """
+    d = payload.get("hourly") or {}
+    times = d.get("time") or []
+    current = now_ist.strftime("%Y-%m-%dT%H:00")
+    start = next((i for i, t in enumerate(times) if str(t) >= current), len(times))
+    pts = [
+        HourlyWeatherPoint(
+            str(times[i]),
+            _num(d.get("temperature_2m") or [], i, 20.0),
+            _num(d.get("relative_humidity_2m") or [], i, 50.0),
+            _num(d.get("wind_speed_10m") or [], i, 8.0),
+            _num(d.get("precipitation") or [], i, 0.0),
+            _num(d.get("boundary_layer_height") or [], i, 500.0),
+        )
+        for i in range(start, min(len(times), start + hours))
+    ]
+    if not pts:
+        raise ValueError("Open-Meteo weather payload has no upcoming hours")
+    return pts
 
 
 class WeatherClient:
@@ -125,7 +162,9 @@ class WeatherClient:
                 )
 
         if not self._breaker.can_execute() or self._settings.app_env == "test":
-            synth = generate_synthetic_winter_weather(r_lat, r_lng, hours=hours)
+            synth = generate_synthetic_winter_weather(
+                r_lat, r_lng, hours=hours, start_hour=datetime.now(IST).hour
+            )
             await self._save_cache(cache_key, synth)
             return synth
 
@@ -133,8 +172,8 @@ class WeatherClient:
             "latitude": r_lat,
             "longitude": r_lng,
             "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,boundary_layer_height",
-            "forecast_days": min(4, max(1, math.ceil(hours / 24))),
-            "timezone": "auto",
+            "forecast_days": 5,
+            "timezone": "Asia/Kolkata",
         }
 
         for attempt in range(2):
@@ -143,28 +182,7 @@ class WeatherClient:
                     WEATHER_API_BASE, params=query_params, timeout=self._settings.aq_timeout_s
                 )
                 if resp.status_code == 200:
-                    d = resp.json().get("hourly", {})
-                    times, temps, rhs = (
-                        d.get("time", []),
-                        d.get("temperature_2m", []),
-                        d.get("relative_humidity_2m", []),
-                    )
-                    winds, precips, blhs = (
-                        d.get("wind_speed_10m", []),
-                        d.get("precipitation", []),
-                        d.get("boundary_layer_height", []),
-                    )
-                    pts = [
-                        HourlyWeatherPoint(
-                            str(times[i]),
-                            float(temps[i]) if i < len(temps) else 20.0,
-                            float(rhs[i]) if i < len(rhs) else 50.0,
-                            float(winds[i]) if i < len(winds) else 8.0,
-                            float(precips[i]) if i < len(precips) else 0.0,
-                            float(blhs[i]) if i < len(blhs) else 500.0,
-                        )
-                        for i in range(min(hours, len(times)))
-                    ]
+                    pts = parse_open_meteo_weather(resp.json(), hours, datetime.now(IST))
                     self._breaker.record_success()
                     series = HourlyWeatherSeries(
                         pts,
@@ -175,11 +193,15 @@ class WeatherClient:
                     await self._save_cache(cache_key, series)
                     return series
                 self._breaker.record_failure()
-            except (TimeoutError, httpx.RequestError):
+            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                # Any network OR payload problem degrades to synthetic weather, never a 500.
+                logger.info("Open-Meteo weather attempt %d failed: %s", attempt + 1, exc)
                 self._breaker.record_failure()
                 if attempt < 1:
                     await asyncio.sleep(0.05 + random.uniform(0.01, 0.05))  # noqa: S311
 
-        fallback = generate_synthetic_winter_weather(r_lat, r_lng, hours=hours)
+        fallback = generate_synthetic_winter_weather(
+            r_lat, r_lng, hours=hours, start_hour=datetime.now(IST).hour
+        )
         await self._save_cache(cache_key, fallback)
         return fallback

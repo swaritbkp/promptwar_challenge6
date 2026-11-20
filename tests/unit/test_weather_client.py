@@ -36,7 +36,7 @@ async def test_weather_client_test_mode_and_caching() -> None:
 async def test_weather_client_live_mock_and_circuit_breaker() -> None:
     payload = {
         "hourly": {
-            "time": ["2026-11-19T00:00"],
+            "time": ["2099-01-01T00:00"],
             "temperature_2m": [15.0],
             "relative_humidity_2m": [75.0],
             "wind_speed_10m": [6.0],

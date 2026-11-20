@@ -81,7 +81,7 @@ async def test_air_quality_timeout_and_breaker_failure() -> None:
     def timeout_handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectTimeout("Connection timed out")
 
-    s = Settings(google_maps_api_key=SecretStr("test_key"), app_env="test")
+    s = Settings(_env_file=None, google_maps_api_key=SecretStr("test_key"), app_env="dev")
     client = await _client_call(settings=s, transport=httpx.MockTransport(timeout_handler))
     res = await client.get_hourly_forecast(lat=28.46, lng=77.03, hours=12)
     assert res.data_mode == "fixture" and len(res.points) == 12
@@ -90,12 +90,14 @@ async def test_air_quality_timeout_and_breaker_failure() -> None:
 @pytest.mark.asyncio
 async def test_demo_clock_iso_parsing() -> None:
     c1 = await _client_call(
-        settings=Settings(google_maps_api_key=None, demo_clock_iso="2026-11-18T10:00:00Z")
+        settings=Settings(
+            google_maps_api_key=None, app_env="test", demo_clock_iso="2026-11-18T10:00:00Z"
+        )
     )
     res1 = await c1.get_hourly_forecast(lat=28.46, lng=77.03, hours=5)
     assert res1.points[0].time_local == "10:00"
     c2 = await _client_call(
-        settings=Settings(google_maps_api_key=None, demo_clock_iso="invalid-date")
+        settings=Settings(google_maps_api_key=None, app_env="test", demo_clock_iso="invalid-date")
     )
     res2 = await c2.get_hourly_forecast(lat=28.46, lng=77.03, hours=5)
     assert len(res2.points) == 5

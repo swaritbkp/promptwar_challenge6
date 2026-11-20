@@ -8,10 +8,20 @@
       <text x="44" y="28" fill="#0F6E66" font-size="12" font-weight="700">AIR PASSBOOK · हवा खाता</text>
     </svg>
   </div>
+  <div class="card p-05" id="persona-card">
+    <div class="flex justify-between items-center px-05 mb-05">
+      <h2 class="font-bold text-xs text-accent" data-i18n="persona_title">⚡ Quick Scenarios — try a household in 1 click</h2>
+    </div>
+    <div class="persona-bar" id="persona-bar" role="group" aria-label="Quick Scenarios"></div>
+  </div>
+
   <div class="card" id="brief-card">
     <div class="card-header">
       <h2 id="today-heading" class="card-title" data-i18n="brief_title">Daily Smog Brief</h2>
-      <span id="brief-date" class="stat-lbl" data-i18n="today">Today</span>
+      <div class="flex gap-05 items-center">
+        <button id="btn-voice-brief" class="btn btn-sm btn-secondary" type="button" aria-pressed="false">🔊 Listen</button>
+        <span id="brief-date" class="stat-lbl" data-i18n="today">Today</span>
+      </div>
     </div>
     <p id="brief-headline" class="card-title">Loading live passbook...</p>
     <p id="brief-recommendation" class="stat-lbl text-sm mt-05">Cleanest window: —</p>
@@ -19,6 +29,13 @@
       <span class="pill-status saved" id="clean-window-tag">▲ Cleanest: —</span>
       <span class="pill-status debit" id="peak-warning-tag">▼ Peak PM2.5: —</span>
     </div>
+    <div class="flex gap-05 flex-wrap items-center mt-05">
+      <span class="pill-status text-xs" id="data-source-pill" role="status">Source: loading live air data…</span>
+      <button id="grap-pill" class="btn btn-sm grap-pill" type="button" aria-expanded="false" aria-controls="grap-details">🚦 GRAP: —</button>
+    </div>
+    <div id="grap-details" class="surface-box p-05 text-xs text-left mt-05" hidden></div>
+    <h3 class="font-semibold text-xs mt-1 mb-05" data-i18n="dayparts_title">Morning · Afternoon · Evening</h3>
+    <div class="daypart-grid" id="day-parts-today"></div>
   </div>
 
   <div class="card p-05 mt-05 mb-05" id="today-action-strip" role="region" aria-label="Right Now Action Strip">
@@ -173,7 +190,7 @@
           <span class="tooltip-bubble" role="tooltip" data-i18n="tt_mixing">Daytime solar heating expands atmospheric mixing layer, naturally reducing PM2.5.</span>
         </span>
       </h2>
-      <span class="pill-status saved" id="plan-savings-pill">▲ Saves 340 µg</span>
+      <span class="pill-status saved" id="plan-savings-pill">▲ Saves —</span>
     </div>
     <p class="stat-lbl text-sm">Shifting routines to clean windows avoids up to 45% PM2.5.</p>
     <div class="flex gap-05 mt-05 mb-05" role="tablist" aria-label="Planning Horizon">
@@ -192,7 +209,6 @@
           <option value="school_run">🎒 School Run</option>
           <option value="park_terrace">🌳 Park / Terrace</option>
           <option value="transit_auto">🛺 Auto / Bike</option>
-          <option value="transit_metro">🚇 Metro</option>
           <option value="walk">🚶 Walk</option>
           <option value="run">🏃 Run</option>
         </select>
@@ -203,12 +219,22 @@
         </select>
         <button id="btn-run-plan" class="btn btn-sm btn-primary" data-i18n="plan_calculate">Calculate Shift</button>
       </div>
+      <div class="mt-05">
+        <div class="font-semibold text-xs mb-05" id="mask-label" data-i18n="mask_title">😷 Mask while outdoors</div>
+        <div class="flex gap-05" role="group" aria-labelledby="mask-label">
+          <button type="button" class="btn btn-sm flex-1 mask-btn btn-primary" data-mask="none" aria-pressed="true" data-i18n="mask_none">None</button>
+          <button type="button" class="btn btn-sm flex-1 mask-btn btn-secondary" data-mask="surgical" aria-pressed="false" data-i18n="mask_surgical">Surgical ~35%</button>
+          <button type="button" class="btn btn-sm flex-1 mask-btn btn-secondary" data-mask="n95" aria-pressed="false" data-i18n="mask_n95">Fitted N95 ~85%</button>
+        </div>
+        <div id="mask-result" class="surface-box p-05 text-left mt-05" role="status" aria-live="polite"></div>
+      </div>
     </div>
+    <div class="daypart-grid mb-05" id="day-parts-plan" role="region" aria-label="Morning, afternoon and evening air quality"></div>
 
     <div class="surface-box mt-05 mb-05" id="plan-chart-container" role="region" aria-label="24-Hour PM2.5 Hourly Chart">
       <div class="flex justify-between items-center mb-05 text-xs">
         <span class="font-semibold" data-i18n="plan_band_title">24-Hour Hourly PM2.5 &amp; NAQI Severity</span>
-        <span class="text-saved font-semibold" id="chart-clean-window-pill">▲ Cleanest Daytime Window: 13:00 – 16:00</span>
+        <span class="text-saved font-semibold" id="chart-clean-window-pill">▲ Cleanest Daytime Window: —</span>
       </div>
       <div id="plan-hourly-svg-wrap" class="w-full"></div>
     </div>
@@ -222,8 +248,8 @@
         <div class="stat-box flex justify-between items-center text-left mt-05">
           <div>
             <div class="font-semibold" id="plan-shift-title">Shift Outdoor Routine</div>
-            <div class="stat-lbl text-xs" id="plan-shift-hours">07:00 (Severe, 380 µg) → 13:00 (Moderate, 95 µg)</div>
-            <div class="text-xs text-saved font-semibold mt-05" id="plan-shift-delta">▲ Saves 210 µg PM2.5</div>
+            <div class="stat-lbl text-xs" id="plan-shift-hours">Pick a member and activity, then tap Calculate Shift.</div>
+            <div class="text-xs text-saved font-semibold mt-05" id="plan-shift-delta"></div>
           </div>
           <div class="flex gap-05 flex-wrap">
             <button class="btn btn-sm btn-primary" id="btn-apply-plan" data-i18n="btn_apply">Add to plan</button>
@@ -253,8 +279,8 @@
         <rect x="0" y="0" width="110" height="50" rx="4" fill="#C62828" fill-opacity=".1"/>
         <text x="55" y="30" fill="#B4233C" font-size="12" font-weight="700" text-anchor="middle" id="indoor-outdoor-val">— µg/m³</text>
         <rect x="120" y="0" width="280" height="50" rx="4" fill="#167A3A" fill-opacity=".08"/>
-        <text x="230" y="26" fill="#167A3A" font-size="14" font-weight="700" text-anchor="middle" id="indoor-preview-pm25">42 µg/m³</text>
-        <text x="230" y="40" fill="#167A3A" font-size="8" font-weight="600" text-anchor="middle" id="indoor-clean-pct">▲ 88% Cleaner Air</text>
+        <text x="230" y="26" fill="#167A3A" font-size="14" font-weight="700" text-anchor="middle" id="indoor-preview-pm25">— µg/m³</text>
+        <text x="230" y="40" fill="#167A3A" font-size="8" font-weight="600" text-anchor="middle" id="indoor-clean-pct">Simulating…</text>
       </svg>
     </div>
     <div class="stat-box text-left mb-1">
@@ -281,7 +307,7 @@
     </div>
     <div class="hero-grid">
       <div class="stat-box">
-        <div class="stat-val" id="indoor-pm25-val">42 µg/m³</div>
+        <div class="stat-val" id="indoor-pm25-val">— µg/m³</div>
         <div class="stat-lbl">Mean Indoor PM2.5</div>
       </div>
       <div class="stat-box">
@@ -406,34 +432,27 @@
       <button id="modal-city-close" class="btn btn-sm btn-secondary" aria-label="Close dialog">✕</button>
     </div>
     <div class="flex-col gap-05 mt-05">
-      <button id="btn-use-gps" class="btn btn-primary w-full">📍 Use My Current Location</button>
-      <div class="text-left mt-05">
-        <label for="city-select-dropdown" class="stat-lbl text-xs font-semibold">Select Indian Metro / City</label>
-        <select id="city-select-dropdown" class="btn text-left w-full mt-05">
-          <option value="delhi_ncr" selected>Delhi NCR / Gurugram</option>
-          <option value="chandigarh">Chandigarh / Mohali</option>
-          <option value="mumbai">Mumbai</option>
-          <option value="bengaluru">Bengaluru</option>
-          <option value="kolkata">Kolkata</option>
-          <option value="chennai">Chennai</option>
-          <option value="hyderabad">Hyderabad</option>
-          <option value="pune">Pune</option>
-          <option value="jaipur">Jaipur</option>
-          <option value="lucknow">Lucknow</option>
-          <option value="patna">Patna</option>
-          <option value="ahmedabad">Ahmedabad</option>
-          <option value="custom">-- Custom Coordinates --</option>
-        </select>
-      </div>
-      <div class="surface-box mt-05 text-left">
-        <div class="font-semibold text-xs mb-05">Custom Location Coordinates</div>
-        <div class="flex gap-05 mb-05">
-          <input type="number" id="custom-lat" class="btn text-left flex-1" placeholder="Lat" step="0.01">
-          <input type="number" id="custom-lng" class="btn text-left flex-1" placeholder="Lng" step="0.01">
+      <label for="city-search-input" class="stat-lbl text-xs font-semibold" data-i18n="city_search_label">Search any Indian city or town</label>
+      <input type="search" id="city-search-input" class="btn text-left w-full" autocomplete="off" maxlength="60"
+             placeholder="Search any Indian city or town... (Lucknow, Jaipur, Patna, Pune, Kochi)"
+             data-i18n-placeholder="city_search_placeholder" aria-controls="city-search-results">
+      <div id="city-search-status" class="stat-lbl text-xs" role="status" aria-live="polite"></div>
+      <div id="city-search-results" class="flex-col gap-05" role="listbox" aria-label="Search results"></div>
+      <div class="stat-lbl text-xs font-semibold mt-05" data-i18n="city_quick_label">Quick select metro</div>
+      <div id="city-chips" class="flex gap-05 flex-wrap"></div>
+      <button id="btn-use-gps" class="btn btn-primary w-full mt-05" type="button">📍 Use My Current Location</button>
+      <details class="surface-box mt-05 text-left">
+        <summary class="font-semibold text-xs">Custom Location Coordinates</summary>
+        <div class="flex gap-05 mb-05 mt-05">
+          <label class="sr-only" for="custom-lat">Latitude</label>
+          <input type="number" id="custom-lat" class="btn text-left flex-1" placeholder="Lat" step="0.01" min="-90" max="90">
+          <label class="sr-only" for="custom-lng">Longitude</label>
+          <input type="number" id="custom-lng" class="btn text-left flex-1" placeholder="Lng" step="0.01" min="-180" max="180">
         </div>
-        <input type="text" id="custom-city-name" class="btn text-left w-full mb-05" placeholder="Area Name">
-        <button id="btn-apply-custom-loc" class="btn btn-primary w-full">Apply Coordinates</button>
-      </div>
+        <label class="sr-only" for="custom-city-name">Area name</label>
+        <input type="text" id="custom-city-name" class="btn text-left w-full mb-05" placeholder="Area Name" maxlength="100">
+        <button id="btn-apply-custom-loc" class="btn btn-primary w-full" type="button">Apply Coordinates</button>
+      </details>
     </div>
   </div>
 </div>

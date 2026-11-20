@@ -1,0 +1,38 @@
+{
+  "version": "v1",
+  "source": "CAQM Graded Response Action Plan for Delhi-NCR (revised schedule); advisory wording summarised, not legal text",
+  "scope_note_en": "GRAP stages are CAQM triggers for Delhi-NCR; outside NCR this is the equivalent CPCB NAQI severity level, not a legal order.",
+  "scope_note_hi": "GRAP चरण दिल्ली-NCR के लिए CAQM के नियम हैं; NCR के बाहर यह केवल समकक्ष CPCB NAQI गंभीरता स्तर है, कानूनी आदेश नहीं।",
+  "stages": {
+    "normal": {
+      "label_en": "GRAP: Not in force",
+      "label_hi": "GRAP: लागू नहीं",
+      "advisories_en": ["No GRAP restrictions at this AQI.", "Keep routine dust and waste-burning controls."],
+      "advisories_hi": ["इस AQI पर कोई GRAP प्रतिबंध नहीं।", "धूल और कचरा जलाने पर सामान्य नियंत्रण जारी रखें।"]
+    },
+    "I": {
+      "label_en": "GRAP Stage I · Poor",
+      "label_hi": "GRAP चरण I · खराब",
+      "advisories_en": ["Construction dust control and anti-smog guns enforced.", "Open burning of waste and leaves banned.", "Overage and visibly polluting vehicles checked."],
+      "advisories_hi": ["निर्माण धूल नियंत्रण और एंटी-स्मॉग गन लागू।", "कचरा और पत्ते खुले में जलाना प्रतिबंधित।", "पुराने व धुआँ छोड़ने वाले वाहनों की जाँच।"]
+    },
+    "II": {
+      "label_en": "GRAP Stage II · Very Poor",
+      "label_hi": "GRAP चरण II · बहुत खराब",
+      "advisories_en": ["Diesel generator use restricted (except essential services).", "Parking fees raised to discourage private vehicles.", "More bus and metro services; prefer public transport."],
+      "advisories_hi": ["डीज़ल जनरेटर पर रोक (आवश्यक सेवाओं को छोड़कर)।", "निजी वाहन कम करने हेतु पार्किंग शुल्क बढ़ा।", "अधिक बस व मेट्रो सेवाएँ; सार्वजनिक परिवहन चुनें।"]
+    },
+    "III": {
+      "label_en": "GRAP Stage III · Severe",
+      "label_hi": "GRAP चरण III · गंभीर",
+      "advisories_en": ["Non-essential construction and demolition halted.", "BS-III petrol and BS-IV diesel four-wheelers restricted in NCR.", "Primary classes may shift to hybrid or online mode."],
+      "advisories_hi": ["गैर-ज़रूरी निर्माण और तोड़फोड़ बंद।", "NCR में BS-III पेट्रोल व BS-IV डीज़ल चार-पहिया वाहनों पर रोक।", "प्राथमिक कक्षाएँ हाइब्रिड या ऑनलाइन हो सकती हैं।"]
+    },
+    "IV": {
+      "label_en": "GRAP Stage IV · Severe+",
+      "label_hi": "GRAP चरण IV · अति गंभीर",
+      "advisories_en": ["Entry of non-essential trucks into Delhi stopped.", "Schools may move all classes online; offices urged to allow 50% work-from-home.", "All public-project construction suspended."],
+      "advisories_hi": ["दिल्ली में गैर-ज़रूरी ट्रकों का प्रवेश बंद।", "स्कूल सभी कक्षाएँ ऑनलाइन कर सकते हैं; दफ़्तरों में 50% वर्क-फ्रॉम-होम।", "सभी सार्वजनिक परियोजनाओं का निर्माण स्थगित।"]
+    }
+  }
+}

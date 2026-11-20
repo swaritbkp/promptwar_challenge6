@@ -1,0 +1,58 @@
+{
+  "version": "v1",
+  "note": "1-click Quick Scenarios for users and evaluators. Data only; engine logic never branches on these ids.",
+  "personas": [
+    {
+      "id": "delhi_family",
+      "label_en": "Delhi NCR Family",
+      "label_hi": "दिल्ली NCR परिवार",
+      "subtitle_en": "Gurugram · Child + Senior + Adult",
+      "subtitle_hi": "गुरुग्राम · बच्चा + बुज़ुर्ग + वयस्क",
+      "location": {"lat": 28.4595, "lng": 77.0266, "city_name": "Delhi NCR / Gurugram"},
+      "members": [
+        {"id": "m1", "name": "Aarav (Child)", "age_band": "child", "sensitivities": ["asthma"]},
+        {"id": "m2", "name": "Dadi (Senior)", "age_band": "senior", "sensitivities": ["cardiovascular"]},
+        {"id": "m3", "name": "Priya (Adult)", "age_band": "31_41", "sensitivities": []}
+      ],
+      "plan": {"member_id": "m2", "activity": "walk", "duration_min": 30}
+    },
+    {
+      "id": "mumbai_commuter",
+      "label_en": "Mumbai Daily Commuter",
+      "label_hi": "मुंबई दैनिक यात्री",
+      "subtitle_en": "Mumbai · Working Adult, peak-traffic commute",
+      "subtitle_hi": "मुंबई · कामकाजी वयस्क, भीड़-भाड़ वाला सफ़र",
+      "location": {"lat": 19.076, "lng": 72.8777, "city_name": "Mumbai"},
+      "members": [
+        {"id": "m1", "name": "Rohan (Commuter)", "age_band": "31_41", "sensitivities": []}
+      ],
+      "plan": {"member_id": "m1", "activity": "transit_auto", "duration_min": 90}
+    },
+    {
+      "id": "kolkata_athlete",
+      "label_en": "Kolkata Student Athlete",
+      "label_hi": "कोलकाता छात्र खिलाड़ी",
+      "subtitle_en": "Kolkata · Teen outdoor sports + Adult",
+      "subtitle_hi": "कोलकाता · किशोर आउटडोर खेल + वयस्क",
+      "location": {"lat": 22.5726, "lng": 88.3639, "city_name": "Kolkata"},
+      "members": [
+        {"id": "m1", "name": "Ishaan (Teen athlete)", "age_band": "teen", "sensitivities": []},
+        {"id": "m2", "name": "Mitali (Parent)", "age_band": "41_51", "sensitivities": []}
+      ],
+      "plan": {"member_id": "m1", "activity": "run", "duration_min": 60}
+    },
+    {
+      "id": "chandigarh_senior_pets",
+      "label_en": "Chandigarh Senior + Pets",
+      "label_hi": "चंडीगढ़ बुज़ुर्ग + पालतू",
+      "subtitle_en": "Chandigarh · Senior with asthma, dog + indoor birds",
+      "subtitle_hi": "चंडीगढ़ · अस्थमा वाले बुज़ुर्ग, कुत्ता + पक्षी",
+      "location": {"lat": 30.7333, "lng": 76.7794, "city_name": "Chandigarh / Mohali"},
+      "members": [
+        {"id": "m1", "name": "Nanaji (Senior)", "age_band": "senior", "sensitivities": ["asthma"]}
+      ],
+      "pets": ["dog", "bird"],
+      "plan": {"member_id": "m1", "activity": "pet_walk", "duration_min": 30}
+    }
+  ]
+}

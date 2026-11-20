@@ -98,6 +98,14 @@ export function initChatDrawer({ getSessionId, setSessionId, getLanguage, getPro
     return d;
   };
 
+  // One-click sample prompts (text is translated via data-i18n, so the sent query follows the UI language)
+  document.querySelectorAll(".ask-sample-btn").forEach((b) => {
+    b.addEventListener("click", () => {
+      input.value = b.textContent || "";
+      form.requestSubmit();
+    });
+  });
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const msg = input.value.trim();

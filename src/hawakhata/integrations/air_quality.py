@@ -1,4 +1,10 @@
-"""Google Maps Platform Air Quality API client with caching, resilience, and fixture fallback."""
+"""Live air quality client: Open-Meteo (primary) -> Google AQ (secondary) -> offline fixture.
+
+Open-Meteo Air Quality is keyless and covers every coordinate in India with real hourly
+PM2.5 + PM10, so it is the primary live provider. Google Maps Air Quality is used only if
+Open-Meteo fails and a key is configured. The offline fixture is used in ``app_env=test``
+or when both live providers fail. Live readings are never rescaled.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +15,7 @@ import math
 import random
 import time
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
@@ -19,6 +25,7 @@ import httpx
 
 from hawakhata.core.logging import get_logger
 from hawakhata.engine.aqi import pm25_to_naqi_category, pm25_to_sub_index
+from hawakhata.engine.planner import align_to_clock
 
 if TYPE_CHECKING:
     from hawakhata.config import Settings
@@ -27,6 +34,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "data" / "fixtures"
 AQ_API_BASE = "https://airquality.googleapis.com/v1"
+OPEN_METEO_AQ_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
+Provider = Literal["open_meteo_live", "google_aq_live", "fixture"]
+PROVIDER_LABELS: dict[str, str] = {
+    "open_meteo_live": "Open-Meteo Live AQ",
+    "google_aq_live": "Google Air Quality API",
+    "fixture": "Offline Synthetic Fixture",
+}
 DELHI_NCR_COORDS = (28.4595, 77.0266)
 CHANDIGARH_COORDS = (30.7333, 76.7794)
 IST = timezone(timedelta(hours=5, minutes=30), name="IST")
@@ -115,6 +129,24 @@ class HourlyAirSeries:
     location_cell: str
     data_mode: Literal["live", "fixture"]
     fetched_at: str
+    provider: str = "fixture"
+    data_source: str = PROVIDER_LABELS["fixture"]
+
+    @property
+    def start_hour(self) -> int:
+        """Local (IST) clock hour of the first reading, used to clock-align series."""
+        tl = self.points[0].time_local if self.points else ""
+        return int(tl[:2]) if len(tl) >= 2 and tl[:2].isdigit() else 0
+
+    @property
+    def fetched_at_ist(self) -> str:
+        """Freshness stamp such as ``"18:30 IST"`` (empty if unknown)."""
+        with contextlib.suppress(ValueError):
+            dt = datetime.fromisoformat(self.fetched_at.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=UTC)
+            return f"{dt.astimezone(IST):%H:%M} IST"
+        return ""
 
 
 def _normalise_raw_forecast_point(raw: dict[str, Any]) -> HourlyAirPoint:
@@ -149,6 +181,53 @@ def _normalise_raw_forecast_point(raw: dict[str, Any]) -> HourlyAirPoint:
                 p_dt = p_dt.replace(tzinfo=UTC)
             time_local = f"{p_dt.astimezone(IST).hour:02d}:00"
     return HourlyAirPoint(dt, time_local, pm25, pm10, aqi_l, aqi_u, cat_l, dom, recs)
+
+
+def _point_from_pm(
+    dt_ist: datetime, pm25: float, pm10: float | None, aqi_u: int | None = None
+) -> HourlyAirPoint:
+    pm25 = round(max(0.0, pm25), 1)
+    return HourlyAirPoint(
+        dt_ist.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        f"{dt_ist.hour:02d}:00",
+        pm25,
+        None if pm10 is None else round(max(0.0, pm10), 1),
+        pm25_to_sub_index(pm25),
+        aqi_u,
+        pm25_to_naqi_category(pm25).display_name,
+        "pm25",
+        {},
+    )
+
+
+def parse_open_meteo_hourly(
+    payload: dict[str, Any], hours: int, now_ist: datetime
+) -> list[HourlyAirPoint]:
+    """Normalise an Open-Meteo ``hourly`` block (IST timestamps) starting at the current hour.
+
+    Values pass through unmodified; a missing hour carries the previous valid reading.
+    Raises ValueError if the payload holds no usable PM2.5.
+    """
+    hourly = payload.get("hourly") or {}
+    times = hourly.get("time") or []
+    pm25s = hourly.get("pm2_5") or []
+    pm10s = hourly.get("pm10") or []
+    current = now_ist.strftime("%Y-%m-%dT%H:00")
+    start = next((i for i, t in enumerate(times) if str(t) >= current), len(times))
+    pts: list[HourlyAirPoint] = []
+    last_pm25: float | None = None
+    for i in range(start, min(len(times), start + hours)):
+        raw25 = pm25s[i] if i < len(pm25s) else None
+        raw10 = pm10s[i] if i < len(pm10s) else None
+        if raw25 is not None:
+            last_pm25 = float(raw25)
+        if last_pm25 is None:
+            continue
+        dt_ist = datetime.fromisoformat(str(times[i])).replace(tzinfo=IST)
+        pts.append(_point_from_pm(dt_ist, last_pm25, None if raw10 is None else float(raw10)))
+    if not pts:
+        raise ValueError("Open-Meteo payload contained no PM2.5 readings")
+    return pts
 
 
 CITY_CALIBRATED_SCALES: list[tuple[float, float, float]] = [
@@ -227,7 +306,7 @@ def _load_nearest_fixture(
 
 
 class AirQualityClient:
-    """Client for Google Maps Platform Air Quality API with caching and fallback."""
+    """Live AQ client: Open-Meteo primary, Google AQ secondary, offline fixture last."""
 
     def __init__(
         self,
@@ -235,9 +314,11 @@ class AirQualityClient:
         cache: CacheBackend,
         http_client: httpx.AsyncClient,
         breaker: CircuitBreaker | None = None,
+        open_meteo_breaker: CircuitBreaker | None = None,
     ) -> None:
         self._settings, self._cache, self._http = settings, cache, http_client
         self._breaker = breaker or CircuitBreaker()
+        self._om_breaker = open_meteo_breaker or CircuitBreaker()
 
     async def _save_cache(self, key: str, series: HourlyAirSeries) -> None:
         if self._cache is None:
@@ -249,51 +330,76 @@ class AirQualityClient:
                 "location_cell": series.location_cell,
                 "data_mode": series.data_mode,
                 "fetched_at": series.fetched_at,
+                "provider": series.provider,
             },
             ttl_s=self._settings.aq_cache_ttl_s,
         )
 
-    async def get_hourly_forecast(
-        self, lat: float, lng: float, hours: int = 24, language_code: str = "en"
-    ) -> HourlyAirSeries:
-        """Retrieve hourly air quality forecast with caching, retries, and fallback."""
-        r_lat, r_lng = round_coordinates(lat, lng)
-        now_bucket = int(time.time() // 1800)
-        cache_key = f"aq:forecast:{r_lat}:{r_lng}:{hours}:{language_code}:{now_bucket}"
+    @staticmethod
+    def _from_cache(cached: dict[str, Any], cell: str) -> HourlyAirSeries:
+        pts_raw = cached.get("points")
+        points = (
+            [HourlyAirPoint(**p) for p in pts_raw if isinstance(p, dict)]
+            if isinstance(pts_raw, list)
+            else []
+        )
+        provider = str(cached.get("provider", "fixture"))
+        if provider not in PROVIDER_LABELS:
+            provider = "fixture"
+        return HourlyAirSeries(
+            points,
+            str(cached.get("location_cell", cell)),
+            "fixture" if provider == "fixture" else "live",
+            str(cached.get("fetched_at", "")),
+            provider,
+            PROVIDER_LABELS[provider],
+        )
 
-        cached = await self._cache.get(cache_key) if self._cache is not None else None
-        if isinstance(cached, dict):
-            pts_raw = cached.get("points")
-            points = (
-                [HourlyAirPoint(**p) for p in pts_raw if isinstance(p, dict)]
-                if isinstance(pts_raw, list)
-                else []
-            )
-            data_mode: Literal["live", "fixture"] = (
-                "live" if cached.get("data_mode") == "live" else "fixture"
-            )
-            return HourlyAirSeries(
-                points,
-                str(cached.get("location_cell", f"{r_lat},{r_lng}")),
-                data_mode,
-                str(cached.get("fetched_at", "")),
-            )
+    async def _fetch_open_meteo(self, lat: float, lng: float, hours: int) -> HourlyAirSeries | None:
+        """Query keyless Open-Meteo AQ; forecast_days=5 keeps 96 future hours after trimming."""
+        if not self._om_breaker.can_execute():
+            return None
+        params: dict[str, str | int | float] = {
+            "latitude": lat,
+            "longitude": lng,
+            "hourly": "pm2_5,pm10",
+            "forecast_days": 5,
+            "timezone": "Asia/Kolkata",
+        }
+        for attempt in (1, 2):
+            try:
+                resp = await self._http.get(
+                    OPEN_METEO_AQ_URL, params=params, timeout=self._settings.aq_timeout_s
+                )
+                if resp.status_code == 200:
+                    pts = parse_open_meteo_hourly(resp.json(), hours, datetime.now(IST))
+                    self._om_breaker.record_success()
+                    return HourlyAirSeries(
+                        pts,
+                        f"{lat:.2f},{lng:.2f}",
+                        "live",
+                        datetime.now(UTC).isoformat(),
+                        "open_meteo_live",
+                        PROVIDER_LABELS["open_meteo_live"],
+                    )
+            except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                logger.info("Open-Meteo AQ attempt %d failed: %s", attempt, type(exc).__name__)
+        self._om_breaker.record_failure()
+        return None
 
+    async def _fetch_google(
+        self, lat: float, lng: float, hours: int, language_code: str
+    ) -> HourlyAirSeries | None:
         api_key = (
             self._settings.google_maps_api_key.get_secret_value()
             if self._settings.google_maps_api_key
             else None
         )
         if not api_key or not self._breaker.can_execute():
-            s = _load_nearest_fixture(
-                r_lat, r_lng, hours, demo_clock_iso=self._settings.demo_clock_iso
-            )
-            await self._save_cache(cache_key, s)
-            return s
-
+            return None
         headers = {"Content-Type": "application/json", "X-Goog-Api-Key": api_key}
         body = {
-            "location": {"latitude": r_lat, "longitude": r_lng},
+            "location": {"latitude": lat, "longitude": lng},
             "universalAqi": True,
             "languageCode": language_code,
             "extraComputations": [
@@ -304,35 +410,59 @@ class AirQualityClient:
             ],
             "pageSize": min(96, max(1, hours)),
         }
-        url = f"{AQ_API_BASE}/forecast:lookup"
-
         for attempt in (1, 2):
             try:
                 resp = await self._http.post(
-                    url, json=body, headers=headers, timeout=self._settings.aq_timeout_s
+                    f"{AQ_API_BASE}/forecast:lookup",
+                    json=body,
+                    headers=headers,
+                    timeout=self._settings.aq_timeout_s,
                 )
-                if resp.status_code == 200:
+                raw = resp.json().get("hourlyForecasts", []) if resp.status_code == 200 else []
+                if raw:
                     self._breaker.record_success()
-                    raw = resp.json().get("hourlyForecasts", [])
-                    s = HourlyAirSeries(
+                    return HourlyAirSeries(
                         [_normalise_raw_forecast_point(rf) for rf in raw[:hours]],
-                        f"{r_lat:.2f},{r_lng:.2f}",
+                        f"{lat:.2f},{lng:.2f}",
                         "live",
                         datetime.now(UTC).isoformat(),
+                        "google_aq_live",
+                        PROVIDER_LABELS["google_aq_live"],
                     )
-                    await self._save_cache(cache_key, s)
-                    return s
-            except (httpx.TimeoutException, httpx.NetworkError):
-                pass
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.info("Google AQ attempt %d failed: %s", attempt, type(exc).__name__)
             if attempt < 2:
                 await asyncio.sleep(0.1 + random.uniform(0.05, 0.15))  # noqa: S311
-                continue
-            self._breaker.record_failure()
-            break
+        self._breaker.record_failure()
+        return None
 
-        s = _load_nearest_fixture(r_lat, r_lng, hours, demo_clock_iso=self._settings.demo_clock_iso)
-        await self._save_cache(cache_key, s)
-        return s
+    async def get_hourly_forecast(
+        self, lat: float, lng: float, hours: int = 24, language_code: str = "en"
+    ) -> HourlyAirSeries:
+        """Hourly PM2.5/PM10 starting at the current IST hour, via the provider chain.
+
+        Chain (outside ``app_env == "test"``): Open-Meteo live -> Google AQ live (only if a
+        key is set) -> offline fixture. Tests always use the deterministic fixture.
+        """
+        r_lat, r_lng = round_coordinates(lat, lng)
+        # One upstream call per ~1 km cell per 30 min: always fetch 96 h, slice per caller.
+        span = max(96, hours)
+        cache_key = f"aq:forecast:{r_lat}:{r_lng}:{span}:{language_code}:{int(time.time() // 1800)}"
+        cached = await self._cache.get(cache_key) if self._cache is not None else None
+        if isinstance(cached, dict):
+            return _slice(self._from_cache(cached, f"{r_lat},{r_lng}"), hours)
+
+        series: HourlyAirSeries | None = None
+        if self._settings.app_env != "test":
+            series = await self._fetch_open_meteo(r_lat, r_lng, span)
+            if series is None:
+                series = await self._fetch_google(r_lat, r_lng, span, language_code)
+        if series is None:
+            series = _load_nearest_fixture(
+                r_lat, r_lng, span, demo_clock_iso=self._settings.demo_clock_iso
+            )
+        await self._save_cache(cache_key, series)
+        return _slice(series, hours)
 
     async def get_current_conditions(
         self, lat: float, lng: float, language_code: str = "en"
@@ -344,3 +474,14 @@ class AirQualityClient:
         return HourlyAirPoint(
             datetime.now(UTC).isoformat(), "12:00", 150.0, 240.0, 320, 35, "VERY_POOR", "pm25", {}
         )
+
+
+def _slice(series: HourlyAirSeries, hours: int) -> HourlyAirSeries:
+    if len(series.points) <= hours:
+        return series
+    return replace(series, points=series.points[:hours])
+
+
+def clock_aligned_pm25(series: HourlyAirSeries, hours: int = 24) -> list[float]:
+    """PM2.5 values re-indexed so position h is clock hour h (see ``align_to_clock``)."""
+    return align_to_clock([p.pm25_ug_m3 for p in series.points], series.start_hour)[:hours]

@@ -19,7 +19,7 @@ from hawakhata.engine.constants import load_constants
 from hawakhata.engine.indoor_model import compare_plants_vs_hepa
 from hawakhata.engine.pets import evaluate_pet_walk_risk, get_indoor_pet_guidance
 from hawakhata.engine.planner import build_four_day_outlook, optimize_multi_day_activity
-from hawakhata.integrations.air_quality import AirQualityClient
+from hawakhata.integrations.air_quality import AirQualityClient, clock_aligned_pm25
 from hawakhata.integrations.weather import WeatherClient
 from hawakhata.services.brief_service import generate_morning_brief
 from hawakhata.services.indoor_service import simulate_indoor_environment
@@ -76,20 +76,19 @@ async def get_air_forecast(hours: int = 24) -> dict[str, Any]:
     s = await c.aq_client.get_hourly_forecast(
         lat=c.location.lat, lng=c.location.lng, hours=min(hours, 96)
     )
-    cur = s.points[0] if s.points else None
-    cur_pm, cur_aqi, _cur_code, cur_cat = compute_live_aq_snapshot(cur.pm25_ug_m3 if cur else 150.0)
-    pts = []
+    pts: list[dict[str, Any]] = []
     for p in s.points:
+        # One deterministic snapshot per hourly point; index 0 is "now".
         _, p_aqi, _, p_cat = compute_live_aq_snapshot(p.pm25_ug_m3)
-        h = int(p.time_local[11:13]) if len(p.time_local) >= 13 else 0
+        tl = p.time_local
+        h = int(tl[:2]) if len(tl) >= 2 and tl[:2].isdigit() else 0
         pts.append(
-            {
-                "hour": h,
-                "pm25_ug_m3": round(p.pm25_ug_m3, 1),
-                "aqi": p_aqi,
-                "category": p_cat,
-            }
+            {"hour": h, "pm25_ug_m3": round(p.pm25_ug_m3, 1), "aqi": p_aqi, "category": p_cat}
         )
+    if pts:
+        cur_pm, cur_aqi, cur_cat = pts[0]["pm25_ug_m3"], pts[0]["aqi"], pts[0]["category"]
+    else:
+        cur_pm, cur_aqi, _code, cur_cat = compute_live_aq_snapshot(150.0)
     return _wrap(
         {
             "city": c.location.city_name,
@@ -106,9 +105,7 @@ async def get_family_passbook(date_iso: str | None = None) -> dict[str, Any]:
     """Compute daily air passbook (debit, savings, budget, balance, cigarette equivalent)."""
     c = get_current_context()
     s = await c.aq_client.get_hourly_forecast(lat=c.location.lat, lng=c.location.lng, hours=24)
-    pb = compute_family_passbook(
-        profile=c.profile, outdoor_pm25_series=[p.pm25_ug_m3 for p in s.points]
-    )
+    pb = compute_family_passbook(profile=c.profile, outdoor_pm25_series=clock_aligned_pm25(s))
     mbrs = [
         {
             "name": str(e.get("member_label", "Member")),
@@ -172,7 +169,7 @@ async def plan_clean_windows(
         profile=c.profile,
         member_id=mid,
         flexible_activities=acts,
-        outdoor_pm25_series=[p.pm25_ug_m3 for p in s.points],
+        outdoor_pm25_series=clock_aligned_pm25(s),
     )
     shifts = [
         {
@@ -216,7 +213,7 @@ async def simulate_indoor_air(
         )
     s = await c.aq_client.get_hourly_forecast(lat=c.location.lat, lng=c.location.lng, hours=24)
     sim = simulate_indoor_environment(
-        room=target, sources=c.profile.sources, outdoor_pm25_series=[p.pm25_ug_m3 for p in s.points]
+        room=target, sources=c.profile.sources, outdoor_pm25_series=clock_aligned_pm25(s)
     )
     return _wrap(
         {
@@ -383,9 +380,7 @@ async def get_household_priority_triage() -> dict[str, Any]:
     """Rank household members by particulate dose burden and clinical sensitivity."""
     c = get_current_context()
     s = await c.aq_client.get_hourly_forecast(lat=c.location.lat, lng=c.location.lng, hours=24)
-    pb = compute_family_passbook(
-        profile=c.profile, outdoor_pm25_series=[p.pm25_ug_m3 for p in s.points]
-    )
+    pb = compute_family_passbook(profile=c.profile, outdoor_pm25_series=clock_aligned_pm25(s))
     triage = rank_household_triage(c.profile, pb)
     return _wrap(
         {
@@ -411,9 +406,7 @@ async def get_shareable_passbook_digest() -> dict[str, Any]:
     """Generate a clean, copyable text summary of the family passbook for sharing."""
     c = get_current_context()
     s = await c.aq_client.get_hourly_forecast(lat=c.location.lat, lng=c.location.lng, hours=24)
-    pb = compute_family_passbook(
-        profile=c.profile, outdoor_pm25_series=[p.pm25_ug_m3 for p in s.points]
-    )
+    pb = compute_family_passbook(profile=c.profile, outdoor_pm25_series=clock_aligned_pm25(s))
     city = c.location.city_name or "Delhi NCR"
     text = generate_shareable_digest(c.profile, pb, city_name=city, date_str=c.date_iso)
     return _wrap({"digest_text": text}, "Shareable passbook digest.")
@@ -431,7 +424,8 @@ async def get_four_day_schedule(
         else None
     )
     pm = [p.pm25_ug_m3 for p in s.points]
-    outlook = build_four_day_outlook(pm, w_pts)
+    synthetic = s.data_mode == "fixture"
+    outlook = build_four_day_outlook(pm, w_pts, synthetic=synthetic, start_hour=s.start_hour)
 
     age_band = "31_41"
     if member_name and c.profile:
@@ -440,7 +434,15 @@ async def get_four_day_schedule(
                 age_band = m.age_band
                 break
 
-    top = optimize_multi_day_activity(age_band, activity, duration_min, pm, w_pts)
+    top = optimize_multi_day_activity(
+        age_band,
+        activity,
+        duration_min,
+        pm,
+        w_pts,
+        synthetic=synthetic,
+        start_hour=s.start_hour,
+    )
     return _wrap(
         {
             "tomorrow_watch": outlook.tomorrow_watch_headline,

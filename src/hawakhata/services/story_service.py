@@ -51,3 +51,15 @@ def load_story(story_id: str) -> dict[str, Any]:
         "clock_local": story_meta.get("clock_local", "08:00"),
         "steps": steps,
     }
+
+
+_PERSONAS_PATH = DATA_ROOT / "personas.v1.json"
+
+
+def load_personas() -> list[dict[str, Any]]:
+    """Load the 1-click Quick Scenario personas (city + household + plan defaults)."""
+    if not _PERSONAS_PATH.exists():
+        return []
+    data = json.loads(_PERSONAS_PATH.read_text("utf-8"))
+    personas = data.get("personas", [])
+    return [p for p in personas if isinstance(p, dict)] if isinstance(personas, list) else []

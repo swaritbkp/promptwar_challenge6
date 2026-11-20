@@ -14,6 +14,7 @@ from hawakhata.config import Settings
 from hawakhata.core.cache import CacheBackend
 from hawakhata.integrations.air_quality import AirQualityClient
 from hawakhata.integrations.gemini import GeminiCascadeClient
+from hawakhata.integrations.geocoding import GeocodingClient
 from hawakhata.integrations.weather import WeatherClient
 
 
@@ -25,17 +26,21 @@ def get_cache(request: Request) -> CacheBackend:
     return request.app.state.cache  # type: ignore[no-any-return]
 
 
+def _shared_http(request: Request) -> httpx.AsyncClient:
+    http_client = getattr(request.app.state, "http", None)
+    if http_client is None:
+        http_client = httpx.AsyncClient(timeout=request.app.state.settings.aq_timeout_s)
+        request.app.state.http = http_client
+    return http_client
+
+
 def get_aq_client(request: Request) -> AirQualityClient:
     client = getattr(request.app.state, "aq_client", None)
     if client is None:
-        http_client = getattr(request.app.state, "http", None)
-        if http_client is None:
-            http_client = httpx.AsyncClient(timeout=request.app.state.settings.aq_timeout_s)
-            request.app.state.http = http_client
         client = AirQualityClient(
             settings=request.app.state.settings,
             cache=request.app.state.cache,
-            http_client=http_client,
+            http_client=_shared_http(request),
         )
         request.app.state.aq_client = client
     return client
@@ -52,16 +57,24 @@ def get_gemini_client(request: Request) -> GeminiCascadeClient:
 def get_weather_client(request: Request) -> WeatherClient:
     client = getattr(request.app.state, "weather_client", None)
     if client is None:
-        http_client = getattr(request.app.state, "http", None)
-        if http_client is None:
-            http_client = httpx.AsyncClient(timeout=request.app.state.settings.aq_timeout_s)
-            request.app.state.http = http_client
         client = WeatherClient(
             settings=request.app.state.settings,
             cache=request.app.state.cache,
-            http_client=http_client,
+            http_client=_shared_http(request),
         )
         request.app.state.weather_client = client
+    return client
+
+
+def get_geo_client(request: Request) -> GeocodingClient:
+    client = getattr(request.app.state, "geo_client", None)
+    if client is None:
+        client = GeocodingClient(
+            settings=request.app.state.settings,
+            cache=request.app.state.cache,
+            http_client=_shared_http(request),
+        )
+        request.app.state.geo_client = client
     return client
 
 

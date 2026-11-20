@@ -310,6 +310,94 @@ class FourDayOutlook:
     safe_house_flush: SafeFlushWindow
 
 
+def align_to_clock[T](values: list[T], start_hour: int) -> list[T]:
+    """Re-index a series that starts at local hour ``start_hour`` so index h == clock hour h.
+
+    Forecast series start "now" (e.g. 18:00 IST). Each 24-hour chunk is rotated so that
+    position ``d*24 + h`` holds the next upcoming reading at clock hour ``h`` within that
+    chunk. Without this, a 06:00-20:00 "waking window" search reads evening/night hours.
+    """
+    shift = start_hour % 24
+    if not values or shift == 0:
+        return list(values)
+    n = len(values)
+    days = max(1, math.ceil(n / 24))
+    return [values[min(n - 1, d * 24 + (h - shift) % 24)] for d in range(days) for h in range(24)]
+
+
+@dataclass(frozen=True, slots=True)
+class DayPartSummary:
+    """Average air quality for one part of the day (Morning / Afternoon / Evening)."""
+
+    part: str
+    label_en: str
+    label_hi: str
+    start_hour: int
+    end_hour: int
+    mean_pm25: float
+    aqi: int
+    category_code: str
+    category_label: str
+    guidance_en: str
+    guidance_hi: str
+
+
+_DAY_PARTS: tuple[tuple[str, str, str, int, int], ...] = (
+    ("morning", "Morning", "सुबह", 6, 11),
+    ("afternoon", "Afternoon", "दोपहर", 12, 16),
+    ("evening", "Evening", "शाम", 17, 21),
+)
+_PART_GUIDANCE: dict[str, tuple[str, str]] = {
+    "good": ("Good for walks, play and airing the house.", "सैर, खेल और घर हवादार करने के लिए अच्छा।"),
+    "satisfactory": (
+        "Fine for most; sensitive members keep it light.",
+        "अधिकतर के लिए ठीक; संवेदनशील सदस्य हल्का रखें।",
+    ),
+    "moderate": (
+        "Short outings only; asthma/heart patients limit exertion.",
+        "केवल छोटी सैर; अस्थमा/हृदय रोगी मेहनत सीमित करें।",
+    ),
+    "poor": (
+        "Keep outdoor time short; wear an N95 if you go out.",
+        "बाहर कम समय रहें; जाएँ तो N95 पहनें।",
+    ),
+    "very_poor": (
+        "Stay indoors with windows shut; N95 for essential trips.",
+        "खिड़कियाँ बंद रखकर अंदर रहें; ज़रूरी काम पर N95।",
+    ),
+    "severe": ("Avoid going out; run the purifier on high.", "बाहर जाने से बचें; प्यूरीफायर तेज़ चलाएँ।"),
+}
+
+
+def summarize_day_parts(clock_pm25: list[float]) -> list[DayPartSummary]:
+    """Summarise a clock-aligned 24-hour PM2.5 series into Morning/Afternoon/Evening slots.
+
+    Morning = 06-11h, Afternoon = 12-16h, Evening = 17-21h (inclusive hours).
+    """
+    out: list[DayPartSummary] = []
+    for part, en, hi, start, end in _DAY_PARTS:
+        window = [float(p) for p in clock_pm25[start : end + 1]]
+        mean_pm = round(sum(window) / len(window), 1) if window else 0.0
+        cat = pm25_to_naqi_category(mean_pm)
+        g_en, g_hi = _PART_GUIDANCE[cat.code]
+        out.append(
+            DayPartSummary(
+                part=part,
+                label_en=en,
+                label_hi=hi,
+                start_hour=start,
+                end_hour=end,
+                mean_pm25=mean_pm,
+                aqi=pm25_to_sub_index(mean_pm),
+                category_code=cat.code,
+                category_label=cat.display_name,
+                guidance_en=g_en,
+                guidance_hi=g_hi,
+            )
+        )
+    return out
+
+
 def compute_waking_cleanest_window(
     hourly_pm25: list[float], window_hours: int = 3
 ) -> tuple[int, int, float]:
@@ -379,6 +467,7 @@ def build_four_day_outlook(
     seed: int = 42,
     *,
     synthetic: bool = False,
+    start_hour: int = 0,
 ) -> FourDayOutlook:
     """Group 96-hour series into 4 daily cards with NAQI categories and dispersion regimes.
 
@@ -388,13 +477,18 @@ def build_four_day_outlook(
         seed: Random seed for uncertainty sampling.
         synthetic: True when the series comes from a fixture/offline fallback.
             Only when synthetic=True are CITY_CALIBRATED_SCALES and synoptic
-            day modifiers applied. Live Google AQ readings pass through unmodified.
+            day modifiers applied. Live readings pass through unmodified.
+        start_hour: Local clock hour of the first reading; series are re-indexed with
+            ``align_to_clock`` so each day's windows use true clock hours.
     """
     pm = (
         (hourly_pm25 * (96 // max(1, len(hourly_pm25)) + 1))[:96]
         if len(hourly_pm25) < 96
         else hourly_pm25[:96]
     )
+    pm = align_to_clock(pm, start_hour)
+    if hourly_weather:
+        hourly_weather = align_to_clock(list(hourly_weather), start_hour)
     day_labels = ["Today", "Tomorrow", "Day 3", "Day 4"]
     day_means = [sum(pm[d * 24 : (d + 1) * 24]) / 24.0 for d in range(4)]
     all_days_identical = max(day_means) - min(day_means) < 1e-3
@@ -514,6 +608,7 @@ def optimize_multi_day_activity(
     hourly_weather: list[Any] | None = None,
     *,
     synthetic: bool = False,
+    start_hour: int = 0,
 ) -> list[MultiDaySlot]:
     """Evaluate daytime hours (06:00-20:00) across 4 days and return top 3 cleanest slots.
 
@@ -524,9 +619,13 @@ def optimize_multi_day_activity(
         hourly_pm25: Up to 96-hour PM2.5 series.
         hourly_weather: Optional parallel Open-Meteo weather points.
         synthetic: True when pm25 series is from fixture; apply synoptic scaling.
+        start_hour: Local clock hour of the first reading (see ``align_to_clock``).
     """
     if not hourly_pm25:
         return []
+    hourly_pm25 = align_to_clock(list(hourly_pm25), start_hour)
+    if hourly_weather:
+        hourly_weather = align_to_clock(list(hourly_weather), start_hour)
     base_day_pm = (
         (hourly_pm25 * (24 // max(1, len(hourly_pm25)) + 1))[:24]
         if len(hourly_pm25) < 24

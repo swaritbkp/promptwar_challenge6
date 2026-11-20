@@ -107,3 +107,21 @@ html[lang="hi"] body{font-size:1.0625rem;line-height:1.7;}
 .chart-bar-rect{cursor:pointer;transition:transform .1s ease,opacity .1s ease;}
 .chart-bar-rect:hover{opacity:.85;}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important;}}
+.p-05{padding:.5rem;}.px-05{padding-left:.5rem;padding-right:.5rem;}.pl-1{padding-left:1rem;}
+.persona-bar{display:grid;grid-template-columns:repeat(2,1fr);gap:.5rem;}
+@media (min-width:900px){.persona-bar{grid-template-columns:repeat(4,1fr);}}
+.persona-btn{flex-direction:column;align-items:flex-start;text-align:left;gap:.1rem;min-height:56px;}
+.persona-sub{font-weight:500;opacity:.85;}
+.daypart-grid{display:grid;grid-template-columns:1fr;gap:.5rem;}
+@media (min-width:640px){.daypart-grid{grid-template-columns:repeat(3,1fr);}}
+.daypart-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:.65rem .75rem;display:flex;flex-direction:column;gap:.35rem;text-align:left;}
+.pill-status.good,.pill-status.satisfactory{background:var(--saved-light);color:var(--saved);}
+.pill-status.moderate,.pill-status.poor{background:var(--warn-light);color:var(--warn);}
+.pill-status.very-poor,.pill-status.severe{background:var(--debit-light);color:var(--debit);}
+.grap-pill{border-color:var(--line);background:var(--surface-2);color:var(--ink);}
+.grap-pill.grap-i{background:var(--warn-light);color:var(--warn);}
+.grap-pill.grap-ii,.grap-pill.grap-iii,.grap-pill.grap-iv{background:var(--debit-light);color:var(--debit);border-color:var(--debit);}
+.ask-samples{display:flex;flex-wrap:wrap;gap:.35rem;padding:.5rem .75rem;border-top:1px solid var(--line);}
+.ask-sample-btn{text-align:left;white-space:normal;}
+details>summary{cursor:pointer;}
+#city-search-results .btn,.ask-sample-btn{justify-content:flex-start;}

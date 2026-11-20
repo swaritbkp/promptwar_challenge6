@@ -166,3 +166,78 @@ def compute_member_dose(
         top_contributors=contributors[:3],
         explanation=exp,
     )
+
+
+MASK_TYPES: tuple[str, ...] = ("none", "surgical", "n95")
+
+
+@dataclass(frozen=True, slots=True)
+class MaskedActivityDose:
+    """Inhaled dose for one outdoor activity with and without a face mask."""
+
+    mask: str
+    filtration_factor: float
+    mean_outdoor_pm25: float
+    inhalation_rate_m3_per_h: float
+    duration_min: int
+    unmasked_dose_ug: float
+    masked_dose_ug: float
+    mask_saved_ug: float
+    budget_ug: float
+    budget_share_pct: float
+    within_budget: bool
+    explanation: Explanation
+
+
+def mask_filtration_factor(mask: str) -> float:
+    """Return the fraction of ambient PM2.5 still inhaled through a mask (1.0 = no mask)."""
+    factors = get_constant("mask_filtration_factor").value
+    if mask not in factors:
+        raise KeyError(f"Unknown mask type: '{mask}'")
+    return float(factors[mask])
+
+
+def compute_masked_activity_dose(
+    age_band: str,
+    activity: str,
+    window_pm25: list[float],
+    duration_min: int,
+    mask: str,
+    budget_ug: float,
+) -> MaskedActivityDose:
+    """Compute an outdoor activity's inhaled dose under a mask, versus the member's WHO budget.
+
+    dose = mean(C_out over window) x IR(age, activity) x hours x mask_factor.
+    """
+    factor = mask_filtration_factor(mask)
+    mean_pm = sum(max(0.0, p) for p in window_pm25) / max(1, len(window_pm25))
+    ir = inhalation_rate_m3_per_h(age_band, activity)
+    hours = max(0, duration_min) / 60.0
+    unmasked = mean_pm * ir * hours
+    masked = unmasked * factor
+    share = (masked / budget_ug * 100.0) if budget_ug > 0 else 0.0
+    return MaskedActivityDose(
+        mask=mask,
+        filtration_factor=factor,
+        mean_outdoor_pm25=round(mean_pm, 1),
+        inhalation_rate_m3_per_h=round(ir, 3),
+        duration_min=duration_min,
+        unmasked_dose_ug=round(unmasked, 1),
+        masked_dose_ug=round(masked, 1),
+        mask_saved_ug=round(unmasked - masked, 1),
+        budget_ug=round(budget_ug, 1),
+        budget_share_pct=round(share, 1),
+        within_budget=masked <= budget_ug,
+        explanation=Explanation(
+            formula="dose_ug = mean(C_out) * IR(age, activity) * hours * mask_factor",
+            inputs={
+                "mean_outdoor_pm25": f"{mean_pm:.1f} ug/m3",
+                "inhalation_rate": f"{ir:.3f} m3/h",
+                "hours": f"{hours:.2f} h",
+                "mask_factor": f"{factor:.2f}",
+            },
+            constants_used=["mask_filtration_factor", "inhalation_rate_daily_mean"],
+            sources=["Cherrie et al. (2018) real-world mask leakage", "US EPA EFH (2011)"],
+            assumptions=["Mask worn for the whole activity", "Fit-adjusted, not lab efficiency"],
+        ),
+    )

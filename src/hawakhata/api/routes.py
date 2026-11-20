@@ -7,10 +7,16 @@ import uuid
 from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from hawakhata.agent.agent import HawaKhataAgent
-from hawakhata.api.dependencies import get_agent, get_aq_client, get_weather_client, make_meta
+from hawakhata.api.dependencies import (
+    get_agent,
+    get_aq_client,
+    get_geo_client,
+    get_weather_client,
+    make_meta,
+)
 from hawakhata.api.schemas import (
     BriefAction,
     BriefRequest,
@@ -23,6 +29,8 @@ from hawakhata.api.schemas import (
     FourDayForecastResponse,
     IndoorSimulateRequest,
     LocationInput,
+    LocationResult,
+    MaskedActivityRequest,
     MemberInput,
     PassbookRequest,
     PetGuidanceRequest,
@@ -32,14 +40,23 @@ from hawakhata.api.schemas import (
     WeatherSummary,
 )
 from hawakhata.config import get_settings
-from hawakhata.engine.aqi import compute_live_aq_snapshot
+from hawakhata.engine.aqi import aqi_to_grap_stage, compute_live_aq_snapshot
+from hawakhata.engine.budget import daily_air_budget_ug
+from hawakhata.engine.dose import compute_masked_activity_dose
 from hawakhata.engine.pets import evaluate_pet_walk_risk, get_indoor_pet_guidance
 from hawakhata.engine.planner import (
+    align_to_clock,
     build_four_day_outlook,
     classify_dispersion,
     optimize_multi_day_activity,
+    summarize_day_parts,
 )
-from hawakhata.integrations.air_quality import AirQualityClient
+from hawakhata.integrations.air_quality import (
+    AirQualityClient,
+    HourlyAirSeries,
+    clock_aligned_pm25,
+)
+from hawakhata.integrations.geocoding import GeocodingClient
 from hawakhata.integrations.weather import WeatherClient
 from hawakhata.services.brief_service import generate_morning_brief
 from hawakhata.services.indoor_service import simulate_indoor_environment
@@ -49,18 +66,41 @@ from hawakhata.services.passbook_service import (
     rank_household_triage,
 )
 from hawakhata.services.planner_service import compute_optimized_plan
-from hawakhata.services.story_service import load_demo_profiles, load_story
+from hawakhata.services.story_service import load_demo_profiles, load_personas, load_story
 from hawakhata.services.swap_service import compute_swap_impact, list_available_swaps
 
 api_router = APIRouter(prefix="/api/v1")
 AqClientDep = Annotated[AirQualityClient, Depends(get_aq_client)]
 WeatherClientDep = Annotated[WeatherClient, Depends(get_weather_client)]
 AgentDep = Annotated[HawaKhataAgent, Depends(get_agent)]
+GeoClientDep = Annotated[GeocodingClient, Depends(get_geo_client)]
+# Letters/marks in any script (Devanagari included), digits, space and . , ' ( ) - only.
+_PLACE_QUERY = r"^[\p{L}\p{M}\p{N} .,'()-]{2,60}$"
 
 
-async def _get_series(client: AirQualityClient, loc: LocationInput) -> tuple[Any, list[float]]:
+async def _get_series(
+    client: AirQualityClient, loc: LocationInput
+) -> tuple[HourlyAirSeries, list[float]]:
+    """24h series + PM2.5 re-indexed so position h is clock hour h (engine convention)."""
     s = await client.get_hourly_forecast(lat=loc.lat, lng=loc.lng, hours=24)
-    return s, [pt.pm25_ug_m3 for pt in s.points]
+    return s, clock_aligned_pm25(s)
+
+
+def _aq_snapshot(s: HourlyAirSeries) -> dict[str, Any]:
+    """Live-now snapshot shared by passbook and 4-day views (single source of truth)."""
+    first = s.points[0] if s.points else None
+    cur_pm, cur_aqi, code, label = compute_live_aq_snapshot(first.pm25_ug_m3 if first else 150.0)
+    return {
+        "current_pm25": cur_pm,
+        "current_pm10": first.pm10_ug_m3 if first else None,
+        "current_aqi": cur_aqi,
+        "current_category": code,
+        "current_category_label": label,
+        "data_mode": s.provider,
+        "data_source": s.data_source,
+        "fetched_at_ist": s.fetched_at_ist,
+        "grap": aqi_to_grap_stage(cur_aqi),
+    }
 
 
 @api_router.post("/air/forecast", response_model=Envelope[dict[str, Any]], tags=["air"])
@@ -96,8 +136,9 @@ async def get_four_day_forecast(
         weather_client.get_hourly_weather(lat=lat, lng=resolved_lng, hours=96),
     )
     hourly_pm25 = [p.pm25_ug_m3 for p in aq_series.points]
+    synthetic, start_hour = aq_series.data_mode == "fixture", aq_series.start_hour
     outlook = build_four_day_outlook(
-        hourly_pm25, weather_series.points, synthetic=aq_series.data_mode == "fixture"
+        hourly_pm25, weather_series.points, synthetic=synthetic, start_hour=start_hour
     )
     top_slots = optimize_multi_day_activity(
         age_band=age_band,
@@ -105,8 +146,10 @@ async def get_four_day_forecast(
         duration_min=duration_min,
         hourly_pm25=hourly_pm25,
         hourly_weather=weather_series.points,
-        synthetic=aq_series.data_mode == "fixture",
+        synthetic=synthetic,
+        start_hour=start_hour,
     )
+    clock_24h = clock_aligned_pm25(aq_series, 24)
 
     resolved_city = city or ("Chandigarh" if abs(lat - 30.7) < 1.0 else "Delhi NCR")
     curr_w = weather_series.points[0] if weather_series.points else None
@@ -128,10 +171,6 @@ async def get_four_day_forecast(
             physical_explanation=exp,
         )
 
-    cur_pm, cur_aqi, cat_code, cat_label = compute_live_aq_snapshot(
-        hourly_pm25[0] if hourly_pm25 else 150.0
-    )
-
     response_data = FourDayForecastResponse(
         city=resolved_city,
         tomorrow_watch_headline=outlook.tomorrow_watch_headline,
@@ -140,12 +179,9 @@ async def get_four_day_forecast(
         safe_house_flush=outlook.safe_house_flush,
         top_slots=top_slots,
         current_weather=weather_summary,
-        current_aqi=cur_aqi,
-        current_pm25=cur_pm,
-        current_category=cat_code,
-        current_category_label=cat_label,
-        data_mode=aq_series.data_mode,
-        hourly_pm25_24h=hourly_pm25[:24],
+        **_aq_snapshot(aq_series),
+        day_parts=summarize_day_parts(clock_24h),
+        hourly_pm25_24h=clock_24h,
     )
     return Envelope(
         data=response_data,
@@ -160,7 +196,9 @@ async def post_passbook(
     """Compute per-member inhaled dose, daily air budget, and balance."""
     s, pm25 = await _get_series(aq_client, req.profile.location)
     res = compute_family_passbook(req.profile, pm25)
-    return Envelope(data=asdict(res), meta=make_meta(request, data_mode=s.data_mode))
+    snap = _aq_snapshot(s)
+    snap["grap"] = asdict(snap["grap"])
+    return Envelope(data={**asdict(res), **snap}, meta=make_meta(request, data_mode=s.data_mode))
 
 
 @api_router.post("/indoor/simulate", response_model=Envelope[dict[str, Any]], tags=["indoor"])
@@ -252,6 +290,14 @@ async def get_demo_profiles(request: Request) -> Envelope[dict[str, Any]]:
     return Envelope(data=load_demo_profiles(), meta=make_meta(request, data_mode="fixture"))
 
 
+@api_router.get("/demo/personas", response_model=Envelope[dict[str, Any]], tags=["demo"])
+async def get_demo_personas(request: Request) -> Envelope[dict[str, Any]]:
+    """Return the 4 Quick Scenario personas (Delhi, Mumbai, Kolkata, Chandigarh)."""
+    return Envelope(
+        data={"personas": load_personas()}, meta=make_meta(request, data_mode="fixture")
+    )
+
+
 @api_router.get("/story/{story_id}", response_model=Envelope[dict[str, Any]], tags=["story"])
 async def get_story_tour(story_id: str, request: Request) -> Envelope[dict[str, Any]]:
     """Retrieve narrative steps and fixed clock metadata for story mode tour."""
@@ -263,8 +309,8 @@ async def post_pet_guidance(
     req: PetGuidanceRequest, request: Request, aq_client: AqClientDep
 ) -> Envelope[dict[str, Any]]:
     """Determine safe pet walk duration and species-specific indoor guidance."""
-    s, pm25_series = await _get_series(aq_client, req.location)
-    cur_pm = pm25_series[0] if pm25_series else 150.0
+    s, _ = await _get_series(aq_client, req.location)
+    cur_pm = s.points[0].pm25_ug_m3 if s.points else 150.0
     walk = evaluate_pet_walk_risk(cur_pm)
     indoor = get_indoor_pet_guidance(req.species)
     return Envelope(
@@ -323,7 +369,7 @@ async def post_air_outlook(
 ) -> Envelope[dict[str, Any]]:
     """Generate multi-day 96-hour air quality forecast outlook."""
     s = await aq_client.get_hourly_forecast(lat=req.lat, lng=req.lng, hours=min(96, req.hours))
-    pts = s.points
+    pts = align_to_clock(s.points, s.start_hour)[: len(s.points)]
     days: list[dict[str, Any]] = []
     for d_idx in range(max(1, len(pts) // 24)):
         chunk = pts[d_idx * 24 : (d_idx + 1) * 24]
@@ -352,6 +398,45 @@ async def post_air_outlook(
         )
     return Envelope(
         data={"days": days, "total_hours": len(pts)}, meta=make_meta(request, data_mode=s.data_mode)
+    )
+
+
+@api_router.post("/exposure/activity", response_model=Envelope[dict[str, Any]], tags=["plan"])
+async def post_masked_activity(
+    req: MaskedActivityRequest, request: Request, aq_client: AqClientDep
+) -> Envelope[dict[str, Any]]:
+    """Outdoor activity dose with a mask (none / surgical / N95) vs the member's WHO budget."""
+    s, pm25 = await _get_series(aq_client, req.location)
+    hours = max(1, -(-req.duration_min // 60))
+    window = [pm25[(req.start_hour + i) % len(pm25)] for i in range(hours)] if pm25 else [150.0]
+    res = compute_masked_activity_dose(
+        req.age_band,
+        req.activity,
+        window,
+        req.duration_min,
+        req.mask,
+        daily_air_budget_ug(req.age_band),
+    )
+    data = asdict(res)
+    data["explanation"] = res.explanation.to_dict()
+    data["start_hour"] = req.start_hour
+    return Envelope(data=data, meta=make_meta(request, data_mode=s.data_mode))
+
+
+@api_router.get(
+    "/locations/search", response_model=Envelope[list[LocationResult]], tags=["locations"]
+)
+async def search_locations(
+    request: Request,
+    geo_client: GeoClientDep,
+    q: Annotated[str, Query(min_length=2, max_length=60, pattern=_PLACE_QUERY)],
+) -> Envelope[list[LocationResult]]:
+    """Search any Indian city or town (server-side Open-Meteo Geocoding proxy)."""
+    places = await geo_client.search(q)
+    live = any(p.source != "builtin" for p in places)
+    return Envelope(
+        data=[LocationResult(**asdict(p)) for p in places],
+        meta=make_meta(request, data_mode="live" if live else "fixture"),
     )
 
 

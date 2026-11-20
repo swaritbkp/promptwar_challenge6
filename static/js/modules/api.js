@@ -63,7 +63,7 @@ export const api = {
   },
 
   async postPetGuidance({ species = "dog", location }) {
-    const json = await request("/api/v1/pet-guidance", {
+    const json = await request("/api/v1/pets/guidance", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ species, location }),
@@ -98,6 +98,41 @@ export const api = {
       body: JSON.stringify(body),
     });
     return json.data || {};
+  },
+
+  async postMaskedActivity({ location, ageBand, activity, durationMin, startHour, mask }) {
+    const json = await request("/api/v1/exposure/activity", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location,
+        age_band: ageBand,
+        activity,
+        duration_min: durationMin,
+        start_hour: startHour,
+        mask,
+      }),
+    });
+    return json.data || {};
+  },
+
+  async searchLocations(q) {
+    const json = await request(`/api/v1/locations/search?${new URLSearchParams({ q })}`);
+    return Array.isArray(json.data) ? json.data : [];
+  },
+
+  async fetchPersonas() {
+    const json = await request("/api/v1/demo/personas");
+    return json.data?.personas || [];
+  },
+
+  async postDigest(profile, lang = "en") {
+    const json = await request("/api/v1/passbook/digest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept-Language": lang },
+      body: JSON.stringify({ profile }),
+    });
+    return json.data?.digest_text || "";
   },
 
   async fetchI18n(lang = "en") {
