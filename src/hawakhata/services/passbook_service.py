@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from hawakhata.api.schemas import FamilyProfileInput
-from hawakhata.engine.aqi import pm25_to_naqi_category, pm25_to_sub_index
+from hawakhata.engine.aqi import compute_live_aq_snapshot
 from hawakhata.engine.budget import PassbookEntry, build_passbook_entry
 from hawakhata.engine.dose import ScheduleBlock, build_member_timeline, compute_member_dose
 from hawakhata.engine.indoor_model import IndoorSourceEvent, simulate_indoor_pm25
@@ -81,10 +81,10 @@ def compute_family_passbook(
         if entry.debit_ug > max_debit:
             max_debit, max_mbr = entry.debit_ug, m.name
 
-    cur_pm = outdoor_pm25_series[0] if outdoor_pm25_series else 150.0
-    cur_aqi = pm25_to_sub_index(cur_pm)
-    cat = pm25_to_naqi_category(cur_pm)
-    pk_pm = max(outdoor_pm25_series) if outdoor_pm25_series else 150.0
+    cur_pm, cur_aqi, cat_code, cat_label = compute_live_aq_snapshot(
+        outdoor_pm25_series[0] if outdoor_pm25_series else 150.0
+    )
+    pk_pm = max(outdoor_pm25_series) if outdoor_pm25_series else cur_pm
 
     c_start, c_end, _ = compute_waking_cleanest_window(outdoor_pm25_series, window_hours=3)
     clean_win = f"{c_start:02d}:00 – {c_end:02d}:00"
@@ -102,11 +102,11 @@ def compute_family_passbook(
         highest_debit_member=max_mbr,
         cigarette_equivalent=avg_cigs,
         current_aqi=cur_aqi,
-        current_category=cat.code,
-        current_category_label=cat.display_name,
+        current_category=cat_code,
+        current_category_label=cat_label,
         peak_pm25=round(pk_pm, 1),
         cleanest_window=clean_win,
-        current_pm25=round(cur_pm, 1),
+        current_pm25=cur_pm,
         total_cigarette_equivalent=round(tot_cigs, 1),
     )
 

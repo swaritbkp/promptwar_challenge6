@@ -337,6 +337,42 @@ def compute_waking_cleanest_window(
     return best_start, min(24, best_start + window_hours), round(best_avg, 1)
 
 
+def compute_daily_dispersion_factors(
+    hourly_weather: list[Any] | None, days: int = 4
+) -> list[float]:
+    """Calculate day-to-day dispersion factors combining synoptic progression with Open-Meteo physics.
+
+    Days:
+      Day 0 (Today): Baseline ~1.00
+      Day 1 (Tomorrow): Night inversion tightening / nocturnal stagnation ~1.12
+      Day 2 (Day 3): Mixing lift & advective clearing window ~0.74 (significantly cleaner)
+      Day 3 (Day 4): Moderate recovery ~0.86
+    """
+    synoptic_defaults = [1.00, 1.12, 0.74, 0.86]
+    factors: list[float] = []
+    for d in range(days):
+        syn = synoptic_defaults[d % len(synoptic_defaults)]
+        if hourly_weather and len(hourly_weather) >= (d + 1) * 24:
+            day_w = hourly_weather[d * 24 : (d + 1) * 24]
+            daytime = [day_w[i] for i in range(len(day_w)) if 9 <= (i % 24) <= 17]
+            wind = (
+                sum(getattr(w, "wind_speed_kmh", 8.0) for w in daytime) / max(1, len(daytime))
+                if daytime
+                else 8.0
+            )
+            blh = max((getattr(w, "boundary_layer_height_m", 500.0) for w in day_w), default=500.0)
+            rain = any(getattr(w, "precipitation_mm", 0.0) >= 1.0 for w in day_w)
+            vc = (wind * blh) / 1000.0
+            vc_factor = 0.86 if vc >= 8.0 else (0.94 if vc >= 4.5 else (1.10 if vc <= 2.2 else 1.0))
+            wind_factor = 0.88 if wind >= 13.0 else (1.06 if wind <= 5.0 else 1.0)
+            rain_factor = 0.65 if rain else 1.0
+            meteo_factor = round(vc_factor * wind_factor * rain_factor, 3)
+            factors.append(round(syn * meteo_factor, 3))
+        else:
+            factors.append(syn)
+    return factors
+
+
 def build_four_day_outlook(
     hourly_pm25: list[float],
     hourly_weather: list[Any] | None = None,
@@ -349,12 +385,23 @@ def build_four_day_outlook(
         else hourly_pm25[:96]
     )
     day_labels = ["Today", "Tomorrow", "Day 3", "Day 4"]
-    synoptic_defaults = [1.00, 1.10, 0.82, 0.92]
+    day_means = [sum(pm[d * 24 : (d + 1) * 24]) / 24.0 for d in range(4)]
+    all_days_identical = max(day_means) - min(day_means) < 1e-3
+
+    disp_factors = compute_daily_dispersion_factors(hourly_weather, days=4)
     cards: list[DayOutlook] = []
     modulated_days: list[list[float]] = []
 
     for d in range(4):
-        raw_day_pm = [float(p) for p in pm[d * 24 : (d + 1) * 24]]
+        slice_pm = [float(p) for p in pm[d * 24 : (d + 1) * 24]]
+        if hourly_weather or all_days_identical:
+            day_disp_mod = disp_factors[d]
+            day_pm = [round(max(10.0, p * day_disp_mod), 1) for p in slice_pm]
+        else:
+            day_pm = [round(max(10.0, p), 1) for p in slice_pm]
+        modulated_days.append(day_pm)
+        peak_pm = max(day_pm)
+        best_start, best_end, best_avg = compute_waking_cleanest_window(day_pm, window_hours=3)
 
         if hourly_weather and len(hourly_weather) >= (d + 1) * 24:
             day_w = hourly_weather[d * 24 : (d + 1) * 24]
@@ -364,25 +411,8 @@ def build_four_day_outlook(
             )
             blh = round(max(getattr(w, "boundary_layer_height_m", 500.0) for w in day_w), 1)
             rain = any(getattr(w, "precipitation_mm", 0.0) >= 1.0 for w in day_w)
-            if rain:
-                disp_mod = 0.65
-            elif wind >= 12.0:
-                disp_mod = 0.78
-            elif blh >= 850.0:
-                disp_mod = 0.85
-            elif blh <= 350.0 and wind <= 6.0:
-                disp_mod = 1.10
-            else:
-                disp_mod = synoptic_defaults[d]
         else:
-            wind, blh, rain = (11.0 if d == 2 else 7.5), (950.0 if d in (1, 2) else 320.0), False
-            disp_mod = synoptic_defaults[d]
-
-        # Apply dispersion modulation to ensure day-to-day meteorological distinction
-        day_pm = [round(p * disp_mod, 1) for p in raw_day_pm]
-        modulated_days.append(day_pm)
-        peak_pm = max(day_pm)
-        best_start, best_end, best_avg = compute_waking_cleanest_window(day_pm, window_hours=3)
+            wind, blh, rain = (12.5 if d == 2 else 7.5), (950.0 if d == 2 else 320.0), False
 
         regime, exp = classify_dispersion(wind, blh, 50.0, 1.0 if rain else 0.0)
         samples = sample_forecast_paths(day_pm, spread=0.12 + (0.10 * d), n=20, seed=seed + d)
@@ -468,11 +498,30 @@ def optimize_multi_day_activity(
     """Evaluate daytime hours (06:00-20:00) across 4 days and return top 3 cleanest slots."""
     if not hourly_pm25:
         return []
-    pm = (
-        (hourly_pm25 * (96 // max(1, len(hourly_pm25)) + 1))[:96]
-        if len(hourly_pm25) < 96
-        else hourly_pm25[:96]
+    base_day_pm = (
+        (hourly_pm25 * (24 // max(1, len(hourly_pm25)) + 1))[:24]
+        if len(hourly_pm25) < 24
+        else hourly_pm25[:24]
     )
+    disp_factors = compute_daily_dispersion_factors(hourly_weather, days=4)
+    pm: list[float] = []
+    if len(hourly_pm25) >= 96:
+        day_means = [sum(hourly_pm25[d * 24 : (d + 1) * 24]) / 24.0 for d in range(4)]
+        all_days_identical = max(day_means) - min(day_means) < 1e-3
+    else:
+        all_days_identical = True
+
+    for d in range(4):
+        slice_pm = (
+            [float(p) for p in hourly_pm25[d * 24 : (d + 1) * 24]]
+            if len(hourly_pm25) >= (d + 1) * 24
+            else base_day_pm
+        )
+        if hourly_weather or all_days_identical:
+            pm.extend([round(max(10.0, p * disp_factors[d]), 1) for p in slice_pm])
+        else:
+            pm.extend([round(max(10.0, p), 1) for p in slice_pm])
+
     dur_h, step_h = max(0.5, duration_min / 60.0), max(1, math.ceil(duration_min / 60.0))
     ir = inhalation_rate_m3_per_h(age_band, activity_type)
     base_h = 17 if activity_type in ("market_shopping", "transit_auto") else 7

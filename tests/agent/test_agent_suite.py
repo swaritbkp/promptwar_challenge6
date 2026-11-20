@@ -349,6 +349,9 @@ async def test_turn1_hour_comparison_fallback(
     )
     assert res2.follow_up is None
     lower2 = res2.reply.lower()
+    assert "what duration and time window" not in lower2
     assert "07:00" in lower2 and "16:00" in lower2
     assert "dadi" in lower2
     assert "safer" in lower2 or "better" in lower2 or "mixing" in lower2
+    assert "µg/m³" in res2.reply or "aqi" in lower2
+    assert "recommendation" in lower2 or "avoid" in lower2

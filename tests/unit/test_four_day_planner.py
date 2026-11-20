@@ -51,3 +51,26 @@ def test_optimize_multi_day_activity() -> None:
     assert len(slots) == 3 and [s.rank for s in slots] == [1, 2, 3]
     for s in slots:
         assert 6 <= s.start_hour <= 19 and s.savings_ug > 0.0 and s.savings_pct > 0.0
+
+
+def test_four_day_outlook_distinct_peak_aqis_metro_cities() -> None:
+    from hawakhata.integrations.air_quality import _load_nearest_fixture
+
+    metros = {
+        "Gurugram": (28.4595, 77.0266),
+        "Chandigarh": (30.7333, 76.7794),
+        "Mumbai": (19.0760, 72.8777),
+    }
+
+    for name, (lat, lng) in metros.items():
+        series = _load_nearest_fixture(lat, lng, 96)
+        pm_series = [p.pm25_ug_m3 for p in series.points]
+        outlook = build_four_day_outlook(pm_series)
+        day_aqis = [d.peak_aqi for d in outlook.days]
+        # Must yield at least 3 distinct daily Peak AQIs
+        assert len(set(day_aqis)) >= 3, f"{name} peak AQIs not distinct enough: {day_aqis}"
+        # A genuinely cleaner recommended day must exist
+        cleanest_day = min(outlook.days, key=lambda d: d.peak_aqi)
+        dirtiest_day = max(outlook.days, key=lambda d: d.peak_aqi)
+        assert cleanest_day.peak_aqi < dirtiest_day.peak_aqi
+        assert cleanest_day.cleanest_pm25 < dirtiest_day.peak_pm25

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import asdict
 from typing import Annotated, Any, Literal
@@ -89,8 +90,10 @@ async def get_four_day_forecast(
 ) -> Envelope[FourDayForecastResponse]:
     """Retrieve 4-day predictive outlook, Tomorrow Watch alert, and multi-day routine slots."""
     resolved_lng = lng if lng is not None else (lon if lon is not None else 77.0266)
-    aq_series = await aq_client.get_hourly_forecast(lat=lat, lng=resolved_lng, hours=96)
-    weather_series = await weather_client.get_hourly_weather(lat=lat, lng=resolved_lng, hours=96)
+    aq_series, weather_series = await asyncio.gather(
+        aq_client.get_hourly_forecast(lat=lat, lng=resolved_lng, hours=96),
+        weather_client.get_hourly_weather(lat=lat, lng=resolved_lng, hours=96),
+    )
     hourly_pm25 = [p.pm25_ug_m3 for p in aq_series.points]
     outlook = build_four_day_outlook(hourly_pm25, weather_series.points)
     top_slots = optimize_multi_day_activity(

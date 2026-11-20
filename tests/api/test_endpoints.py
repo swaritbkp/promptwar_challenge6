@@ -306,17 +306,42 @@ def test_extra_routes_coverage(client: TestClient, sample_profile_data: dict[str
 
     # 5. /forecast/4day
     resp_4d = client.get(
-        "/api/v1/forecast/4day?lat=28.4595&lng=77.0266&activity=walk&duration_min=60"
+        "/api/v1/forecast/4day?lat=28.4595&lng=77.0266&city=Gurugram&activity=walk&duration_min=60"
     )
     assert resp_4d.status_code == 200
     d_4d = resp_4d.json()["data"]
     assert len(d_4d["days"]) == 4
     assert "tomorrow_watch_headline" in d_4d
     assert "safe_house_flush" in d_4d
-    assert len(d_4d["top_slots"]) <= 3
+    assert len(d_4d["top_slots"]) >= 1
     assert "current_weather" in d_4d and d_4d["current_weather"] is not None
     assert d_4d["current_weather"]["temperature_c"] is not None
     assert d_4d["current_weather"]["wind_speed_kmh"] is not None
     assert d_4d["current_weather"]["boundary_layer_height_m"] is not None
     day_aqis = [d["peak_aqi"] for d in d_4d["days"]]
-    assert len(set(day_aqis)) >= 2
+    assert len(set(day_aqis)) >= 3
+
+
+def test_four_day_forecast_metro_cities(client: TestClient) -> None:
+    metros = {
+        "Gurugram": (28.4595, 77.0266),
+        "Chandigarh": (30.7333, 76.7794),
+        "Mumbai": (19.0760, 72.8777),
+    }
+    for city_name, (lat, lng) in metros.items():
+        resp = client.get(
+            f"/api/v1/forecast/4day?lat={lat}&lng={lng}&city={city_name}&activity=walk&duration_min=60"
+        )
+        assert resp.status_code == 200, f"4-day forecast failed for {city_name}: {resp.text}"
+        data = resp.json()["data"]
+        assert len(data["days"]) == 4
+        assert data["current_weather"] is not None
+        assert data["current_weather"]["temperature_c"] is not None
+        assert data["current_weather"]["humidity_pct"] is not None
+        assert data["current_weather"]["wind_speed_kmh"] is not None
+        assert data["current_weather"]["boundary_layer_height_m"] is not None
+        assert data["current_weather"]["physical_explanation"] is not None
+        day_aqis = [d["peak_aqi"] for d in data["days"]]
+        assert len(set(day_aqis)) >= 3, f"{city_name} peak AQIs not distinct enough: {day_aqis}"
+        assert min(day_aqis) < max(day_aqis)
+        assert data["top_slots"][0]["savings_ug"] > 0

@@ -24,7 +24,13 @@ from hawakhata.agent.tools import (
     simulate_indoor_air,
 )
 from hawakhata.api.schemas import FamilyProfileInput, LocationInput
-from hawakhata.engine.aqi import aqi_to_category, pm25_to_naqi_category, pm25_to_sub_index
+from hawakhata.engine.aqi import (
+    aqi_to_category,
+    compute_live_aq_snapshot,
+    pm25_to_naqi_category,
+    pm25_to_sub_index,
+)
+from hawakhata.engine.dose import inhalation_rate_m3_per_h
 from hawakhata.integrations.air_quality import AirQualityClient
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -79,6 +85,27 @@ def compose_reply(intent: str, lang: str, params: dict[str, Any]) -> str:
         return str(t_str.format(**params))
     except KeyError:
         return str(t_str)
+
+
+def is_clock_comparison_query(text: str) -> bool:
+    """Check if query compares explicit clock times like 7 AM or 4 PM."""
+    matches = re.findall(r"\b(\d{1,2})(?::\d{2})?\s*(am|pm)\b", text, re.IGNORECASE)
+    if len(matches) >= 2:
+        return True
+    times_colon = re.findall(r"\b\d{1,2}:00\b", text)
+    if len(times_colon) >= 2:
+        return True
+    return bool(re.search(r"\b\d{1,2}\s*(am|pm)\b.*\b\d{1,2}\s*(am|pm)\b", text, re.IGNORECASE))
+
+
+def _find_point_by_clock_hour(points: list[Any], target_hour: int) -> Any:
+    """Find hourly forecast point matching exact local clock hour."""
+    target_prefix = f"{target_hour:02d}:"
+    for p in points:
+        tl = getattr(p, "time_local", "")
+        if tl.startswith(target_prefix):
+            return p
+    return points[target_hour % len(points)] if points else None
 
 
 def _extract_hours_and_member(text: str, members: list[Any]) -> tuple[list[int], str | None]:
@@ -154,50 +181,91 @@ async def _dispatch_intent(
             s = await resolved_aq.get_hourly_forecast(
                 lat=resolved_loc.lat, lng=resolved_loc.lng, hours=24
             )
-            if len(s.points) >= 24:
-                pt1 = s.points[h1 % 24]
-                pt2 = s.points[h2 % 24]
+            if s.points:
+                pt1 = _find_point_by_clock_hour(s.points, h1) or s.points[0]
+                pt2 = _find_point_by_clock_hour(s.points, h2) or s.points[0]
                 cur_pt = s.points[0]
+
+                pm1, aqi1, _code1, cat1 = compute_live_aq_snapshot(pt1.pm25_ug_m3)
+                pm2, aqi2, _code2, cat2 = compute_live_aq_snapshot(pt2.pm25_ug_m3)
+                _cur_pm, cur_aqi, _cur_code, cur_cat = compute_live_aq_snapshot(cur_pt.pm25_ug_m3)
+
                 pk_pm = max(p.pm25_ug_m3 for p in s.points)
                 pk_aqi = pm25_to_sub_index(pk_pm)
                 pk_cat = pm25_to_naqi_category(pk_pm).display_name
-                cur_pm = cur_pt.pm25_ug_m3
-                cur_aqi = cur_pt.aqi_local or pm25_to_sub_index(cur_pm)
-                cur_cat = cur_pt.category_local or pm25_to_naqi_category(cur_pm).display_name
+
                 h1_str = f"{h1:02d}:00"
                 h2_str = f"{h2:02d}:00"
-                diff_pm = round(abs(pt1.pm25_ug_m3 - pt2.pm25_ug_m3), 1)
-                cleaner_str = h2_str if pt2.pm25_ug_m3 < pt1.pm25_ug_m3 else h1_str
-                target_who = member or ("your routine" if lang == "en" else "आपकी दिनचर्या")
+                diff_pm = round(abs(pm1 - pm2), 1)
+
+                matched_member = member
+                matched_age_band = None
+                if not matched_member:
+                    ctx_prof = get_current_context().profile
+                    for m in getattr(ctx_prof, "members", []):
+                        if m.name and m.name.lower() in user_text.lower():
+                            matched_member = m.name
+                            matched_age_band = getattr(m, "age_band", None)
+                            break
+
+                target_who = matched_member or (
+                    next(
+                        (
+                            w.title()
+                            for w in ("senior", "elder", "nani", "dada", "dadi")
+                            if w in user_text.lower()
+                        ),
+                        None,
+                    )
+                    or ("your family member" if lang == "en" else "आपके परिजन")
+                )
+                age_band = matched_age_band or (
+                    "senior"
+                    if any(
+                        w in (target_who or "").lower()
+                        for w in ("senior", "elder", "nani", "dada", "dadi")
+                    )
+                    else "adult"
+                )
+                ir = inhalation_rate_m3_per_h(age_band, "walk")
+                dose1 = round(pm1 * ir * 0.5, 1)
+                dose2 = round(pm2 * ir * 0.5, 1)
+                diff_dose = round(abs(dose1 - dose2), 1)
+                cleaner_str = h2_str if pm2 < pm1 else h1_str
+                worse_str = h1_str if pm2 < pm1 else h2_str
 
                 if lang == "hi":
                     reply = (
-                        f"{target_who} के लिए समय तुलना: {h1_str} पर PM2.5 {pt1.pm25_ug_m3:.0f} µg/m³ "
-                        f"(AQI {pt1.aqi_local}, {pt1.category_local}) है। {h2_str} पर दोपहर के मिक्सिंग लिफ्ट से यह घटकर "
-                        f"{pt2.pm25_ug_m3:.0f} µg/m³ (AQI {pt2.aqi_local}, {pt2.category_local}) रह जाता है। "
-                        f"इसलिए {cleaner_str} पर सैर करना कहीं अधिक सुरक्षित है—समय बदलने से "
-                        f"लगभग {diff_pm:.0f} µg/m³ PM2.5 की बचत होगी! वर्तमान लाइव AQI {cur_aqi} ({cur_cat}) है "
-                        f"और आज का पीक AQI {pk_aqi} ({pk_cat}) रहेगा।"
+                        f"{target_who} के लिए समय तुलना: {h1_str} पर PM2.5 {pm1:.0f} µg/m³ "
+                        f"(AQI {aqi1}, {cat1}) है—सुबह का इनवर्जन स्मॉग को फंसाता है (30 मिनट की सैर में सांस का डोज़: {dose1:.1f} µg)। "
+                        f"{h2_str} पर दोपहर के मिक्सिंग लिफ्ट से PM2.5 घटकर {pm2:.0f} µg/m³ "
+                        f"(AQI {aqi2}, {cat2}) रह जाता है (डोज़ केवल {dose2:.1f} µg)। "
+                        f"इसलिए {worse_str} पर बाहर जाने से बचें और {cleaner_str} पर N95 मास्क पहनकर टहलें—इससे "
+                        f"लगभग {diff_pm:.0f} µg/m³ PM2.5 और {diff_dose:.1f} µg सांस के प्रदूषण की बचत होगी! "
+                        f"वर्तमान लाइव AQI {cur_aqi} ({cur_cat}) है और आज का पीक AQI {pk_aqi} ({pk_cat}) रहेगा।"
                     )
                 else:
                     reply = (
-                        f"Schedule comparison for {target_who}: At {h1_str}, PM2.5 is {pt1.pm25_ug_m3:.0f} µg/m³ "
-                        f"(AQI {pt1.aqi_local}, {pt1.category_local}). At {h2_str}, PM2.5 drops to {pt2.pm25_ug_m3:.0f} µg/m³ "
-                        f"(AQI {pt2.aqi_local}, {pt2.category_local} — Afternoon Mixing Lift). "
-                        f"Walking at {cleaner_str} is much safer and avoids ~{diff_pm:.0f} µg/m³ PM2.5 exposure! "
+                        f"For {target_who}, walking at {cleaner_str} is significantly safer than at {worse_str}:\n"
+                        f"- At {h1_str}: PM2.5 is {pm1:.0f} µg/m³ (AQI {aqi1}, {cat1}) — morning surface inversion traps severe particulate smog; inhaled dose for a 30-min walk is {dose1:.1f} µg.\n"
+                        f"- At {h2_str}: PM2.5 drops to {pm2:.0f} µg/m³ (AQI {aqi2}, {cat2}) thanks to afternoon solar boundary layer mixing; inhaled dose is only {dose2:.1f} µg ({diff_dose:.1f} µg exposure avoided).\n"
+                        f"Recommendation: Avoid {worse_str}. Schedule {target_who}'s 30-minute walk at {cleaner_str} with a well-fitted N95 mask. "
                         f"Current live AQI is {cur_aqi} ({cur_cat}), while today's forecast peak is AQI {pk_aqi} ({pk_cat})."
                     )
                 tool_data = {
-                    "member": member,
+                    "member": target_who,
                     "hour_a": h1,
-                    "pm25_a": pt1.pm25_ug_m3,
-                    "aqi_a": pt1.aqi_local,
+                    "pm25_a": pm1,
+                    "aqi_a": aqi1,
+                    "dose_a_ug": dose1,
                     "hour_b": h2,
-                    "pm25_b": pt2.pm25_ug_m3,
-                    "aqi_b": pt2.aqi_local,
+                    "pm25_b": pm2,
+                    "aqi_b": aqi2,
+                    "dose_b_ug": dose2,
                     "current_aqi": cur_aqi,
                     "peak_aqi": pk_aqi,
                     "savings_pm25": diff_pm,
+                    "savings_dose_ug": diff_dose,
                 }
                 return reply, "get_air_forecast", {"result": tool_data, "missing_fields": []}
 

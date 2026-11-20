@@ -94,6 +94,10 @@ html[lang="hi"] body{font-size:1.0625rem;line-height:1.7;}
 @media (min-width:640px){.outlook-grid{grid-template-columns:repeat(4,1fr);}}
 .outlook-card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:.75rem .5rem;text-align:center;display:flex;flex-direction:column;gap:.35rem;}
 .outlook-card:hover{border-color:var(--accent);}
+#live-weather-grid .stat-box{display:flex;flex-direction:column;align-items:flex-start;text-align:left;}
+#live-weather-grid .stat-box .has-tooltip,.stat-box > .has-tooltip{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;border-bottom:none;}
+#live-weather-grid .stat-val{font-size:1.375rem;font-weight:700;text-align:left;}
+#live-weather-grid .stat-lbl{font-size:.8125rem;color:var(--muted);text-align:left;margin-top:0;}
 .has-tooltip{position:relative;cursor:help;border-bottom:1px dotted var(--muted);display:inline-flex;align-items:center;}
 .tooltip-bubble{position:absolute;bottom:130%;left:50%;transform:translateX(-50%);background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font-size:.72rem;font-weight:500;line-height:1.3;width:max-content;max-width:240px;box-shadow:0 6px 18px rgba(0,0,0,.18);z-index:120;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .15s ease,visibility .15s ease;text-align:left;}
 .has-tooltip:hover .tooltip-bubble,.has-tooltip:focus .tooltip-bubble,.has-tooltip:focus-visible .tooltip-bubble,.has-tooltip.active .tooltip-bubble{opacity:1;visibility:visible;}

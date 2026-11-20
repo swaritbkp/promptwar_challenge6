@@ -81,3 +81,15 @@ def pm25_to_sub_index(pm25_ug_m3: float) -> int:
             sub = i_low + (i_high - i_low) / (b_high - b_low) * (c - b_low)
             return round(sub)
     return round(500 + (c - 500.0) * (100.0 / 250.0))
+
+
+def compute_live_aq_snapshot(pm25_ug_m3: float) -> tuple[float, int, str, str]:
+    """Compute verified live PM2.5, NAQI sub-index, category code, and display label.
+
+    Returns:
+        (current_pm25, current_aqi, current_category_code, current_category_display_name)
+    """
+    pm = round(max(0.0, float(pm25_ug_m3)), 1)
+    aqi = pm25_to_sub_index(pm)
+    cat = pm25_to_naqi_category(pm)
+    return pm, aqi, cat.code, cat.display_name

@@ -13,6 +13,7 @@ from hawakhata.agent.fallback import (
     _dispatch_intent,
     detect_language,
     execute_fallback_turn,
+    is_clock_comparison_query,
     route_intent,
 )
 from hawakhata.agent.grounding import check_numeric_grounding, extract_numbers
@@ -122,7 +123,11 @@ class HawaKhataAgent:
             )
         return self._adk_agent
 
-    def _resolve_follow_up(self, tool_outputs: list[Any], lang: str) -> FollowUpQuestion | None:
+    def _resolve_follow_up(
+        self, tool_outputs: list[Any], lang: str, user_text: str = ""
+    ) -> FollowUpQuestion | None:
+        if is_clock_comparison_query(user_text):
+            return None
         for out in tool_outputs:
             if isinstance(out, dict) and out.get("missing_fields"):
                 missing = out["missing_fields"]
@@ -152,7 +157,7 @@ class HawaKhataAgent:
         client_ip: str,
         date_iso: str,
     ) -> tuple[str, list[str], list[Any], bool]:
-        if not self.client.is_configured:
+        if not self.client.is_configured or is_clock_comparison_query(safe_input):
             fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
             return fb["reply"], [fb["tool_name"]], [fb["tool_output"]], True
 
@@ -295,7 +300,7 @@ class HawaKhataAgent:
                 nums,
                 tool_calls,
                 tool_outputs,
-                self._resolve_follow_up(tool_outputs, lang),
+                self._resolve_follow_up(tool_outputs, lang, safe_input),
                 True,
                 fb_used,
             )

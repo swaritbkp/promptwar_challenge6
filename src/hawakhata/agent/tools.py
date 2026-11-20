@@ -14,7 +14,7 @@ from hawakhata.api.schemas import (
     RoomInput,
     SwapsImpactRequest,
 )
-from hawakhata.engine.aqi import aqi_to_category
+from hawakhata.engine.aqi import compute_live_aq_snapshot
 from hawakhata.engine.constants import load_constants
 from hawakhata.engine.indoor_model import compare_plants_vs_hepa
 from hawakhata.engine.pets import evaluate_pet_walk_risk, get_indoor_pet_guidance
@@ -77,27 +77,21 @@ async def get_air_forecast(hours: int = 24) -> dict[str, Any]:
         lat=c.location.lat, lng=c.location.lng, hours=min(hours, 96)
     )
     cur = s.points[0] if s.points else None
+    cur_pm, cur_aqi, _cur_code, cur_cat = compute_live_aq_snapshot(cur.pm25_ug_m3 if cur else 150.0)
     pts = [
         {
             "hour": int(p.time_local[11:13]) if len(p.time_local) >= 13 else 0,
             "pm25_ug_m3": round(p.pm25_ug_m3, 1),
-            "aqi": p.aqi_local,
-            "category": (
-                aqi_to_category(p.aqi_local).display_name if p.aqi_local else p.category_local
-            ),
+            "aqi": compute_live_aq_snapshot(p.pm25_ug_m3)[1],
+            "category": compute_live_aq_snapshot(p.pm25_ug_m3)[3],
         }
         for p in s.points
     ]
-    cur_cat = (
-        aqi_to_category(cur.aqi_local).display_name
-        if cur and cur.aqi_local
-        else (cur.category_local if cur else "Moderate")
-    )
     return _wrap(
         {
             "city": c.location.city_name,
-            "current_pm25": round(cur.pm25_ug_m3, 1) if cur else 0.0,
-            "current_aqi": cur.aqi_local if cur else 0,
+            "current_pm25": cur_pm,
+            "current_aqi": cur_aqi,
             "category": cur_cat,
             "hourly": pts,
         },
@@ -268,9 +262,9 @@ async def get_smog_brief() -> dict[str, Any]:
     c = get_current_context()
     s = await c.aq_client.get_hourly_forecast(lat=c.location.lat, lng=c.location.lng, hours=24)
     brief = generate_morning_brief(profile=c.profile, air_series=s)
-    cur_pm = round(s.points[0].pm25_ug_m3, 1) if s.points else 0.0
-    cur_aqi = s.points[0].aqi_local if s.points else 0
-    cur_cat = aqi_to_category(cur_aqi).display_name if cur_aqi else "Moderate"
+    cur_pm, cur_aqi, _cur_code, cur_cat = compute_live_aq_snapshot(
+        s.points[0].pm25_ug_m3 if s.points else 150.0
+    )
     parts = str(brief.cleanest_window_local).split("-")
     alerts = [{"name": a.name, "message": a.alert_text} for a in brief.sensitive_member_alerts]
     return _wrap(
@@ -336,15 +330,18 @@ async def get_pet_air_guidance(
     c = get_current_context()
     pm = outdoor_pm25
     if pm is None:
-        s = await c.aq_client.get_hourly_forecast(lat=c.location.lat, lng=c.location.lng, hours=1)
+        s = await c.aq_client.get_hourly_forecast(lat=c.location.lat, lng=c.location.lng, hours=24)
         pm = s.points[0].pm25_ug_m3 if s.points else 150.0
 
-    walk = evaluate_pet_walk_risk(pm)
+    cur_pm, cur_aqi, _cur_code, cur_cat = compute_live_aq_snapshot(pm)
+    walk = evaluate_pet_walk_risk(cur_pm)
     indoor = get_indoor_pet_guidance(species)
     return _wrap(
         {
             "species": species,
-            "current_pm25": round(pm, 1),
+            "current_pm25": cur_pm,
+            "current_aqi": cur_aqi,
+            "category": cur_cat,
             "safe_walk_duration_min": walk.max_duration_min,
             "walk_pace": walk.pace,
             "post_walk_wipe_needed": walk.post_walk_wipe_needed,

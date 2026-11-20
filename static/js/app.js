@@ -44,6 +44,9 @@ class HawaKhataApp {
     this.airSeries = null;
     this.currentOutdoorPm25 = 317;
     this.currentAQI = 317;
+    this.currentCategory = "very_poor";
+    this.currentCategoryLabel = "Very Poor";
+    this.dataMode = "fixture";
     this.cleanestWindow = "12:00 – 15:00";
     this.currentHourlyPm25 = [];
     this.todaySavings = 340;
@@ -104,20 +107,139 @@ class HawaKhataApp {
 
   async refreshData() {
     const lbl = $("refresh-time-label");
-    const modeBadge = $("data-mode-badge");
     if (lbl) lbl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     try {
       const r = await fetch("/api/v1/meta");
       if (r.ok) {
         const d = (await r.json()).data || {};
-        if (modeBadge) {
-          modeBadge.textContent = d.data_mode === "live" ? "Live AQ" : "Demo";
-          modeBadge.className = `pill-status ${d.data_mode === "live" ? "saved" : ""}`;
-        }
+        this.dataMode = d.data_mode || "fixture";
+        this.updateDataModeBadge();
       }
     } catch {}
-    await this.recalculatePassbook();
-    await this.fetchFourDayForecast();
+    await Promise.all([this.recalculatePassbook(), this.fetchFourDayForecast()]);
+  }
+
+  updateDataModeBadge() {
+    const modeBadge = $("data-mode-badge");
+    if (!modeBadge) return;
+    const isHi = this.currentLang === "hi";
+    if (this.dataMode === "live") {
+      modeBadge.textContent = isHi ? (this.i18nStrings["live_aq"] || "लाइव AQ") : "Live AQ";
+      modeBadge.className = "pill-status saved";
+    } else {
+      modeBadge.textContent = isHi ? (this.i18nStrings["demo_mode"] || "डेमो") : "Demo";
+      modeBadge.className = "pill-status";
+    }
+  }
+
+  renderLiveWeather(w = this.fourDayData?.current_weather) {
+    if (!w) return;
+    const tempEl = $("weather-temp-val"), humEl = $("weather-humidity-val"),
+          windEl = $("weather-wind-val"), blhEl = $("weather-blh-val"),
+          regPill = $("live-weather-regime-pill"), expEl = $("weather-smog-driver-explanation");
+    if (tempEl && w.temperature_c != null) tempEl.textContent = `${w.temperature_c.toFixed(1)} °C`;
+    if (humEl && w.humidity_pct != null) humEl.textContent = `${Math.round(w.humidity_pct)} %`;
+    if (windEl && w.wind_speed_kmh != null) windEl.textContent = `${w.wind_speed_kmh.toFixed(1)} km/h`;
+    if (blhEl && w.boundary_layer_height_m != null) blhEl.textContent = `${Math.round(w.boundary_layer_height_m)} m`;
+
+    const isHi = this.currentLang === "hi";
+    if (regPill && w.dispersion_regime) {
+      const regKey = w.dispersion_regime === "Afternoon Mixing Lift" ? "disp_mixing" : (w.dispersion_regime === "Inversion Trap" ? "disp_inversion" : "disp_stagnant");
+      const regName = (isHi && this.i18nStrings[regKey]) ? this.i18nStrings[regKey] : w.dispersion_regime;
+      regPill.textContent = `${isHi ? "प्रसार" : "Dispersion"}: ${regName}`;
+      regPill.className = `pill-status ${w.dispersion_regime === "Inversion Trap" ? "debit" : "saved"}`;
+    }
+    if (expEl && w.physical_explanation) {
+      if (isHi) {
+        expEl.textContent = `धीमी हवा (${w.wind_speed_kmh.toFixed(1)} km/h) और कम मिक्सिंग परत (${Math.round(w.boundary_layer_height_m)}m) जमीन के पास धुआं रोक रही है; दोपहर 13:00 के बाद धूप से प्रसार बेहतर होता है।`;
+      } else {
+        expEl.textContent = `${w.wind_speed_kmh.toFixed(1)} km/h wind + ${Math.round(w.boundary_layer_height_m)}m boundary layer ceiling: ${w.physical_explanation}`;
+      }
+    }
+  }
+
+  renderFourDayCards(days = this.fourDayData?.days) {
+    const grid = $("four-day-cards-grid");
+    if (!grid || !Array.isArray(days)) return;
+    grid.replaceChildren();
+    const isHi = this.currentLang === "hi";
+    days.forEach((day) => {
+      const card = el("div", "outlook-card");
+      const dayNameKey = day.day_label.toLowerCase().replace(" ", "_");
+      const dayName = (isHi && this.i18nStrings[dayNameKey]) ? this.i18nStrings[dayNameKey] : day.day_label;
+      const regKey = day.dispersion_regime === "Afternoon Mixing Lift" ? "disp_mixing" : (day.dispersion_regime === "Inversion Trap" ? "disp_inversion" : "disp_stagnant");
+      const regName = (isHi && this.i18nStrings[regKey]) ? this.i18nStrings[regKey] : day.dispersion_regime;
+      const catClass = day.naqi_category.toLowerCase().replace(/ /g, "-");
+      const catKey = `cat_${catClass.replace(/-/g, "_")}`;
+      const catName = (isHi && this.i18nStrings[catKey]) ? this.i18nStrings[catKey] : day.naqi_category;
+
+      card.append(
+        el("div", "font-bold text-xs", dayName),
+        el("span", `pill-status ${catClass}`, `AQI ${day.peak_aqi} · ${catName}`),
+        el("div", "text-xs font-semibold text-saved", `▲ ${day.cleanest_window_start}–${day.cleanest_window_end}`),
+        el("div", "text-xs stat-lbl", `${regName} · ${day.wind_kmh}km/h`),
+        el("div", "text-xs text-muted", `BLH: ${Math.round(day.blh_m)}m · P90: ${Math.round(day.uncertainty_p90)}`)
+      );
+      grid.append(card);
+    });
+  }
+
+  updateLiveAQ(currentPm25, currentAqi, categoryCode, categoryLabel) {
+    if (currentPm25 != null) this.currentOutdoorPm25 = Math.round(currentPm25);
+    if (currentAqi != null) this.currentAQI = Math.round(currentAqi);
+    if (categoryCode) this.currentCategory = categoryCode;
+    if (categoryLabel) this.currentCategoryLabel = categoryLabel;
+
+    const topAqiVal = $("top-aqi-val");
+    if (topAqiVal) topAqiVal.textContent = String(this.currentAQI);
+
+    const topAqiCat = $("top-aqi-cat");
+    if (topAqiCat) {
+      const isHi = this.currentLang === "hi";
+      const catKey = `cat_${(this.currentCategory || "very_poor").replace(/-/g, "_")}`;
+      topAqiCat.textContent = (isHi && this.i18nStrings[catKey]) ? this.i18nStrings[catKey] : (this.currentCategoryLabel || "Very Poor");
+    }
+
+    const topAqiChip = $("top-aqi-chip");
+    if (topAqiChip && this.currentCategory) {
+      const catClass = this.currentCategory.replace(/_/g, "-");
+      topAqiChip.className = `chip-aqi ${catClass}`;
+      topAqiChip.setAttribute("aria-label", `Air Quality: ${this.currentCategoryLabel || this.currentCategory}`);
+      const iconUse = topAqiChip.querySelector("use");
+      if (iconUse) {
+        iconUse.setAttribute("href", `#icon-naqi-${catClass}`);
+      }
+    }
+
+    const inOut = $("indoor-outdoor-val");
+    if (inOut) inOut.textContent = `${this.currentOutdoorPm25} µg/m³`;
+
+    this.renderActionStrip();
+  }
+
+  exportSlotIcs(s, btn = null) {
+    if (!s) return;
+    const loc = this.familyProfile.location?.city_name || "Delhi NCR";
+    const pad = (n) => String(n).padStart(2, "0");
+    const toUtc = (dt) => `${dt.getUTCFullYear()}${pad(dt.getUTCMonth() + 1)}${pad(dt.getUTCDate())}T${pad(dt.getUTCHours())}${pad(dt.getUTCMinutes())}00Z`;
+    const start = new Date(Date.now() + (s.day_index || 1) * 86400000);
+    start.setHours(s.start_hour || 13, 0, 0, 0);
+    const end = new Date(start.getTime() + Math.max(1, (s.end_hour - s.start_hour) || 1) * 3600000);
+    const ics = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//HawaKhata//Air Passbook//EN\r\nBEGIN:VEVENT\r\nUID:hk-${Date.now()}@hawakhata.org\r\nDTSTAMP:${toUtc(new Date())}\r\nDTSTART:${toUtc(start)}\r\nDTEND:${toUtc(end)}\r\nSUMMARY:HawaKhata Clean Window: ${s.day_label || "Clean Window"} ${s.time_label || ""}\r\nDESCRIPTION:Scheduled clean air window in ${loc}. Dilutes PM2.5 to ${s.outdoor_pm25 || 95} ug/m3; saves ${s.savings_ug || 210} ug.\r\nLOCATION:${loc}\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+    const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `hawakhata-${(s.day_label || "routine").toLowerCase().replace(/\s+/g, "-")}-routine.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = this.currentLang === "hi" ? "✓ सहेज लिया गया" : "✓ Saved .ics";
+      setTimeout(() => { btn.textContent = orig; }, 2000);
+    }
   }
 
   async fetchFourDayForecast(activity = "walk", durationMin = 60) {
@@ -147,55 +269,11 @@ class HawaKhataApp {
       }
 
       if (d.current_weather) {
-        const w = d.current_weather;
-        const tempEl = $("weather-temp-val"), humEl = $("weather-humidity-val"),
-              windEl = $("weather-wind-val"), blhEl = $("weather-blh-val"),
-              regPill = $("live-weather-regime-pill"), expEl = $("weather-smog-driver-explanation");
-        if (tempEl) tempEl.textContent = `${w.temperature_c.toFixed(1)} °C`;
-        if (humEl) humEl.textContent = `${Math.round(w.humidity_pct)} %`;
-        if (windEl) windEl.textContent = `${w.wind_speed_kmh.toFixed(1)} km/h`;
-        if (blhEl) blhEl.textContent = `${Math.round(w.boundary_layer_height_m)} m`;
-        if (regPill) {
-          const isHi = this.currentLang === "hi";
-          const regKey = w.dispersion_regime === "Afternoon Mixing Lift" ? "disp_mixing" : (w.dispersion_regime === "Inversion Trap" ? "disp_inversion" : "disp_stagnant");
-          const regName = (isHi && this.i18nStrings[regKey]) ? this.i18nStrings[regKey] : w.dispersion_regime;
-          regPill.textContent = `${isHi ? "प्रसार" : "Dispersion"}: ${regName}`;
-          regPill.className = `pill-status ${w.dispersion_regime === "Inversion Trap" ? "debit" : "saved"}`;
-        }
-        if (expEl) {
-          const isHi = this.currentLang === "hi";
-          if (isHi) {
-            expEl.textContent = `धीमी हवा (${w.wind_speed_kmh.toFixed(1)} km/h) और कम मिक्सिंग परत (${Math.round(w.boundary_layer_height_m)}m) जमीन के पास धुआं रोक रही है; दोपहर 13:00 के बाद धूप से प्रसार बेहतर होता है।`;
-          } else {
-            expEl.textContent = `${w.wind_speed_kmh.toFixed(1)} km/h wind + ${Math.round(w.boundary_layer_height_m)}m boundary layer ceiling: ${w.physical_explanation}`;
-          }
-        }
+        this.renderLiveWeather(d.current_weather);
       }
 
-      const grid = $("four-day-cards-grid");
-      if (grid && Array.isArray(d.days)) {
-        grid.replaceChildren();
-        d.days.forEach((day) => {
-          const card = el("div", "outlook-card");
-          const isHi = this.currentLang === "hi";
-          const dayNameKey = day.day_label.toLowerCase().replace(" ", "_");
-          const dayName = (isHi && this.i18nStrings[dayNameKey]) ? this.i18nStrings[dayNameKey] : day.day_label;
-          const regKey = day.dispersion_regime === "Afternoon Mixing Lift" ? "disp_mixing" : (day.dispersion_regime === "Inversion Trap" ? "disp_inversion" : "disp_stagnant");
-          const regName = (isHi && this.i18nStrings[regKey]) ? this.i18nStrings[regKey] : day.dispersion_regime;
-          const catClass = day.naqi_category.toLowerCase().replace(/ /g, "-");
-          const catKey = `cat_${catClass.replace(/-/g, "_")}`;
-          const catName = (isHi && this.i18nStrings[catKey]) ? this.i18nStrings[catKey] : day.naqi_category;
-
-          card.append(
-            el("div", "font-bold text-xs", dayName),
-            el("span", `pill-status ${catClass}`, `AQI ${day.peak_aqi} · ${catName}`),
-            el("div", "text-xs font-semibold text-saved", `▲ ${day.cleanest_window_start}–${day.cleanest_window_end}`),
-            el("div", "text-xs stat-lbl", `${regName} · ${day.wind_kmh}km/h`),
-            el("div", "text-xs text-muted", `BLH: ${Math.round(day.blh_m)}m · P90: ${Math.round(day.uncertainty_p90)}`)
-          );
-          grid.append(card);
-        });
-
+      if (Array.isArray(d.days)) {
+        this.renderFourDayCards(d.days);
         if (d.days[0]) {
           this.cleanestWindow = `${d.days[0].cleanest_window_start} – ${d.days[0].cleanest_window_end}`;
           const cleanTag = $("clean-window-tag"), recText = $("brief-recommendation"), chartPill = $("chart-clean-window-pill");
@@ -276,26 +354,7 @@ class HawaKhataApp {
         btnPlan.className = "btn btn-sm btn-secondary";
       });
       const btnIcs = el("button", "btn btn-sm btn-secondary", "📅 .ics");
-      btnIcs.addEventListener("click", () => {
-        const loc = this.familyProfile.location?.city_name || "Delhi NCR";
-        const pad = (n) => String(n).padStart(2, "0");
-        const toUtc = (dt) => `${dt.getUTCFullYear()}${pad(dt.getUTCMonth() + 1)}${pad(dt.getUTCDate())}T${pad(dt.getUTCHours())}${pad(dt.getUTCMinutes())}00Z`;
-        const start = new Date(Date.now() + (s.day_index || 1) * 86400000);
-        start.setHours(s.start_hour || 13, 0, 0, 0);
-        const end = new Date(start.getTime() + Math.max(1, (s.end_hour - s.start_hour) || 1) * 3600000);
-        const ics = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//HawaKhata//Air Passbook//EN\r\nBEGIN:VEVENT\r\nUID:hk-${Date.now()}@hawakhata.org\r\nDTSTAMP:${toUtc(new Date())}\r\nDTSTART:${toUtc(start)}\r\nDTEND:${toUtc(end)}\r\nSUMMARY:HawaKhata Clean Window: ${s.day_label} ${s.time_label}\r\nDESCRIPTION:Scheduled clean air window in ${loc}. Dilutes PM2.5 to ${s.outdoor_pm25} ug/m3; saves ${s.savings_ug} ug.\r\nLOCATION:${loc}\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR`;
-        const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `hawakhata-${s.day_label.toLowerCase()}-routine.ics`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        btnIcs.textContent = "✓ Saved";
-        setTimeout(() => { btnIcs.textContent = "📅 .ics"; }, 2000);
-      });
+      btnIcs.addEventListener("click", () => this.exportSlotIcs(s, btnIcs));
       btns.append(btnPlan, btnIcs);
       row.append(left, btns);
       list.append(row);
@@ -340,6 +399,10 @@ class HawaKhataApp {
     document.documentElement.lang = lang;
     this.renderMembers();
     this.renderActionStrip();
+    this.updateDataModeBadge();
+    this.updateLiveAQ(this.currentOutdoorPm25, this.currentAQI, this.currentCategory, this.currentCategoryLabel);
+    this.renderLiveWeather();
+    this.renderFourDayCards();
     if (this.currentHourlyPm25 && this.currentHourlyPm25.length) {
       this.renderPlanHourlyChart(this.currentHourlyPm25);
     }
@@ -466,9 +529,12 @@ class HawaKhataApp {
   }
 
   _updateHero(d) {
-    this.currentOutdoorPm25 = Math.round(d.current_pm25 || (d.peak_pm25 ? d.peak_pm25 * 0.85 : 317));
-    this.currentAQI = d.current_aqi || 317;
     this.cleanestWindow = d.cleanest_window || "12:00 – 15:00";
+    const outPm = d.current_pm25 ?? (d.peak_pm25 ? d.peak_pm25 * 0.85 : 317);
+    const outAqi = d.current_aqi ?? 317;
+    const catCode = d.current_category || "very_poor";
+    const catLabel = d.current_category_label || "Very Poor";
+    this.updateLiveAQ(outPm, outAqi, catCode, catLabel);
 
     const debit = $("hero-debit"), budget = $("hero-budget"), bal = $("hero-balance"), cigs = $("hero-cigs");
     if (debit) debit.textContent = `${Math.round(d.total_debit_ug || 0)} µg`;
@@ -483,9 +549,6 @@ class HawaKhataApp {
       cigs.textContent = `${cVal.toFixed(1)} cigs`;
     }
 
-    const inOut = $("indoor-outdoor-val");
-    if (inOut) inOut.textContent = `${this.currentOutdoorPm25} µg/m³`;
-
     const headline = $("brief-headline");
     if (headline) {
       const net = d.net_balance_ug ?? -1;
@@ -497,24 +560,6 @@ class HawaKhataApp {
       } else {
         headline.textContent = isHi ? "WHO बजट के भीतर ✓ – परिवार सुरक्षित" : "Within WHO budget ✓ – Household protected";
         headline.className = "card-title text-saved";
-      }
-    }
-    const topAqiChip = $("top-aqi-chip");
-    const topAqiVal = $("top-aqi-val");
-    const topAqiCat = $("top-aqi-cat");
-    if (d.current_aqi != null && topAqiVal) {
-      topAqiVal.textContent = String(d.current_aqi);
-    }
-    if (d.current_category_label && topAqiCat) {
-      topAqiCat.textContent = d.current_category_label;
-    }
-    if (topAqiChip && d.current_category) {
-      const catClass = d.current_category.replace(/_/g, "-");
-      topAqiChip.className = `chip-aqi ${catClass}`;
-      topAqiChip.setAttribute("aria-label", `Air Quality: ${d.current_category_label || d.current_category}`);
-      const iconUse = topAqiChip.querySelector("use");
-      if (iconUse) {
-        iconUse.setAttribute("href", `#icon-naqi-${catClass}`);
       }
     }
     const peakTag = $("peak-warning-tag");
@@ -888,14 +933,32 @@ class HawaKhataApp {
     const icsBtn = $("btn-export-ics");
     if (icsBtn) {
       icsBtn.addEventListener("click", () => {
-        const act = $("plan-activity-type")?.value || "walk", loc = this.familyProfile.location?.city_name || "Delhi NCR";
-        const pad = (n) => String(n).padStart(2, "0"), toUtc = (d) => `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
-        const start = new Date(Date.now() + 86400000); start.setHours(13, 0, 0, 0);
-        const end = new Date(start.getTime() + 3600000);
-        const ics = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//HawaKhata//Air Passbook//EN\r\nBEGIN:VEVENT\r\nUID:hk-${Date.now()}@hawakhata.org\r\nDTSTAMP:${toUtc(new Date())}\r\nDTSTART:${toUtc(start)}\r\nDTEND:${toUtc(end)}\r\nSUMMARY:HawaKhata Clean Window: ${act}\r\nDESCRIPTION:Scheduled in clean air window in ${loc}. Expected PM2.5 avoidance up to 45%.\r\nLOCATION:${loc}\r\nSTATUS:CONFIRMED\r\nEND:VEVENT\r\nEND:VCALENDAR`;
-        const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" }), url = URL.createObjectURL(blob), a = document.createElement("a");
-        a.href = url; a.download = "hawakhata-routine.ics"; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-        const orig = icsBtn.textContent; icsBtn.textContent = this.currentLang === "hi" ? "✓ सहेज लिया गया" : "✓ Saved .ics"; setTimeout(() => { icsBtn.textContent = orig; }, 2000);
+        const topSlot = {
+          day_label: "Today",
+          time_label: "13:00 – 14:00",
+          outdoor_pm25: this.currentOutdoorPm25,
+          savings_ug: this.todaySavings || 340,
+          day_index: 0,
+          start_hour: 13,
+          end_hour: 14
+        };
+        this.exportSlotIcs(topSlot, icsBtn);
+      });
+    }
+
+    const icsMultiBtn = $("btn-export-ics-multiday");
+    if (icsMultiBtn) {
+      icsMultiBtn.addEventListener("click", () => {
+        const topSlot = this.fourDayData?.top_slots?.[0] || {
+          day_label: "Tomorrow",
+          time_label: "13:00 – 14:00",
+          outdoor_pm25: 95,
+          savings_ug: 210,
+          day_index: 1,
+          start_hour: 13,
+          end_hour: 14
+        };
+        this.exportSlotIcs(topSlot, icsMultiBtn);
       });
     }
   }
