@@ -1,37 +1,48 @@
-# Decisions
+# Decisions (ADRs)
 
-Every structural decision with reason and alternative rejected.
+Format: **Context → Decision → Consequences** (with the rejected alternative). Status of all: Accepted.
 
-| # | Decision | Choice | Why (and what was rejected) | Status |
-|---|---|---|---|---|
-| D1 | Numbers source | Deterministic engine + Google AQ API; LLM narrates; grounding gate | Verifiable numbers. Rejected: model estimating exposure (hallucination risk). | Accepted |
-| D2 | App structure | Modular FastAPI (routes → services → engine) | Simple, scales on Cloud Run. Rejected: microservices. | Accepted |
-| D3 | Frontend | Jinja2 + vanilla ES modules + CSS tokens from Stitch | Strict CSP, no build tooling. Rejected: React/Tailwind CDN. | Accepted |
-| D4 | Login | None; profile in browser storage | Zero friction, no personal data liability. Rejected: user accounts. | Accepted |
-| D5 | Caching | Bounded TTL-LRU default; Redis optional | Fixed memory bound. Rejected: unbounded dict. | Accepted |
-| D6 | Abuse limits | Per-minute token bucket + per-day AI quota per IP | Protects no-login endpoints. Rejected: unthrottled access. | Accepted |
-| D7 | Primary metric | PM2.5 µg/m³ for dose & budget; NAQI for display | PM2.5 drives health risk. Rejected: AQI index as dose. | Accepted |
-| D8 | Air budget | WHO 2021 24h guideline × breathing volume | Personalized and age-aware. Rejected: uniform budget. | Accepted |
-| D9 | Determinism | Explicit `now` + `data_source` on endpoints | Reliable demos. Rejected: hardcoded numbers in code. | Accepted |
-| D10 | External APIs | Verified Google AQ API (`ind_cpcb`), google-genai 2.34, adk 2.14 | Verified shapes (ADR-004). Rejected: unverified assumptions. | Accepted |
+## ADR-001 — Numbers come from code, never the LLM
+- **Context:** Health numbers that are hallucinated are harmful.
+- **Decision:** Pure `engine/` plus AQ providers produce every figure; Gemini only understands, plans and narrates; `agent/grounding.py` rejects ungrounded numbers.
+- **Consequences:** Verifiable output and a deterministic fallback; plainer prose when the gate fires. Rejected: model-estimated exposure.
 
-## ADR-004 — Verified External API Specifications & SDK Contracts
-Verified: 2026-11-18.
-- **Air Quality API**: `POST airquality.googleapis.com/v1/forecast:lookup` (96h). Auth `X-Goog-Api-Key`. Local code `ind_cpcb`. Dominant pollutant `pm25`. Coordinates rounded to ~1 km.
-- **Google GenAI (`google-genai==2.34.0`)**: Models: `gemini-2.5-flash` (primary), `gemini-2.5-flash-lite` (fallback).
-- **Google ADK (`google-adk==2.14.1`)**: `LlmAgent`, `Runner`, `InMemorySessionService` bounded by `SESSION_*`.
+## ADR-002 — Modular FastAPI, no login, no database
+- **Context:** Single-container Cloud Run app serving anonymous families.
+- **Decision:** routes → services → engine; profiles stay in browser `localStorage`; bounded TTL-LRU cache (Redis optional); per-IP minute token bucket and daily AI quota.
+- **Consequences:** Zero PII liability and fixed memory; no cross-device sync; limiter is per instance (KD-1). Rejected: microservices, user accounts, unbounded dicts.
 
-## ADR-005 — Repo Digest Ceiling Raised to 500k Characters
-Raised `MAX_DIGEST_CHARS` ceiling in `scripts/repo_audit.py` from 400,000 to 500,000 to fit expanded pan-India, pet/plant, activity, triage, and what-if features.
-Rejected: stripping docstrings, comments, or schemas to stay under 400k.
+## ADR-003 — Frontend: Jinja2 + vanilla ES modules + CSS tokens
+- **Context:** Strict CSP and no build tooling.
+- **Decision:** Semantic HTML, ES modules, token-driven Light/Dark CSS, SVG infographics built with `createElementNS`.
+- **Consequences:** No inline scripts or CDNs; contrast is unit-tested (52 pairs, min 5.31:1). Rejected: React, Tailwind CDN.
 
-## ADR-006 — Repo Digest Ceiling Raised to 560k Characters & Deprecation Warning Hygiene
-Raised `MAX_DIGEST_CHARS` in `scripts/repo_audit.py` from 500,000 to 560,000 to ensure spotless docstrings, comprehensive accessible tooltips, and explanatory comments remain uncompressed. Configured `asyncio_default_fixture_loop_scope = "function"` and filtered StarletteDeprecationWarning from `starlette.testclient` to maintain 0 pytest warnings.
-Rejected: stripping docstrings or comments.
+## ADR-004 — Verified external API contracts
+- **Context:** SDK and API shapes must not be assumed. Verified 2026-11-18.
+- **Decision:** Google AQ `POST /v1/forecast:lookup` (`ind_cpcb`, coordinates rounded ~1 km); `google-genai==2.34.0` with `gemini-2.5-flash` → `gemini-2.5-flash-lite`; `google-adk==2.14.1` (`LlmAgent`, `Runner`, bounded `InMemorySessionService`).
+- **Consequences:** Pinned, tested clients. Rejected: unverified assumptions.
 
-## ADR-007 — Repo Digest Ceiling Raised to 700k Characters
-Raised `MAX_DIGEST_CHARS` in `scripts/repo_audit.py` from 560,000 to 700,000 to preserve full code readability, docstrings, and comprehensive tests without trimming any tests or docstrings.
-Rejected: trimming existing tests, schemas, or docstrings.
+## ADR-005 — Dose model: PM2.5 × breathing volume vs WHO 2021
+- **Context:** Personalised, age-aware budgets are needed.
+- **Decision:** PM2.5 µg/m³ drives dose and budget (WHO 24-h guideline 15 × EPA breathing volume); NAQI is display only; masks use Cherrie 2018 leakage factors.
+- **Consequences:** Explainable per-member numbers. Rejected: AQI index as dose, uniform budget.
 
-## ADR-008 — Repo Digest Ceiling Raised to 750k Characters
-Raised `MAX_DIGEST_CHARS` to 750,000 for the Apple Weather × Material 3 UI pass (light/dark tokens, 4 SVG infographics, WCAG contrast tests); rejected minifying CSS or trimming tests/docstrings.
+## ADR-006 — Open-Meteo is the primary, keyless air-data source
+- **Context:** Judges and families must get live data with zero keys.
+- **Decision:** Chain Open-Meteo Live AQ (PM2.5 + PM10) → Google AQ (only with key) → fixture, each behind a circuit breaker, cached 30 min per ~1 km geo-cell; data passed through unmodified and labelled with source and time.
+- **Consequences:** Never crashes offline; regional grid can differ from CPCB monitors. Rejected: Google AQ as sole source.
+
+## ADR-007 — Determinism for demos
+- **Context:** Demo and tests must be reproducible.
+- **Decision:** Explicit `now` and `data_source`; story mode uses a fixed clock and fixtures; `APP_ENV=test` forces fixtures.
+- **Consequences:** Identical numbers every run. Rejected: hardcoded numbers in code.
+
+## ADR-008 — Repo digest ceiling (400k → 750k chars)
+- **Context:** `scripts/repo_audit.py` caps the reviewable digest; features grew (pan-India, pets, 4 SVG infographics, WCAG tests).
+- **Decision:** Raised stepwise to 500k, 560k, 700k and now 750k (`MAX_DIGEST_CHARS`). Do not raise again; tighten docs instead.
+- **Consequences:** Docstrings, tests and CSS stay unminified. Rejected: stripping docstrings, comments, tests or minifying CSS.
+
+## ADR-009 — Desktop top-nav, innermost GZip, `/api/v1/meta` telemetry
+- **Context:** The left rail wasted desktop width; outer `BaseHTTPMiddleware` layers re-stream bodies so compression never saw a full body; operators needed health insight.
+- **Decision:** Desktop uses a top navigation bar (mobile keeps the bottom bar); `GZipMiddleware(minimum_size=500)` is registered first (innermost); `/api/v1/meta` adds a read-only `runtime` block (`cache_backend`, `provider_chain`, `circuit_breakers`, `grounding_gate`, `rate_limit_enabled`).
+- **Consequences:** Smaller payloads and a visible degradation state; telemetry never exposes keys or URLs. Rejected: gzip at the outer layer, a separate admin endpoint.

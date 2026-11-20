@@ -17,7 +17,7 @@
 | **Ask** | Anything else? | Send question |
 | **How it works** | Trust numbers? | View formulas & sources |
 
-Navigation: mobile bottom bar + Ask button; desktop left rail; top bar settings/help.
+Navigation: mobile bottom bar + Ask button; desktop top navigation bar with header Ask CTA; Light/Dark toggle.
 
 ## Screen Specifications
 - **Today screen:** Top bar (City, NAQI chip, demo badge); 4-card hero grid (Debit, WHO Budget, Net Balance, Cigarettes); Passbook member list with budget bars; cleanest window; shift banner.

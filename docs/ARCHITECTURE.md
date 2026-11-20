@@ -5,9 +5,9 @@
 Browser (Semantic HTML5 + ES modules, localStorage profile, SVG charts)
    │  HTTPS JSON
 FastAPI app (`app.py: create_app()`)
-   ├─ middleware: request-id → security headers/CSP → body limit → rate limit → JSON logs
+   ├─ middleware: request-id → security headers/CSP/Cache-Control → body limit → rate limit → GZip (innermost, ≥500 B) → JSON logs
    ├─ api/routes.py → services/* → engine/* (pure, zero I/O)
-   │                      └──→ integrations/air_quality.py (cache → live Google API → fixture)
+   │                      └──→ integrations/air_quality.py (cache → Open-Meteo live (primary, keyless) → Google AQ (fallback) → fixture)
    └─ /api/v1/chat → agent/guardrails.L1 → agent/agent.py (ADK, Gemini cascade, tools)
                        → agent/grounding.check → agent/guardrails.L2 → response
                        └── on timeout / error / ungrounded → agent/fallback.py (deterministic)
@@ -32,7 +32,7 @@ FastAPI app (`app.py: create_app()`)
 - Envelope: `{"data": {...}, "meta": {"request_id": "...", "data_mode": "live|fixture", ...}}`
 
 ## Air Quality & GenAI Pipeline
-1. Round coords (~1 km). Bounded TTL cache → live Google Maps AQ API → winter fixture fallback.
+1. Round coords (~1 km). Bounded TTL cache → Open-Meteo live → Google AQ (key only) → fixture, behind circuit breakers.
 2. L1 Guardrails (sanitize, injection, Indian PII masking) → ADK agent & Gemini cascade.
 3. Domain tools call services; numeric grounding gate checks reply numbers against tool output.
 4. L2 Guardrails (canary, medical emergency triage); deterministic fallback on timeout or error.
