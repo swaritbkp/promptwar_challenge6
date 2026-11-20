@@ -59,6 +59,24 @@ function appendFormattedText(container, text) {
   });
 }
 
+/** Turn status pill: guardrail refusals never claim a live Gemini proposal. */
+export function statusPill(data, hi) {
+  let cls = "saved";
+  let tag;
+  if (data.blocked_by_guardrail) {
+    cls = "warn";
+    tag = hi ? "🛡 सुरक्षा गार्डरेल · नीति लागू" : "🛡 Safety Guardrail · Policy Enforced";
+  } else {
+    if (data.degraded) cls = "warn";
+    const mode = data.degraded
+      ? (hi ? "नियम-आधारित फ़ॉलबैक" : "Deterministic Fallback")
+      : (hi ? "लाइव Gemini प्रस्ताव" : "Live Gemini Propose");
+    tag = (data.grounded ? (hi ? "✓ सत्यापित · " : "✓ Grounded · ") : "") + mode;
+  }
+  const pill = el("span", `pill-status ${cls} text-xs mt-05 block`, tag);
+  return pill;
+}
+
 /**
  * Initializes and binds the chat drawer, quick actions, and message flow.
  */
@@ -68,16 +86,19 @@ export function initChatDrawer({ getSessionId, setSessionId, getLanguage, getPro
   const log = $("ask-chat-msgs");
   const form = $("ask-form");
 
+  const trigger = $("fab-ask-btn");
   const openDrawer = () => {
     if (drawer) drawer.hidden = false;
+    trigger?.setAttribute("aria-expanded", "true");
     if (input) input.focus();
   };
   const closeDrawer = () => {
     if (drawer) drawer.hidden = true;
+    trigger?.setAttribute("aria-expanded", "false");
+    trigger?.focus();
   };
 
-  const fab = $("fab-ask-btn");
-  if (fab) fab.addEventListener("click", openDrawer);
+  if (trigger) trigger.addEventListener("click", () => (drawer && !drawer.hidden ? closeDrawer() : openDrawer()));
 
   const closeBtn = $("ask-close-btn");
   if (closeBtn) closeBtn.addEventListener("click", closeDrawer);
@@ -98,6 +119,19 @@ export function initChatDrawer({ getSessionId, setSessionId, getLanguage, getPro
     return d;
   };
 
+  // Sample prompts: full list on a fresh drawer, collapsed to a 1-line toggle after the first send.
+  const samples = $("ask-samples");
+  const samplesToggle = $("ask-samples-toggle");
+  const setSamplesOpen = (open) => {
+    if (samples) samples.hidden = !open;
+    samplesToggle?.setAttribute("aria-expanded", String(open));
+  };
+  samplesToggle?.addEventListener("click", () => setSamplesOpen(samples?.hidden ?? false));
+  const collapseSamples = () => {
+    if (samplesToggle) samplesToggle.hidden = false;
+    setSamplesOpen(false);
+  };
+
   // One-click sample prompts (text is translated via data-i18n, so the sent query follows the UI language)
   document.querySelectorAll(".ask-sample-btn").forEach((b) => {
     b.addEventListener("click", () => {
@@ -113,6 +147,7 @@ export function initChatDrawer({ getSessionId, setSessionId, getLanguage, getPro
 
     addMsg("user", msg);
     input.value = "";
+    collapseSamples();
     const aMsg = addMsg("assistant", "...");
 
     try {
@@ -127,10 +162,7 @@ export function initChatDrawer({ getSessionId, setSessionId, getLanguage, getPro
         if (data.session_id) setSessionId(data.session_id);
         renderCspMarkdown(aMsg, data.reply);
 
-        const modeLbl = data.degraded ? "Deterministic Fallback" : "Live Gemini Propose";
-        const pillCls = data.degraded ? "warn" : "saved";
-        const tag = (data.grounded ? "✓ Grounded · " : "") + modeLbl;
-        log.appendChild(el("span", `pill-status ${pillCls} text-xs mt-05 block`, tag));
+        log.appendChild(statusPill(data, getLanguage() === "hi" || data.language === "hi"));
 
         // Render follow-up chips if present
         if (Array.isArray(data.chips) && data.chips.length > 0) {

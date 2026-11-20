@@ -1,4 +1,4 @@
-"""HTTP middleware: request ids, security headers, body-size limit, rate limiting."""
+"""HTTP middleware: request ids, security + cache headers, body-size limit, rate limiting."""
 
 from __future__ import annotations
 
@@ -36,6 +36,19 @@ SECURITY_HEADERS: dict[str, str] = {
 }
 
 
+STATIC_CACHE_CONTROL = "public, max-age=3600"
+NO_STORE_PATHS = ("/api/v1/chat",)
+
+
+def cache_control_for(path: str) -> str | None:
+    """Cache policy: static assets cache for 1 h; chat turns are never stored."""
+    if path.startswith("/static/"):
+        return STATIC_CACHE_CONTROL
+    if path.startswith(NO_STORE_PATHS):
+        return "no-store"
+    return None
+
+
 class RequestContextMiddleware(BaseHTTPMiddleware):
     """Assign a request id, expose it as X-Request-ID and log latency."""
 
@@ -60,11 +73,14 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Attach CSP and hardening headers; HSTS only when served over HTTPS."""
+    """Attach CSP, hardening and Cache-Control headers; HSTS only when served over HTTPS."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
         response.headers.update(SECURITY_HEADERS)
+        cache_control = cache_control_for(request.url.path)
+        if cache_control:
+            response.headers["Cache-Control"] = cache_control
         if request.headers.get("x-forwarded-proto", request.url.scheme) == "https":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response

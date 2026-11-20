@@ -222,8 +222,8 @@
     </div>
     <div class="plan-toggles">
       <div class="segmented" role="tablist" aria-label="Planning Horizon">
-        <button id="btn-plan-today" class="seg-btn" type="button" role="tab" aria-selected="true" data-i18n="plan_today_tab">Today Only</button>
-        <button id="btn-plan-multiday" class="seg-btn" type="button" role="tab" aria-selected="false" data-i18n="plan_multiday_tab">Best Slot in Next 4 Days</button>
+        <button id="btn-plan-today" class="seg-btn" type="button" role="tab" aria-selected="true" aria-controls="plan-today-view" data-i18n="plan_today_tab">Today Only</button>
+        <button id="btn-plan-multiday" class="seg-btn" type="button" role="tab" aria-selected="false" aria-controls="multiday-slots-container" data-i18n="plan_multiday_tab">Best Slot in Next 4 Days</button>
       </div>
       <div class="segmented-wrap">
         <span class="micro-label" id="mask-label" data-i18n="mask_title">😷 Mask while outdoors</span>
@@ -235,6 +235,15 @@
       </div>
     </div>
 
+    <div id="multiday-slots-container" class="surface-box multiday-panel" hidden role="tabpanel" aria-labelledby="btn-plan-multiday">
+      <div class="flex justify-between items-center flex-wrap gap-05 mb-05">
+        <h3 class="micro-label text-accent" data-i18n="multiday_slots_title">Top Cleanest Routine Windows (Next 4 Days)</h3>
+        <button class="btn btn-sm btn-primary" id="btn-export-ics-multiday" type="button" data-i18n="btn_calendar_ics">📅 Save to Calendar (.ics)</button>
+      </div>
+      <div id="multiday-slots-list" class="flex-col gap-05"></div>
+    </div>
+
+    <div id="plan-today-view" role="tabpanel" aria-labelledby="btn-plan-today">
     <div class="surface-box chart-box" id="plan-chart-container" role="region" aria-label="24-Hour PM2.5 Hourly Chart">
       <div class="flex justify-between items-center flex-wrap gap-05 mb-05 text-xs">
         <span class="font-semibold" data-i18n="plan_band_title">24-Hour Hourly PM2.5 &amp; NAQI Severity</span>
@@ -245,9 +254,6 @@
 
     <div id="mask-result" class="surface-box text-left mt-05" role="status" aria-live="polite"></div>
     <div id="mask-meter-wrap" class="viz-wrap mt-05"></div>
-
-    <h3 class="micro-label mt-1 mb-05" data-i18n="dayparts_title">Morning · Afternoon · Evening</h3>
-    <div class="daypart-grid mb-05" id="day-parts-plan" role="region" aria-label="Morning, afternoon and evening air quality"></div>
 
     <div class="micro-label mt-1" data-i18n="plan_band_title" id="plan-band-title">24-Hour Air Quality Band</div>
     <div id="hours-strip" class="hours-strip" role="img" aria-label="24 hour air quality chart"></div>
@@ -267,13 +273,7 @@
           </div>
         </div>
       </div>
-      <div id="multiday-slots-container" hidden class="mt-05">
-        <div class="flex justify-between items-center flex-wrap gap-05 mb-05">
-          <h4 class="micro-label text-accent" data-i18n="multiday_slots_title">Top Cleanest Routine Windows (Next 4 Days)</h4>
-          <button class="btn btn-sm btn-tonal" id="btn-export-ics-multiday" type="button" data-i18n="btn_calendar_ics">📅 Save to Calendar (.ics)</button>
-        </div>
-        <div id="multiday-slots-list" class="flex-col gap-05"></div>
-      </div>
+    </div>
     </div>
   </div>
 </section>
@@ -509,7 +509,7 @@
       <input type="hidden" id="member-edit-id" value="">
       <div>
         <label for="member-name-input" class="micro-label">Name</label>
-        <input type="text" id="member-name-input" class="field w-full mt-05" placeholder="e.g. Dadi, Aarav" required>
+        <input type="text" id="member-name-input" class="field w-full mt-05" placeholder="e.g. Dadi, Aarav" maxlength="40" autocomplete="off" required>
       </div>
       <div>
         <label for="member-age-select" class="micro-label">Age Band</label>

@@ -213,3 +213,72 @@ export function initLocationModal(app) {
     choose($("custom-city-name")?.value.trim() || "Custom Area", lat, lng);
   });
 }
+
+const FOCUSABLE = 'button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** "+ Member" → #modal-member form (name, age band, sensitivities) → household + live passbook refresh. */
+export function initMemberModal(app) {
+  const modal = $("modal-member");
+  const form = $("member-form");
+  const openBtn = $("btn-add-member");
+  const nameInput = $("member-name-input");
+  if (!modal || !form || !openBtn || !nameInput) return;
+  const sensBoxes = () => [...form.querySelectorAll('input[type="checkbox"]')];
+
+  openBtn.setAttribute("aria-haspopup", "dialog");
+  openBtn.setAttribute("aria-controls", "modal-member");
+  const setOpen = (open) => {
+    modal.hidden = !open;
+    if (open) {
+      form.reset();
+      nameInput.focus();
+    } else {
+      openBtn.focus();
+    }
+  };
+  openBtn.addEventListener("click", () => setOpen(true));
+  $("modal-member-close")?.addEventListener("click", () => setOpen(false));
+  $("btn-cancel-member")?.addEventListener("click", () => setOpen(false));
+  modal.addEventListener("click", (e) => { if (e.target === modal) setOpen(false); });
+  modal.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const nodes = [...modal.querySelectorAll(FOCUSABLE)];
+    if (!nodes.length) return;
+    const first = nodes[0];
+    const last = nodes[nodes.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = nameInput.value.trim().slice(0, 40);
+    if (!name) {
+      nameInput.reportValidity();
+      return;
+    }
+    const member = {
+      id: `m_${Date.now().toString(36)}`,
+      name,
+      age_band: $("member-age-select")?.value || "31_41",
+      sensitivities: sensBoxes().filter((c) => c.checked).map((c) => c.value),
+    };
+    app.familyProfile.members.push(member);
+    app.activePersona = null;
+    app.renderPersonas?.();
+    app.saveProfile();
+    setOpen(false);
+    setText("a11y-announcer", app.currentLang === "hi" ? `${name} जोड़ा गया` : `${name} added to the passbook`);
+    await app.recalculatePassbook();
+  });
+}

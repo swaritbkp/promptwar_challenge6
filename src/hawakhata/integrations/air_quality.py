@@ -307,6 +307,10 @@ class AirQualityClient:
         self._breaker = breaker or CircuitBreaker()
         self._om_breaker = open_meteo_breaker or CircuitBreaker()
 
+    def breaker_states(self) -> dict[str, str]:
+        """Current provider circuit-breaker states (read-only operational telemetry)."""
+        return {"open_meteo": self._om_breaker.state.value, "google_aq": self._breaker.state.value}
+
     async def _save_cache(self, key: str, series: HourlyAirSeries) -> None:
         if self._cache is None:
             return

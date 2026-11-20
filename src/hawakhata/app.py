@@ -14,9 +14,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from hawakhata import version
+from hawakhata.api.dependencies import get_aq_client
 from hawakhata.api.routes import api_router
 from hawakhata.config import Settings, get_settings
-from hawakhata.core.cache import build_cache
+from hawakhata.core.cache import RedisCache, build_cache
 from hawakhata.core.errors import register_exception_handlers
 from hawakhata.core.logging import configure_logging
 from hawakhata.core.middleware import (
@@ -52,12 +53,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = cfg
     app.state.cache = build_cache(cfg)
 
+    # GZip innermost: it must see the whole body for minimum_size to apply (outer
+    # BaseHTTPMiddleware layers re-stream responses in chunks).
+    app.add_middleware(GZipMiddleware, minimum_size=500)
     app.add_middleware(
         RateLimitMiddleware,
         limiter=TokenBucketLimiter(cfg.rate_limit_per_min, cfg.rate_limit_max_clients),
     )
     app.add_middleware(BodySizeLimitMiddleware, max_body_bytes=cfg.max_body_bytes)
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestContextMiddleware)
     register_exception_handlers(app)
@@ -93,7 +96,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/api/v1/meta", tags=["system"])
-    async def meta() -> dict[str, object]:
+    async def meta(request: Request) -> dict[str, object]:
+        runtime = {  # read-only operational telemetry; never includes keys or URLs
+            "cache_backend": "redis" if isinstance(app.state.cache, RedisCache) else "memory",
+            "provider_chain": ["open_meteo_live", "google_aq_live", "fixture"],
+            "circuit_breakers": get_aq_client(request).breaker_states(),
+            "grounding_gate": True,
+            "rate_limit_enabled": True,
+        }
         return {
             "data": {
                 "app_version": version.APP_VERSION,
@@ -108,6 +118,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     {"id": c.id, "name": c.name, "lat": c.lat, "lng": c.lng, "state": c.state}
                     for c in get_supported_cities()
                 ],
+                "runtime": runtime,
             }
         }
 

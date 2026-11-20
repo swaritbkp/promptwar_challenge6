@@ -35,7 +35,7 @@ from hawakhata.agent.tools import (
     reset_current_context,
     set_current_context,
 )
-from hawakhata.api.schemas import FamilyProfileInput, LocationInput
+from hawakhata.api.schemas import FamilyProfileInput, GuardrailKind, LocationInput
 from hawakhata.core.logging import get_logger
 from hawakhata.integrations.air_quality import AirQualityClient
 from hawakhata.integrations.gemini import GeminiCascadeClient
@@ -65,6 +65,7 @@ class AgentTurnResult:
     follow_up: FollowUpQuestion | None
     grounded: bool
     fallback_used: bool
+    guardrail: GuardrailKind | None = None
 
 
 def unwrap_agent_reply(text: str) -> str:
@@ -243,7 +244,9 @@ class HawaKhataAgent:
                 if lang == "hi"
                 else "Request blocked: I cannot fulfill instructions overriding safety rules."
             )
-            return AgentTurnResult(refusal, lang, [], [], [], None, True, False)
+            return AgentTurnResult(
+                refusal, lang, [], [], [], None, True, False, guardrail="prompt_injection"
+            )
 
         safe_input = mask_pii(cleaned).masked_text
 
@@ -256,7 +259,9 @@ class HawaKhataAgent:
                 else "HawaKhata provides air quality guidance only, not medical advice or prescriptions. "
                 "For inhaler doses, medication regimens, or any health treatment, please consult a certified medical doctor."
             )
-            return AgentTurnResult(disclaimer, lang, [], [], [], None, True, False)
+            return AgentTurnResult(
+                disclaimer, lang, [], [], [], None, True, False, guardrail="medical_dosing"
+            )
 
         health = detect_health_red_flags(safe_input)
 

@@ -11,4 +11,13 @@
 <section class="mb-1"><h2 class="card-title mb-05">4. Boundary-Layer Dispersion Physics</h2><p class="stat-lbl mb-05 text-sm">Open-Meteo 96-h planetary boundary layer height (BLH) and wind velocity determine winter dispersion:</p><div class="surface-box mb-1"><ul class="flex-col gap-05 text-sm"><li><strong>Inversion Trap (BLH &le; 350m):</strong> Shallow nocturnal inversion traps emissions at street level.</li><li><strong>Afternoon Mixing Lift (BLH &ge; 800m, wind &ge; 8 km/h):</strong> Solar convection expands vertical dilution volume.</li><li><strong>Wind Clearing (&ge; 18 km/h) &amp; Rain Washout (&ge; 1mm):</strong> Advection flushing and atmospheric wet scavenging.</li></ul></div></section>
 <section class="mb-1"><h2 class="card-title mb-05">5. Privacy & Data Architecture</h2><p class="stat-lbl text-sm">Zero personal health records on servers. Profiles stay in local storage; coordinates are rounded to ~1 km.</p></section>
 </article>
+<section class="card governance-card" aria-labelledby="governance-heading">
+<div class="card-header"><h2 id="governance-heading" class="card-title">Governance, Scalability &amp; Zero-Hallucination Design</h2><span class="pill-status saved">4 pillars</span></div>
+<div class="pillar-grid">
+<div class="pillar"><span class="pillar-num" aria-hidden="true">1</span><h3 class="pillar-title">"Gemini Proposes, Code Decides"</h3><p class="stat-lbl text-sm">A deterministic numeric grounding gate rejects any figure that no engine tool produced, and EN/HI guardrails refuse medical-dosing and prompt-injection requests before the model is called.</p></div>
+<div class="pillar"><span class="pillar-num" aria-hidden="true">2</span><h3 class="pillar-title">Geo-cell caching &amp; rate limiting</h3><p class="stat-lbl text-sm">Forecasts are cached for 30 minutes per ~1 km rounded geo-cell (in-memory, or Redis when configured), and a per-client token-bucket limiter protects every <code>/api/</code> route.</p></div>
+<div class="pillar"><span class="pillar-num" aria-hidden="true">3</span><h3 class="pillar-title">Circuit-broken 3-tier fallback</h3><p class="stat-lbl text-sm">Open-Meteo &rarr; Google Air Quality &rarr; validated fixture. Each live provider sits behind a circuit breaker, so outages degrade gracefully with zero crashes.</p></div>
+<div class="pillar"><span class="pillar-num" aria-hidden="true">4</span><h3 class="pillar-title">Strict CSP &amp; lean delivery</h3><p class="stat-lbl text-sm">A strict <code>default-src 'self'</code> Content-Security-Policy, GZip-compressed responses, cached static assets, and zero external trackers or CDNs.</p></div>
+</div>
+</section>
 {% endblock %}

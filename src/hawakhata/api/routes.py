@@ -481,6 +481,8 @@ async def post_chat(
         chips=result.follow_up.chips if result.follow_up else [],
         grounded=result.grounded,
         degraded=result.fallback_used,
+        blocked_by_guardrail=result.guardrail is not None,
+        guardrail=result.guardrail,
     )
     return Envelope(
         data=data,

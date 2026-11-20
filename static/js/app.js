@@ -19,7 +19,7 @@ import {
   VoiceBrief,
   composeVoiceScript,
 } from "./modules/weather.js";
-import { updateHero, renderMembers, updatePlanMemberOptions, initPersonas, initLocationModal } from "./modules/passbook.js";
+import { updateHero, renderMembers, updatePlanMemberOptions, initPersonas, initLocationModal, initMemberModal } from "./modules/passbook.js";
 import { bindPlan, updateMaskResult } from "./modules/plan.js";
 import { bindIndoor, bindPets } from "./modules/indoor.js";
 import { StoryController } from "./story.js";
@@ -52,7 +52,7 @@ class HawaKhataApp {
     this.currentPm10 = null;
     this.currentCategory = null;
     this.currentCategoryLabel = "";
-    this.dataMode = "fixture";
+    this.dataMode = null; // null = "Syncing…" until the first live response resolves
     this.cleanestWindow = "—";
     this.currentHourlyPm25 = [];
     this.todaySavings = 0;
@@ -109,6 +109,8 @@ class HawaKhataApp {
     initPersonas(this);
     await this.refreshData();
 
+    const hashTab = window.location.hash.slice(1);
+    if (TABS.includes(hashTab)) this.switchTab(hashTab);
     const storyId = new URLSearchParams(window.location.search).get("story");
     if (storyId) this.story.start(storyId);
   }
@@ -135,9 +137,24 @@ class HawaKhataApp {
   }
 
   _bindNav() {
+    const hasTabs = Boolean($("tab-today"));
     $$(".nav-item[data-tab]").forEach((btn) => {
-      btn.addEventListener("click", () => this.switchTab(btn.getAttribute("data-tab")));
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-tab");
+        if (hasTabs) this.switchTab(id);
+        else window.location.assign(`/#${id}`); // secondary pages (How it works) route back to the tab
+      });
+      if (!hasTabs) {
+        btn.classList.remove("active");
+        btn.removeAttribute("aria-current");
+      }
     });
+    if (!hasTabs) {
+      $$(".nav-item-link").forEach((link) => {
+        link.classList.add("active");
+        link.setAttribute("aria-current", "page");
+      });
+    }
     $("lang-toggle-btn")?.addEventListener("click", () => this.setLanguage(this.currentLang === "en" ? "hi" : "en"));
     $("refresh-btn")?.addEventListener("click", () => this.refreshData());
   }
@@ -148,12 +165,7 @@ class HawaKhataApp {
     $("modal-why-close")?.addEventListener("click", () => { if (why) why.hidden = true; });
     why?.addEventListener("keydown", (e) => { if (e.key === "Escape") why.hidden = true; });
 
-    $("btn-add-member")?.addEventListener("click", async () => {
-      const name = $("new-member-name")?.value.trim() || `Member ${this.familyProfile.members.length + 1}`;
-      this.familyProfile.members.push({ id: `m_${Date.now()}`, name, age_band: "31_41", sensitivities: [] });
-      this.saveProfile();
-      await this.recalculatePassbook();
-    });
+    initMemberModal(this);
 
     const copyBtn = $("btn-copy-digest");
     copyBtn?.addEventListener("click", async () => {
@@ -232,7 +244,8 @@ class HawaKhataApp {
   }
 
   async refreshData() {
-    setText("refresh-time-label", new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    this.dataMode = null;
+    this.updateDataModeBadge();
     if (!this.cities.length) {
       try {
         const meta = await api.fetchMeta();
@@ -241,16 +254,29 @@ class HawaKhataApp {
       } catch {}
     }
     await Promise.all([this.fetchFourDayForecast(), this.recalculatePassbook()]);
+    if (this.dataMode === null) {
+      this.dataMode = "fixture"; // every request failed: honestly report offline
+      this.updateDataModeBadge();
+    }
+    setText("refresh-time-label", new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     this.refreshIndoor?.();
     updateMaskResult(this);
   }
 
+  /** Header refresh button status dot: neutral "Syncing…" until the first response, then Live / Offline. */
   updateDataModeBadge() {
     const badge = $("data-mode-badge");
-    if (!badge) return;
-    const live = this.dataMode !== "fixture";
-    badge.textContent = live ? t(this.i18nStrings, "live_aq", "Live AQ") : t(this.i18nStrings, "demo_mode", "Offline");
-    badge.className = `pill-status text-xs ${live ? "saved" : "warn"}`;
+    const btn = $("refresh-btn");
+    const state = this.dataMode === null ? "syncing" : this.dataMode === "fixture" ? "offline" : "live";
+    const label = state === "syncing"
+      ? t(this.i18nStrings, "syncing", "Syncing…")
+      : state === "live" ? t(this.i18nStrings, "live_aq", "Live AQ") : t(this.i18nStrings, "demo_mode", "Offline");
+    if (badge) badge.className = `status-dot is-${state}`;
+    if (btn) {
+      const full = `${t(this.i18nStrings, "refresh_data", "Refresh data")} · ${label}`;
+      btn.setAttribute("aria-label", full);
+      btn.setAttribute("title", full);
+    }
   }
 
   updateLiveAQ(d) {
@@ -318,7 +344,6 @@ class HawaKhataApp {
     this.updateLiveAQ(d);
     renderFourDayCards(d.days, ctx);
     renderDayParts(d.day_parts, ctx, "day-parts-today");
-    renderDayParts(d.day_parts, ctx, "day-parts-plan");
 
     setText("tomorrow-watch-text", d.tomorrow_watch_headline || "");
     const tw = $("tomorrow-watch-badge");

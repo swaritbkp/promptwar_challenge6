@@ -237,6 +237,9 @@ class ChatRequest(BaseComputeRequest):
     language: str = Field(default="en", max_length=5)
 
 
+GuardrailKind = Literal["medical_dosing", "prompt_injection"]
+
+
 class ChatResponse(StrictBaseModel):
     session_id: str = Field(max_length=64)
     reply: str = Field(max_length=5000)
@@ -247,6 +250,8 @@ class ChatResponse(StrictBaseModel):
     chips: list[str] = Field(default_factory=list, max_length=10)
     grounded: bool = True
     degraded: bool = False
+    blocked_by_guardrail: bool = False
+    guardrail: GuardrailKind | None = None
 
 
 class MetaResponse(StrictBaseModel):

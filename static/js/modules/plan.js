@@ -63,19 +63,30 @@ export async function updateMaskResult(app) {
 }
 
 export function bindPlan(app) {
-  // Horizon tabs: Today vs best slot in next 4 days
+  // Horizon tabs: "Today Only" shows the 24h chart view; "Best Slot in Next 4 Days" swaps it for
+  // the 4-day slot list (rendered directly under the toggles, so it sits above the fold).
   const tabToday = $("btn-plan-today");
   const tabMulti = $("btn-plan-multiday");
   const setHorizon = (multi) => {
     tabToday?.setAttribute("aria-selected", String(!multi));
     tabMulti?.setAttribute("aria-selected", String(multi));
-    const single = $("plan-shifts-container");
+    tabToday?.setAttribute("tabindex", multi ? "-1" : "0");
+    tabMulti?.setAttribute("tabindex", multi ? "0" : "-1");
+    const single = $("plan-today-view");
     const many = $("multiday-slots-container");
     if (single) single.hidden = multi;
     if (many) many.hidden = !multi;
   };
   tabToday?.addEventListener("click", () => setHorizon(false));
   tabMulti?.addEventListener("click", () => setHorizon(true));
+  [tabToday, tabMulti].forEach((tab) => tab?.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const multi = tab === tabToday;
+    setHorizon(multi);
+    (multi ? tabMulti : tabToday)?.focus();
+  }));
+  setHorizon(false);
 
   // Mask selector (aria-pressed toggle group)
   $$(".mask-btn").forEach((b) => {

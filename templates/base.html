@@ -15,42 +15,48 @@
 <a href="#main-content" class="skip-link">Skip to main content</a>
 <div id="a11y-announcer" class="sr-only" aria-live="polite" role="status"></div>
 <header class="top-bar">
-  <a href="/" class="brand" aria-label="HawaKhata Home">
-    <span class="brand-mark" aria-hidden="true"></span>
-    <span class="brand-name" data-i18n="brand_name">HawaKhata</span>
-    <span class="brand-sub" data-i18n="brand_sub">हवा खाता</span>
-  </a>
-  <div class="top-actions">
-    <button id="refresh-btn" class="chip chip-live" type="button" aria-label="Refresh Data">
-      <span id="data-mode-badge" class="pill-status saved text-xs">Live</span>
-      <span id="refresh-time-label" class="chip-time">Just now</span>
-    </button>
-    <button id="city-btn" class="chip chip-city" type="button" aria-haspopup="dialog" aria-expanded="false">
-      <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-today"/></svg>
-      <span id="city-name-label" class="chip-city-name">Locating…</span>
-      <span class="chip-caret" aria-hidden="true">▾</span>
-    </button>
-    <div id="top-aqi-chip" class="chip-aqi" role="status" aria-label="Air Quality: loading">
-      <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-naqi-very-poor"/></svg>
-      <span id="top-aqi-val" class="chip-aqi-val">AQI —</span>
-      <span id="top-aqi-cat" class="chip-aqi-cat"></span>
+  <div class="top-row">
+    <a href="/" class="brand" aria-label="HawaKhata Home">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-name" data-i18n="brand_name">HawaKhata</span>
+      <span class="brand-sub" data-i18n="brand_sub">हवा खाता</span>
+    </a>
+    <div class="top-actions">
+      <button id="city-btn" class="chip chip-city" type="button" aria-haspopup="dialog" aria-expanded="false">
+        <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-today"/></svg>
+        <span id="city-name-label" class="chip-city-name">Locating…</span>
+        <span class="chip-caret" aria-hidden="true">▾</span>
+      </button>
+      <div id="top-aqi-chip" class="chip-aqi" role="status" aria-label="Air Quality: loading">
+        <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-naqi-very-poor"/></svg>
+        <span id="top-aqi-val" class="chip-aqi-val">AQI —</span>
+        <span id="top-aqi-cat" class="chip-aqi-cat"></span>
+      </div>
+      <button id="lang-toggle-btn" class="chip chip-seg" data-lang="en" type="button" aria-label="Switch Language to Hindi">
+        <span class="seg-opt seg-en">EN</span><span id="lang-label" class="seg-opt seg-hi">हिन्दी</span>
+      </button>
+      <button id="refresh-btn" class="chip chip-icon chip-refresh" type="button" aria-label="Refresh data · Syncing…" title="Refresh data · Syncing…">
+        <span aria-hidden="true">⟳</span>
+        <span id="data-mode-badge" class="status-dot is-syncing" aria-hidden="true"></span>
+        <span id="refresh-time-label" class="sr-only"></span>
+      </button>
+      <button id="btn-theme-toggle" class="chip chip-icon" type="button" aria-pressed="false" aria-label="Switch to dark theme">
+        <span id="theme-icon" aria-hidden="true">🌙</span>
+      </button>
+      <button id="fab-ask-btn" class="btn-ask" type="button" aria-label="Open Ask HawaKhata chat" aria-controls="ask-drawer" aria-expanded="false">
+        <span class="btn-ask-spark" aria-hidden="true">✨</span><span class="btn-ask-label" data-i18n="btn_ask">Ask HawaKhata</span>
+      </button>
     </div>
-    <button id="lang-toggle-btn" class="chip chip-seg" data-lang="en" type="button" aria-label="Switch Language to Hindi">
-      <span class="seg-opt seg-en">EN</span><span id="lang-label" class="seg-opt seg-hi">हिन्दी</span>
-    </button>
-    <button id="btn-theme-toggle" class="chip chip-icon" type="button" aria-pressed="false" aria-label="Switch to dark theme">
-      <span id="theme-icon" aria-hidden="true">🌙</span>
-    </button>
   </div>
+  <nav class="nav-top" aria-label="Primary navigation">
+    <button class="nav-item active" data-tab="today" aria-current="page"><svg class="icon icon-sm" aria-hidden="true"><use href="#icon-today"/></svg><span data-i18n="nav_today">Today</span></button>
+    <button class="nav-item" data-tab="plan"><svg class="icon icon-sm" aria-hidden="true"><use href="#icon-plan"/></svg><span data-i18n="nav_plan">Plan</span></button>
+    <button class="nav-item" data-tab="indoor"><svg class="icon icon-sm" aria-hidden="true"><use href="#icon-home"/></svg><span data-i18n="nav_indoor">Home Air</span></button>
+    <button class="nav-item" data-tab="swaps"><svg class="icon icon-sm" aria-hidden="true"><use href="#icon-swaps"/></svg><span data-i18n="nav_swaps">Swaps</span></button>
+    <a href="/how-it-works" class="nav-item nav-item-link"><svg class="icon icon-sm" aria-hidden="true"><use href="#icon-info"/></svg><span data-i18n="nav_how">How it works</span></a>
+  </nav>
 </header>
 <div class="app-container">
-  <nav class="nav-rail" aria-label="Desktop navigation">
-    <button class="nav-item active" data-tab="today" aria-current="page"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-today"/></svg></span><span data-i18n="nav_today">Today</span></button>
-    <button class="nav-item" data-tab="plan"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-plan"/></svg></span><span data-i18n="nav_plan">Plan</span></button>
-    <button class="nav-item" data-tab="indoor"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-home"/></svg></span><span data-i18n="nav_indoor">Home Air</span></button>
-    <button class="nav-item" data-tab="swaps"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-swaps"/></svg></span><span data-i18n="nav_swaps">Swaps</span></button>
-    <a href="/how-it-works" class="nav-item nav-item-bottom"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-info"/></svg></span><span data-i18n="nav_how">How it works</span></a>
-  </nav>
   <main id="main-content" class="main-content" tabindex="-1">
     <div id="fixture-notice" class="story-banner" hidden role="status"><span><strong>Demo Mode:</strong> Using validated winter smog fixtures.</span></div>
     {% block content %}{% endblock %}
@@ -62,16 +68,14 @@
   <button class="nav-item" data-tab="indoor"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-home"/></svg></span><span data-i18n="nav_indoor">Home Air</span></button>
   <button class="nav-item" data-tab="swaps"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-swaps"/></svg></span><span data-i18n="nav_swaps">Swaps</span></button>
 </nav>
-<button id="fab-ask-btn" class="fab-ask" type="button" aria-label="Open Ask HawaKhata chat">
-  <svg class="icon icon-lg" aria-hidden="true"><use href="#icon-ask"/></svg><span class="fab-label" data-i18n="btn_ask">Ask HawaKhata</span>
-</button>
 <aside id="ask-drawer" class="ask-drawer" aria-label="Ask HawaKhata chat" hidden>
   <div class="ask-header">
     <div class="ask-title-wrap"><span class="ask-avatar" aria-hidden="true">हवा</span><h3 class="card-title" data-i18n="btn_ask">Ask HawaKhata</h3></div>
     <button id="ask-close-btn" class="btn btn-sm btn-icon" type="button" aria-label="Close Chat"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
   </div>
   <div id="ask-chat-msgs" class="ask-messages" role="log" aria-live="polite"><div class="msg assistant">Namaste! Ask about your air budget, clean windows, or hacks.</div></div>
-  <div class="ask-samples" role="group" aria-label="Sample questions">
+  <button id="ask-samples-toggle" class="ask-samples-toggle" type="button" aria-expanded="true" aria-controls="ask-samples" hidden>💡 <span data-i18n="ask_samples_toggle">Sample prompts</span> <span class="chip-caret" aria-hidden="true">▾</span></button>
+  <div id="ask-samples" class="ask-samples" role="group" aria-label="Sample questions">
     <span class="micro-label" data-i18n="ask_samples_label">Try asking:</span>
     <button type="button" class="chip-filter ask-sample-btn" data-i18n="ask_sample_1">Is it safe for Dadi to walk at 7 AM or 4 PM today?</button>
     <button type="button" class="chip-filter ask-sample-btn" data-i18n="ask_sample_2">Which day in the next 4 days is best for market shopping?</button>

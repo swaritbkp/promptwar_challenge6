@@ -18,6 +18,8 @@ TEXT_PAIRS = [
     ("muted", "surface"),
     ("muted", "well"),
     ("accent", "surface"),
+    ("accent", "well"),  # 4-day best-slot panel title, chat sample-prompt toggle hover
+    ("ink", "surface-2"),  # top-nav hover, <code> chips on /how-it-works
     ("on-accent", "accent"),
     ("accent", "accent-bg"),
     ("debit", "debit-bg"),
