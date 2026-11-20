@@ -23,7 +23,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8080 \
     APP_ENV=prod \
     PATH="/install/bin:$PATH" \
-    PYTHONPATH="/app/src"
+    PYTHONPATH="/app/src:/install/lib/python3.13/site-packages"
 
 WORKDIR /app
 

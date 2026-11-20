@@ -11,8 +11,8 @@ from hawakhata.app import create_app
 from hawakhata.config import Settings
 from hawakhata.core.middleware import cache_control_for
 
-MARKER_MAPS = "AIzaFAKEMAPSMARKER000000000000000000000"
-MARKER_GEMINI = "AIzaFAKEGEMINIMARKER0000000000000000000"
+MARKER_MAPS = "TEST-FAKE-MAPS-KEY-NOT-REAL"
+MARKER_GEMINI = "TEST-FAKE-GEMINI-KEY-NOT-REAL"
 
 
 @pytest.fixture

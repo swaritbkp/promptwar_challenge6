@@ -4,7 +4,7 @@
 
 **313 tests · 95.05% coverage · 16/16 evals · WCAG AA ≥ 5.31:1 · Strict CSP · 0 vulnerabilities**
 
-**Live:** `[Live Cloud Run URL — pending deployment]`
+**Live:** https://hawakhata-43678842163.asia-south1.run.app
 
 Each family member gets a daily *air budget* (WHO 2021 PM2.5 24-h guideline × breathing volume). Every day shows **Debit** (PM2.5 inhaled), **Savings** (exposure avoided by choices) and **Balance**.
 
