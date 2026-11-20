@@ -90,8 +90,8 @@ def sample_aq_client() -> AirQualityClient:
 def _make_gemini_settings(has_key: bool = True) -> Settings:
     return Settings(
         gemini_api_key=SecretStr("fake-key") if has_key else None,
-        gemini_model_primary="gemini-2.5-flash",
-        gemini_model_fallback="gemini-2.5-flash-lite",
+        gemini_model_primary="gemini-3.5-flash",
+        gemini_model_fallback="gemini-3.5-flash-lite",
         ai_limit_per_min=5,
         ai_limit_per_day=10,
         llm_timeout_s=0.5,
@@ -169,12 +169,12 @@ async def test_gemini_cascade_success_and_fallback() -> None:
     )
     client._client = mock_sdk
     resp = await client.generate_content("What is the air?", client_id="test_client_1")
-    assert isinstance(resp, GeminiResponse) and resp.model_used == "gemini-2.5-flash"
+    assert isinstance(resp, GeminiResponse) and resp.model_used == "gemini-3.5-flash"
     mock_sdk.aio.models.generate_content = AsyncMock(
         side_effect=[Exception("Quota 429"), MagicMock(text="Fallback.")]
     )
     resp2 = await client.generate_content("Second try", client_id="test_client_1")
-    assert resp2.model_used == "gemini-2.5-flash-lite"
+    assert resp2.model_used == "gemini-3.5-flash-lite"
     mock_sdk.aio.models.generate_content = AsyncMock(side_effect=Exception("Total failure"))
     with pytest.raises(GeminiUnavailableError):
         await client.generate_content("Third try", client_id="test_client_1")

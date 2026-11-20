@@ -38,8 +38,8 @@ class GeminiCascadeClient:
 
     def __init__(self, settings: Settings, genai_client: object | None = None) -> None:
         self._settings = settings
-        self.primary_model = settings.gemini_model_primary or "gemini-2.5-flash"
-        self.fallback_model = settings.gemini_model_fallback or "gemini-2.5-flash-lite"
+        self.primary_model = settings.gemini_model_primary or "gemini-3.5-flash"
+        self.fallback_model = settings.gemini_model_fallback or "gemini-3.5-flash-lite"
         self.timeout_s = settings.llm_timeout_s
         self.min_limiter = TokenBucketLimiter(
             per_minute=settings.ai_limit_per_min, max_clients=settings.rate_limit_max_clients

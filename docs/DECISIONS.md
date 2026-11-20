@@ -19,7 +19,7 @@ Format: **Context → Decision → Consequences** (with the rejected alternative
 
 ## ADR-004 — Verified external API contracts
 - **Context:** SDK and API shapes must not be assumed. Verified 2026-11-18.
-- **Decision:** Google AQ `POST /v1/forecast:lookup` (`ind_cpcb`, coordinates rounded ~1 km); `google-genai==2.34.0` with `gemini-2.5-flash` → `gemini-2.5-flash-lite`; `google-adk==2.14.1` (`LlmAgent`, `Runner`, bounded `InMemorySessionService`).
+- **Decision:** Google AQ `POST /v1/forecast:lookup` (`ind_cpcb`, coordinates rounded ~1 km); `google-genai==2.34.0` with `gemini-3.5-flash` → `gemini-3.5-flash-lite`; `google-adk==2.14.1` (`LlmAgent`, `Runner`, bounded `InMemorySessionService`).
 - **Consequences:** Pinned, tested clients. Rejected: unverified assumptions.
 
 ## ADR-005 — Dose model: PM2.5 × breathing volume vs WHO 2021

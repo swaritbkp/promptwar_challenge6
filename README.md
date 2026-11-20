@@ -43,7 +43,7 @@ flowchart TD
 | "explaining impact" | Daily Smog Brief & Metric Provenance | `services/brief_service.py: generate_morning_brief()`, `services/passbook_service.py: compute_family_passbook()` |
 
 **Pipeline:** app factory `app.py: create_app()` → middleware `core/middleware.py: SecurityHeadersMiddleware()` → services (`services/brief_service.py: generate_morning_brief()`) → pure engine (`engine/dose.py: compute_member_dose()`).
-Data chain via `integrations/air_quality.py: AirQualityClient()` (live parsing in `integrations/air_quality.py: parse_open_meteo_hourly()`); any Indian town via the server-side proxy `integrations/geocoding.py: GeocodingClient()`; Gemini cascade `gemini-2.5-flash` → `gemini-2.5-flash-lite` via `integrations/gemini.py: GeminiCascadeClient()`; agent and ADK sessions in `agent/agent.py: HawaKhataAgent()`; offline routing in `agent/fallback.py: route_intent()`; logs via `core/logging.py: configure_logging()`.
+Data chain via `integrations/air_quality.py: AirQualityClient()` (live parsing in `integrations/air_quality.py: parse_open_meteo_hourly()`); any Indian town via the server-side proxy `integrations/geocoding.py: GeocodingClient()`; Gemini cascade `gemini-3.5-flash` → `gemini-3.5-flash-lite` via `integrations/gemini.py: GeminiCascadeClient()`; agent and ADK sessions in `agent/agent.py: HawaKhataAgent()`; offline routing in `agent/fallback.py: route_intent()`; logs via `core/logging.py: configure_logging()`.
 
 ## 2. 90-Second Evaluator Quick-Start
 
