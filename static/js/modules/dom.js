@@ -21,6 +21,32 @@ export const setText = (id, text) => {
   if (node) node.textContent = text;
 };
 
+/**
+ * Copy text: async Clipboard API first, then an off-screen <textarea> + execCommand("copy")
+ * fallback for restricted/headless contexts. Resolves true when either path succeeds.
+ */
+export async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  const ta = el("textarea", "offscreen-copy");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.setAttribute("aria-hidden", "true");
+  document.body.append(ta);
+  try {
+    ta.select();
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    ta.remove();
+  }
+}
+
 /** Translate a key with fallback; t(strings, key, fallback). */
 export const t = (strings, key, fallback) => (strings && strings[key]) || fallback;
 

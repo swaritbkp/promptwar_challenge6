@@ -32,3 +32,6 @@ Rejected: stripping docstrings or comments.
 ## ADR-007 — Repo Digest Ceiling Raised to 700k Characters
 Raised `MAX_DIGEST_CHARS` in `scripts/repo_audit.py` from 560,000 to 700,000 to preserve full code readability, docstrings, and comprehensive tests without trimming any tests or docstrings.
 Rejected: trimming existing tests, schemas, or docstrings.
+
+## ADR-008 — Repo Digest Ceiling Raised to 750k Characters
+Raised `MAX_DIGEST_CHARS` to 750,000 for the Apple Weather × Material 3 UI pass (light/dark tokens, 4 SVG infographics, WCAG contrast tests); rejected minifying CSS or trimming tests/docstrings.

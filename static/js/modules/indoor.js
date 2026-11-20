@@ -3,6 +3,7 @@
 
 import { api } from "./api.js";
 import { $, $$, el, setText } from "./dom.js";
+import { renderIndoorCompare } from "./charts.js";
 
 export function bindIndoor(app) {
   const vRng = $("indoor-vol-range");
@@ -18,7 +19,8 @@ export function bindIndoor(app) {
     setText("indoor-pm25-val", `${pm} µg/m³`);
     setText("indoor-preview-pm25", `${pm} µg/m³`);
     setText("indoor-outdoor-val", `${outPm} µg/m³`);
-    setText("indoor-clean-pct", `▲ ${pct}% ${app.currentLang === "hi" ? "स्वच्छ हवा" : "Cleaner Air"}${preview ? " (Preview)" : ""}`);
+    setText("indoor-clean-pct", `🛡 ${pct}% ${app.currentLang === "hi" ? "स्वच्छ हवा" : "Cleaner Air"}${preview ? " (Preview)" : ""}`);
+    renderIndoorCompare(outPm, pm, app.currentLang === "hi");
   };
 
   const runEngineSim = async () => {
@@ -91,7 +93,6 @@ export function bindPets(app) {
   const select = (species) => {
     $$(".pet-tab-btn").forEach((b) => {
       const onTab = b.getAttribute("data-species") === species;
-      b.className = `btn btn-sm flex-1 pet-tab-btn ${onTab ? "btn-primary" : "btn-secondary"}`;
       b.setAttribute("aria-pressed", String(onTab));
     });
     loadPetGuidance(app, species);

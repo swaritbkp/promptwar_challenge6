@@ -1,7 +1,6 @@
 // Native ES Module: Sustainable urban swaps, habit tracker, and RWA / community multiplier
 
-const $ = (id) => document.getElementById(id);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+import { $, $$, copyText } from "./dom.js";
 
 /**
  * Initializes and wires the swaps calculator, community multiplier, and WhatsApp action copy.
@@ -55,6 +54,7 @@ export function initSwaps({ getLanguage }) {
   if (rng) rng.addEventListener("input", update);
   chks.forEach((c) => c.addEventListener("change", update));
 
+  let fbTimer = null;
   if (copyBtn) {
     copyBtn.addEventListener("click", async () => {
       const flats = parseInt(rng?.value || "120", 10);
@@ -68,18 +68,20 @@ export function initSwaps({ getLanguage }) {
         ? `*हवा खाता - RWA वायु सुरक्षा निवेदन*\nप्रिय पड़ोसियों,\nसर्दियों में हमारी सोसाइटी दो कदम उठा सकती है:\n1. सुरक्षा गार्डों को इलेक्ट्रिक हीटर दें ताकि अलाव न जले।\n2. सूखे पत्तों की खाद बनाएं।\n${flats} फ्लैटों से लगभग ${totalSmoke} kg धुआं रुकेगा।\n— हवा खाता`
         : `*HawaKhata RWA Winter Smog Action*\nDear Neighbors,\nOur society can take two high-impact winter steps:\n1. Provide electric heaters to guards to avoid open fires.\n2. Compost dry leaves with zero burning.\nFor ${flats} homes, this avoids ~${totalSmoke} kg toxic smoke.\n— HawaKhata`;
 
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          await navigator.clipboard.writeText(note);
-        }
-        if (copyFb) {
-          copyFb.hidden = false;
-          copyFb.textContent = isHi ? "✓ क्लिपबोर्ड पर कॉपी हो गया!" : "✓ Copied note to clipboard!";
-          setTimeout(() => {
-            if (copyFb) copyFb.hidden = true;
-          }, 3000);
-        }
-      } catch {}
+      const ok = await copyText(note);
+      copyBtn.classList.toggle("is-copied", ok);
+      if (copyFb) {
+        copyFb.hidden = false;
+        copyFb.className = `copy-feedback ${ok ? "text-saved" : "text-debit"}`;
+        copyFb.textContent = ok
+          ? (isHi ? "✓ कॉपी हो गया!" : "✓ Copied!")
+          : (isHi ? "कॉपी नहीं हो सका — टेक्स्ट चुनकर कॉपी करें" : "Copy blocked — select and copy manually");
+      }
+      clearTimeout(fbTimer);
+      fbTimer = setTimeout(() => {
+        copyBtn.classList.remove("is-copied");
+        if (copyFb) copyFb.hidden = true;
+      }, 3000);
     });
   }
 

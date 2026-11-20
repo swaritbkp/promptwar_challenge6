@@ -1,98 +1,156 @@
 {% extends "base.html" %}
 {% block content %}
 <section id="tab-today" class="tab-pane" aria-labelledby="today-heading">
-  <div class="hero-banner-viz" role="img" aria-label="HawaKhata Winter Smog Skyline and Passbook">
-    <svg class="custom-viz" viewBox="0 0 400 48" fill="none" aria-hidden="true">
-      <rect width="400" height="48" rx="6" fill="#0F6E66" fill-opacity=".08"/>
-      <circle cx="24" cy="24" r="12" stroke="#0F6E66" stroke-width="2"/>
-      <text x="44" y="28" fill="#0F6E66" font-size="12" font-weight="700">AIR PASSBOOK · हवा खाता</text>
-    </svg>
-  </div>
-  <div class="card p-05" id="persona-card">
-    <div class="flex justify-between items-center px-05 mb-05">
-      <h2 class="font-bold text-xs text-accent" data-i18n="persona_title">⚡ Quick Scenarios — try a household in 1 click</h2>
-    </div>
+  <div class="card scenario-strip" id="persona-card">
+    <p class="page-kicker"><span class="kicker-dot" aria-hidden="true"></span>AIR PASSBOOK · हवा खाता</p>
+    <h2 class="micro-label" data-i18n="persona_title">⚡ Quick Scenarios — try a household in 1 click</h2>
     <div class="persona-bar" id="persona-bar" role="group" aria-label="Quick Scenarios"></div>
   </div>
 
-  <div class="card" id="brief-card">
+  <div class="card hero-card" id="brief-card" data-aqi-band="loading">
     <div class="card-header">
       <h2 id="today-heading" class="card-title" data-i18n="brief_title">Daily Smog Brief</h2>
       <div class="flex gap-05 items-center">
-        <button id="btn-voice-brief" class="btn btn-sm btn-secondary" type="button" aria-pressed="false">🔊 Listen</button>
-        <span id="brief-date" class="stat-lbl" data-i18n="today">Today</span>
+        <span id="brief-date" class="micro-label" data-i18n="today">Today</span>
+        <button id="btn-voice-brief" class="btn btn-sm btn-tonal" type="button" aria-pressed="false">🔊 Listen</button>
       </div>
     </div>
-    <p id="brief-headline" class="card-title">Loading live passbook...</p>
-    <p id="brief-recommendation" class="stat-lbl text-sm mt-05">Cleanest window: —</p>
-    <div class="flex gap-05 flex-wrap mt-05">
-      <span class="pill-status saved" id="clean-window-tag">▲ Cleanest: —</span>
-      <span class="pill-status debit" id="peak-warning-tag">▼ Peak PM2.5: —</span>
+    <div class="hero-main">
+      <div class="hero-aqi">
+        <div class="hero-aqi-row"><span id="hero-aqi-val" class="hero-aqi-val">—</span><span class="hero-aqi-unit">AQI</span></div>
+        <div id="hero-aqi-cat" class="hero-aqi-cat">Loading live air…</div>
+        <div id="hero-pm-readout" class="hero-pm">PM2.5 — · PM10 — µg/m³</div>
+      </div>
+      <div class="hero-side">
+        <div id="naqi-gauge-wrap" class="viz-wrap"></div>
+        <p id="brief-headline" class="hero-headline">Loading live passbook...</p>
+        <p id="brief-recommendation" class="stat-lbl text-sm">Cleanest window: —</p>
+        <div class="flex gap-05 flex-wrap">
+          <span class="pill-status saved" id="clean-window-tag">▲ Cleanest: —</span>
+          <span class="pill-status debit" id="peak-warning-tag">▼ Peak PM2.5: —</span>
+        </div>
+      </div>
     </div>
-    <div class="flex gap-05 flex-wrap items-center mt-05">
+    <div class="hero-meta">
       <span class="pill-status text-xs" id="data-source-pill" role="status">Source: loading live air data…</span>
       <button id="grap-pill" class="btn btn-sm grap-pill" type="button" aria-expanded="false" aria-controls="grap-details">🚦 GRAP: —</button>
     </div>
-    <div id="grap-details" class="surface-box p-05 text-xs text-left mt-05" hidden></div>
-    <h3 class="font-semibold text-xs mt-1 mb-05" data-i18n="dayparts_title">Morning · Afternoon · Evening</h3>
+    <div id="grap-details" class="surface-box text-xs text-left mt-05" hidden></div>
+    <h3 class="micro-label mt-1 mb-05" data-i18n="dayparts_title">Morning · Afternoon · Evening</h3>
     <div class="daypart-grid" id="day-parts-today"></div>
   </div>
 
-  <div class="card p-05 mt-05 mb-05" id="today-action-strip" role="region" aria-label="Right Now Action Strip">
-    <div class="flex justify-between items-center px-05 mb-05">
-      <span class="font-bold text-xs text-accent" data-i18n="action_strip_title">⚡ Right Now Action Strip</span>
+  <div class="card card-compact" id="today-action-strip" role="region" aria-label="Right Now Action Strip">
+    <div class="flex justify-between items-center mb-05">
+      <span class="micro-label text-accent" data-i18n="action_strip_title">⚡ Right Now Action Strip</span>
       <span class="stat-lbl text-xs" id="action-strip-pm">Live AQ</span>
     </div>
     <div class="flex gap-05 flex-wrap" id="action-strip-pills"></div>
   </div>
 
-  <div class="card" id="live-weather-card">
-    <div class="card-header">
-      <h3 class="card-title text-sm">
-        <span class="has-tooltip" tabindex="0">
-          <span data-i18n="live_weather_title">🌤️ Live Weather &amp; Smog Drivers</span>
-          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_weather_drivers">Real-time Open-Meteo meteorological factors driving pollutant dispersion.</span>
-        </span>
-      </h3>
-      <span class="pill-status saved" id="live-weather-regime-pill">Dispersion: —</span>
+  <div class="bento-2">
+    <div class="card" id="live-weather-card">
+      <div class="card-header">
+        <h3 class="card-title text-sm">
+          <span class="has-tooltip" tabindex="0">
+            <span data-i18n="live_weather_title">🌤️ Live Weather &amp; Smog Drivers</span>
+            <span class="tooltip-bubble" role="tooltip" data-i18n="tt_weather_drivers">Real-time Open-Meteo meteorological factors driving pollutant dispersion.</span>
+          </span>
+        </h3>
+        <span class="pill-status saved" id="live-weather-regime-pill">Dispersion: —</span>
+      </div>
+      <div id="inversion-lid-wrap" class="viz-wrap lid-wrap"></div>
+      <div class="metric-grid" id="live-weather-grid">
+        <div class="stat-box">
+          <span class="has-tooltip" tabindex="0">
+            <span class="stat-val" id="weather-temp-val">— °C</span>
+            <span class="stat-lbl" data-i18n="weather_temp">Temperature</span>
+            <span class="tooltip-bubble" role="tooltip" data-i18n="tt_temp">Surface ambient temperature driving thermal inversion and air density layers.</span>
+          </span>
+        </div>
+        <div class="stat-box">
+          <span class="has-tooltip" tabindex="0">
+            <span class="stat-val" id="weather-humidity-val">— %</span>
+            <span class="stat-lbl" data-i18n="weather_humidity">Humidity</span>
+            <span class="tooltip-bubble" role="tooltip" data-i18n="tt_humidity">High humidity (&gt;70%) accelerates aerosol particle growth and dense winter fog/smog.</span>
+          </span>
+        </div>
+        <div class="stat-box">
+          <span class="has-tooltip" tabindex="0">
+            <span class="stat-val" id="weather-wind-val">— km/h</span>
+            <span class="stat-lbl" data-i18n="weather_wind">Wind Speed</span>
+            <span class="tooltip-bubble" role="tooltip" data-i18n="tt_wind">Calm winds (&lt;6 km/h) trap smoke locally; winds &gt;12 km/h promote horizontal advection.</span>
+          </span>
+        </div>
+        <div class="stat-box">
+          <span class="has-tooltip" tabindex="0">
+            <span class="stat-val" id="weather-blh-val">— m</span>
+            <span class="stat-lbl" data-i18n="weather_blh">Boundary Layer</span>
+            <span class="tooltip-bubble" role="tooltip" data-i18n="tt_blh_driver">Planetary boundary ceiling; shallow &lt;400m traps emissions; afternoon sun lifts it &gt;800m.</span>
+          </span>
+        </div>
+      </div>
+      <div class="surface-box text-xs text-left mt-05" id="weather-smog-driver-explanation">
+        Loading Open-Meteo atmospheric dispersion physics...
+      </div>
     </div>
-    <div class="hero-grid" id="live-weather-grid">
-      <div class="stat-box">
-        <span class="has-tooltip" tabindex="0">
-          <div class="stat-val" id="weather-temp-val">— °C</div>
-          <div class="stat-lbl" data-i18n="weather_temp">Temperature</div>
-          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_temp">Surface ambient temperature driving thermal inversion and air density layers.</span>
-        </span>
+
+    <div class="card" id="passbook-card">
+      <div class="card-header card-header-wrap">
+        <h3 class="card-title" data-i18n="passbook_title">Household Exposure Passbook</h3>
+        <div class="flex gap-05 flex-wrap">
+          <button id="btn-add-member" class="btn btn-sm btn-primary" type="button">＋ Member</button>
+          <button id="btn-pet-care" class="btn btn-sm btn-tonal" type="button">🐾 Pet Advisor</button>
+          <button id="btn-why-number" class="btn btn-sm btn-tonal" type="button" data-i18n="why_this_number">Why this number?</button>
+        </div>
       </div>
-      <div class="stat-box">
-        <span class="has-tooltip" tabindex="0">
-          <div class="stat-val" id="weather-humidity-val">— %</div>
-          <div class="stat-lbl" data-i18n="weather_humidity">Humidity</div>
-          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_humidity">High humidity (&gt;70%) accelerates aerosol particle growth and dense winter fog/smog.</span>
-        </span>
+      <div class="metric-grid">
+        <div class="stat-box">
+          <div class="stat-val" id="hero-debit">—</div>
+          <div class="stat-lbl">
+            <span class="has-tooltip" tabindex="0">
+              <span data-i18n="hero_debit">Daily Inhaled (Debit)</span>
+              <span class="tooltip-bubble" role="tooltip" data-i18n="tt_debit">Total PM2.5 mass inhaled into the respiratory tract over 24 hours (micrograms).</span>
+            </span>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="hero-budget">—</div>
+          <div class="stat-lbl">
+            <span class="has-tooltip" tabindex="0">
+              <span data-i18n="hero_budget">WHO Daily Budget</span>
+              <span class="tooltip-bubble" role="tooltip" data-i18n="tt_budget">WHO 24-h guideline (15 µg/m³) multiplied by personal daily breathing volume.</span>
+            </span>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="hero-balance">—</div>
+          <div class="stat-lbl">
+            <span class="has-tooltip" tabindex="0">
+              <span data-i18n="hero_balance">Net Air Balance</span>
+              <span class="tooltip-bubble" role="tooltip" data-i18n="tt_budget">Personal air budget minus daily debit. Positive is protected.</span>
+            </span>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-val" id="hero-cigs">—</div>
+          <div class="stat-lbl">
+            <span class="has-tooltip" tabindex="0">
+              <span data-i18n="hero_cigs">Cigarette Equiv. (Avg / person)</span>
+              <span class="tooltip-bubble" role="tooltip" data-i18n="tt_cigs">Berkeley Earth rule of thumb: ~22 µg/m³ PM2.5 over 24h roughly equals 1 cigarette.</span>
+            </span>
+          </div>
+        </div>
       </div>
-      <div class="stat-box">
-        <span class="has-tooltip" tabindex="0">
-          <div class="stat-val" id="weather-wind-val">— km/h</div>
-          <div class="stat-lbl" data-i18n="weather_wind">Wind Speed</div>
-          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_wind">Calm winds (&lt;6 km/h) trap smoke locally; winds &gt;12 km/h promote horizontal advection.</span>
-        </span>
+      <div id="passbook-members-list" class="member-list" role="list"></div>
+      <div class="flex justify-end mt-05">
+        <button id="btn-copy-digest" class="btn btn-sm btn-text" type="button">📋 Share Passbook</button>
       </div>
-      <div class="stat-box">
-        <span class="has-tooltip" tabindex="0">
-          <div class="stat-val" id="weather-blh-val">— m</div>
-          <div class="stat-lbl" data-i18n="weather_blh">Boundary Layer</div>
-          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_blh_driver">Planetary boundary ceiling; shallow &lt;400m traps emissions; afternoon sun lifts it &gt;800m.</span>
-        </span>
-      </div>
-    </div>
-    <div class="surface-box p-05 text-xs text-left mt-05" id="weather-smog-driver-explanation">
-      Loading Open-Meteo atmospheric dispersion physics...
     </div>
   </div>
 
-  <div class="card" id="tomorrow-watch-card">
-    <div class="card-header">
+  <div class="card card-compact" id="tomorrow-watch-card">
+    <div class="flex justify-between items-center gap-05">
       <h3 class="card-title text-sm">
         <span class="has-tooltip" tabindex="0">
           <span data-i18n="tomorrow_watch">Tomorrow Watch</span>
@@ -112,10 +170,10 @@
           <span class="tooltip-bubble" role="tooltip" data-i18n="tt_blh">Boundary Layer Height: Lower layer traps smog; higher solar layer dilutes it.</span>
         </span>
       </h3>
-      <span class="stat-lbl text-xs">Open-Meteo + NAQI</span>
+      <span class="micro-label">Open-Meteo + NAQI</span>
     </div>
     <div class="outlook-grid mb-05" id="four-day-cards-grid"></div>
-    <div class="surface-box p-05 text-xs text-left flex justify-between items-center" id="safe-flush-box">
+    <div class="surface-box text-xs text-left flex justify-between items-center gap-05" id="safe-flush-box">
       <div>
         <span class="has-tooltip" tabindex="0">
           <strong class="text-accent" data-i18n="safe_flush_title">Safe House-Flush Window:</strong>
@@ -126,58 +184,6 @@
       </div>
       <span class="pill-status saved" id="safe-flush-badge">Ventilation</span>
     </div>
-  </div>
-
-  <div class="hero-grid">
-    <div class="stat-box">
-      <div class="stat-val" id="hero-debit">—</div>
-      <div class="stat-lbl">
-        <span class="has-tooltip" tabindex="0">
-          <span data-i18n="hero_debit">Daily Inhaled (Debit)</span>
-          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_debit">Total PM2.5 mass inhaled into the respiratory tract over 24 hours (micrograms).</span>
-        </span>
-      </div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-val" id="hero-budget">—</div>
-      <div class="stat-lbl">
-        <span class="has-tooltip" tabindex="0">
-          <span data-i18n="hero_budget">WHO Daily Budget</span>
-          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_budget">WHO 24-h guideline (15 µg/m³) multiplied by personal daily breathing volume.</span>
-        </span>
-      </div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-val" id="hero-balance">—</div>
-      <div class="stat-lbl">
-        <span class="has-tooltip" tabindex="0">
-          <span data-i18n="hero_balance">Net Air Balance</span>
-          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_budget">Personal air budget minus daily debit. Positive is protected.</span>
-        </span>
-      </div>
-    </div>
-    <div class="stat-box">
-      <div class="stat-val" id="hero-cigs">—</div>
-      <div class="stat-lbl">
-        <span class="has-tooltip" tabindex="0">
-          <span data-i18n="hero_cigs">Cigarette Equiv. (Avg / person)</span>
-          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_cigs">Berkeley Earth rule of thumb: ~22 µg/m³ PM2.5 over 24h roughly equals 1 cigarette.</span>
-        </span>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-header">
-      <h3 class="card-title">Family Air Passbook</h3>
-      <div class="flex gap-05 flex-wrap">
-        <button id="btn-add-member" class="btn btn-sm btn-primary">＋ Member</button>
-        <button id="btn-copy-digest" class="btn btn-sm btn-secondary">📋 Share Passbook</button>
-        <button id="btn-pet-care" class="btn btn-sm btn-secondary">🐾 Pet Advisor</button>
-        <button id="btn-why-number" class="btn btn-sm btn-secondary" data-i18n="why_this_number">Why this number?</button>
-      </div>
-    </div>
-    <div id="passbook-members-list" role="list"></div>
   </div>
 </section>
 
@@ -192,75 +198,79 @@
       </h2>
       <span class="pill-status saved" id="plan-savings-pill">▲ Saves —</span>
     </div>
-    <p class="stat-lbl text-sm">Shifting routines to clean windows avoids up to 45% PM2.5.</p>
-    <div class="flex gap-05 mt-05 mb-05" role="tablist" aria-label="Planning Horizon">
-      <button id="btn-plan-today" class="btn btn-sm btn-primary flex-1" role="tab" aria-selected="true" data-i18n="plan_today_tab">Today Only</button>
-      <button id="btn-plan-multiday" class="btn btn-sm btn-secondary flex-1" role="tab" aria-selected="false" data-i18n="plan_multiday_tab">Best Slot in Next 4 Days</button>
+    <p class="stat-lbl text-xs mb-05">Shifting routines to clean windows avoids up to 45% PM2.5.</p>
+    <div class="plan-toolbar">
+      <label for="plan-member-select" class="sr-only" data-i18n="plan_member">Family Member</label>
+      <select id="plan-member-select" class="field field-sm"></select>
+      <label for="plan-activity-type" class="sr-only">Activity</label>
+      <select id="plan-activity-type" class="field field-sm">
+        <option value="pet_walk" selected>🐾 Dog/Pet Walk</option>
+        <option value="market_shopping">🛒 Market Shopping</option>
+        <option value="school_run">🎒 School Run</option>
+        <option value="park_terrace">🌳 Park / Terrace</option>
+        <option value="transit_auto">🛺 Auto / Bike</option>
+        <option value="walk">🚶 Walk</option>
+        <option value="run">🏃 Run</option>
+      </select>
+      <label for="plan-duration" class="sr-only">Duration</label>
+      <select id="plan-duration" class="field field-sm">
+        <option value="30">30m</option>
+        <option value="60" selected>60m</option>
+        <option value="90">90m</option>
+      </select>
+      <button id="btn-run-plan" class="btn btn-sm btn-primary" type="button" data-i18n="plan_calculate">Calculate Shift</button>
     </div>
-    <div class="stat-box text-left mt-05 mb-05">
-      <div class="flex justify-between items-center mb-05">
-        <label for="plan-member-select" class="font-semibold text-xs" data-i18n="plan_member">Family Member</label>
-        <select id="plan-member-select" class="btn btn-sm btn-secondary"></select>
+    <div class="plan-toggles">
+      <div class="segmented" role="tablist" aria-label="Planning Horizon">
+        <button id="btn-plan-today" class="seg-btn" type="button" role="tab" aria-selected="true" data-i18n="plan_today_tab">Today Only</button>
+        <button id="btn-plan-multiday" class="seg-btn" type="button" role="tab" aria-selected="false" data-i18n="plan_multiday_tab">Best Slot in Next 4 Days</button>
       </div>
-      <div class="flex gap-05 flex-wrap">
-        <select id="plan-activity-type" class="btn btn-sm btn-secondary flex-1">
-          <option value="pet_walk" selected>🐾 Dog/Pet Walk</option>
-          <option value="market_shopping">🛒 Market Shopping</option>
-          <option value="school_run">🎒 School Run</option>
-          <option value="park_terrace">🌳 Park / Terrace</option>
-          <option value="transit_auto">🛺 Auto / Bike</option>
-          <option value="walk">🚶 Walk</option>
-          <option value="run">🏃 Run</option>
-        </select>
-        <select id="plan-duration" class="btn btn-sm btn-secondary">
-          <option value="30">30m</option>
-          <option value="60" selected>60m</option>
-          <option value="90">90m</option>
-        </select>
-        <button id="btn-run-plan" class="btn btn-sm btn-primary" data-i18n="plan_calculate">Calculate Shift</button>
-      </div>
-      <div class="mt-05">
-        <div class="font-semibold text-xs mb-05" id="mask-label" data-i18n="mask_title">😷 Mask while outdoors</div>
-        <div class="flex gap-05" role="group" aria-labelledby="mask-label">
-          <button type="button" class="btn btn-sm flex-1 mask-btn btn-primary" data-mask="none" aria-pressed="true" data-i18n="mask_none">None</button>
-          <button type="button" class="btn btn-sm flex-1 mask-btn btn-secondary" data-mask="surgical" aria-pressed="false" data-i18n="mask_surgical">Surgical ~35%</button>
-          <button type="button" class="btn btn-sm flex-1 mask-btn btn-secondary" data-mask="n95" aria-pressed="false" data-i18n="mask_n95">Fitted N95 ~85%</button>
+      <div class="segmented-wrap">
+        <span class="micro-label" id="mask-label" data-i18n="mask_title">😷 Mask while outdoors</span>
+        <div class="segmented" role="group" aria-labelledby="mask-label">
+          <button type="button" class="seg-btn mask-btn" data-mask="none" aria-pressed="true" data-i18n="mask_none">None</button>
+          <button type="button" class="seg-btn mask-btn" data-mask="surgical" aria-pressed="false" data-i18n="mask_surgical">Surgical ~35%</button>
+          <button type="button" class="seg-btn mask-btn" data-mask="n95" aria-pressed="false" data-i18n="mask_n95">Fitted N95 ~85%</button>
         </div>
-        <div id="mask-result" class="surface-box p-05 text-left mt-05" role="status" aria-live="polite"></div>
       </div>
     </div>
-    <div class="daypart-grid mb-05" id="day-parts-plan" role="region" aria-label="Morning, afternoon and evening air quality"></div>
 
-    <div class="surface-box mt-05 mb-05" id="plan-chart-container" role="region" aria-label="24-Hour PM2.5 Hourly Chart">
-      <div class="flex justify-between items-center mb-05 text-xs">
+    <div class="surface-box chart-box" id="plan-chart-container" role="region" aria-label="24-Hour PM2.5 Hourly Chart">
+      <div class="flex justify-between items-center flex-wrap gap-05 mb-05 text-xs">
         <span class="font-semibold" data-i18n="plan_band_title">24-Hour Hourly PM2.5 &amp; NAQI Severity</span>
-        <span class="text-saved font-semibold" id="chart-clean-window-pill">▲ Cleanest Daytime Window: —</span>
+        <span class="pill-status saved" id="chart-clean-window-pill">▲ Cleanest Daytime Window: —</span>
       </div>
       <div id="plan-hourly-svg-wrap" class="w-full"></div>
     </div>
 
-    <div class="card-title text-sm mt-05 mb-05" data-i18n="plan_band_title" id="plan-band-title">24-Hour Air Quality Band</div>
+    <div id="mask-result" class="surface-box text-left mt-05" role="status" aria-live="polite"></div>
+    <div id="mask-meter-wrap" class="viz-wrap mt-05"></div>
+
+    <h3 class="micro-label mt-1 mb-05" data-i18n="dayparts_title">Morning · Afternoon · Evening</h3>
+    <div class="daypart-grid mb-05" id="day-parts-plan" role="region" aria-label="Morning, afternoon and evening air quality"></div>
+
+    <div class="micro-label mt-1" data-i18n="plan_band_title" id="plan-band-title">24-Hour Air Quality Band</div>
     <div id="hours-strip" class="hours-strip" role="img" aria-label="24 hour air quality chart"></div>
 
     <div class="mt-1">
-      <h3 class="card-title" data-i18n="plan_shifts_title">Recommended Schedule Shifts</h3>
+      <h3 class="card-title text-sm" data-i18n="plan_shifts_title">Recommended Schedule Shifts</h3>
       <div id="plan-shifts-container">
-        <div class="stat-box flex justify-between items-center text-left mt-05">
+        <div class="stat-box flex justify-between items-center flex-wrap gap-05 text-left mt-05">
           <div>
             <div class="font-semibold" id="plan-shift-title">Shift Outdoor Routine</div>
             <div class="stat-lbl text-xs" id="plan-shift-hours">Pick a member and activity, then tap Calculate Shift.</div>
             <div class="text-xs text-saved font-semibold mt-05" id="plan-shift-delta"></div>
           </div>
           <div class="flex gap-05 flex-wrap">
-            <button class="btn btn-sm btn-primary" id="btn-apply-plan" data-i18n="btn_apply">Add to plan</button>
-            <button class="btn btn-sm btn-secondary" id="btn-export-ics" data-i18n="btn_calendar_ics">📅 Save to Calendar (.ics)</button>
+            <button class="btn btn-sm btn-primary" id="btn-apply-plan" type="button" data-i18n="btn_apply">Add to plan</button>
+            <button class="btn btn-sm btn-tonal" id="btn-export-ics" type="button" data-i18n="btn_calendar_ics">📅 Save to Calendar (.ics)</button>
           </div>
         </div>
       </div>
       <div id="multiday-slots-container" hidden class="mt-05">
-        <div class="flex justify-between items-center mb-05">
-          <h4 class="font-semibold text-xs text-accent" data-i18n="multiday_slots_title">Top Cleanest Routine Windows (Next 4 Days)</h4>
-          <button class="btn btn-sm btn-secondary" id="btn-export-ics-multiday" data-i18n="btn_calendar_ics">📅 Save to Calendar (.ics)</button>
+        <div class="flex justify-between items-center flex-wrap gap-05 mb-05">
+          <h4 class="micro-label text-accent" data-i18n="multiday_slots_title">Top Cleanest Routine Windows (Next 4 Days)</h4>
+          <button class="btn btn-sm btn-tonal" id="btn-export-ics-multiday" type="button" data-i18n="btn_calendar_ics">📅 Save to Calendar (.ics)</button>
         </div>
         <div id="multiday-slots-list" class="flex-col gap-05"></div>
       </div>
@@ -274,26 +284,31 @@
       <h2 id="indoor-heading" class="card-title" data-i18n="indoor_title">Room Air Simulator</h2>
       <span class="pill-status" id="indoor-sim-status" data-i18n="indoor_sim_label">Simulated (engine)</span>
     </div>
-    <div class="surface-box mb-1" role="img" aria-label="Indoor vs outdoor PM2.5">
-      <svg class="custom-viz" viewBox="0 0 400 50" fill="none" aria-hidden="true">
-        <rect x="0" y="0" width="110" height="50" rx="4" fill="#C62828" fill-opacity=".1"/>
-        <text x="55" y="30" fill="#B4233C" font-size="12" font-weight="700" text-anchor="middle" id="indoor-outdoor-val">— µg/m³</text>
-        <rect x="120" y="0" width="280" height="50" rx="4" fill="#167A3A" fill-opacity=".08"/>
-        <text x="230" y="26" fill="#167A3A" font-size="14" font-weight="700" text-anchor="middle" id="indoor-preview-pm25">— µg/m³</text>
-        <text x="230" y="40" fill="#167A3A" font-size="8" font-weight="600" text-anchor="middle" id="indoor-clean-pct">Simulating…</text>
-      </svg>
+    <div class="compare-tiles">
+      <div class="compare-tile tile-outdoor">
+        <div class="micro-label" data-i18n="outdoor_pm25_label">Outdoor PM2.5</div>
+        <div class="tile-val" id="indoor-outdoor-val">— µg/m³</div>
+        <div class="stat-lbl text-xs" data-i18n="outdoor_pm25_sub">Live, at your location</div>
+      </div>
+      <div class="compare-tile tile-indoor">
+        <div class="micro-label" data-i18n="indoor_sim_pm25_label">Simulated Indoor PM2.5</div>
+        <div class="tile-val" id="indoor-preview-pm25">— µg/m³</div>
+        <span class="pill-status saved shield-pill" id="indoor-clean-pct">Simulating…</span>
+      </div>
     </div>
+    <div id="indoor-compare-wrap" class="viz-wrap mb-1" role="img" aria-label="Indoor vs outdoor PM2.5"></div>
     <div class="stat-box text-left mb-1">
-      <div class="flex justify-between items-center mb-05">
+      <div class="flex justify-between items-center flex-wrap gap-05 mb-05">
         <label for="indoor-vol-range" class="font-semibold text-xs">Room Volume: <span id="indoor-vol-label" class="text-accent font-bold">60 m³</span></label>
-        <select id="indoor-window-select" class="btn btn-sm btn-secondary">
+        <label for="indoor-window-select" class="sr-only">Window setting</label>
+        <select id="indoor-window-select" class="field field-sm">
           <option value="sealed">Sealed (0.4 ACH)</option>
           <option value="standard" selected>Standard (0.8 ACH)</option>
           <option value="open">Open (2.5 ACH)</option>
         </select>
       </div>
-      <input type="range" id="indoor-vol-range" min="20" max="150" value="60" class="w-full mb-05">
-      <div class="flex justify-between items-center mb-05">
+      <input type="range" id="indoor-vol-range" min="20" max="150" value="60" class="range w-full mb-05">
+      <div class="flex justify-between items-center flex-wrap gap-05 mb-05">
         <label for="indoor-cadr-range" class="font-semibold text-xs">
           <span class="has-tooltip" tabindex="0">
             <span>HEPA Purifier CADR:</span>
@@ -301,11 +316,11 @@
           </span>
           <span id="indoor-cadr-label" class="text-accent font-bold">300 m³/h</span>
         </label>
-        <button id="btn-toggle-purifier" class="btn btn-sm btn-primary" aria-pressed="true">Purifier ON</button>
+        <button id="btn-toggle-purifier" class="btn btn-sm btn-primary" type="button" aria-pressed="true">Purifier ON</button>
       </div>
-      <input type="range" id="indoor-cadr-range" min="0" max="600" value="300" step="25" class="w-full">
+      <input type="range" id="indoor-cadr-range" min="0" max="600" value="300" step="25" class="range w-full">
     </div>
-    <div class="hero-grid">
+    <div class="metric-grid metric-grid-2">
       <div class="stat-box">
         <div class="stat-val" id="indoor-pm25-val">— µg/m³</div>
         <div class="stat-lbl">Mean Indoor PM2.5</div>
@@ -320,26 +335,26 @@
         </div>
       </div>
     </div>
-    <h3 class="card-title mt-1 mb-05" data-i18n="indoor_hacks_title">Ranked Indoor Hacks</h3>
-    <div id="hacks-list" class="flex-col gap-05">
+    <h3 class="card-title text-sm mt-1 mb-05" data-i18n="indoor_hacks_title">Ranked Indoor Hacks</h3>
+    <div id="hacks-list" class="flex-col">
       <div class="balance-row">
         <div>
           <div class="font-semibold">HEPA Purifier</div>
           <div class="stat-lbl">Cuts PM2.5 up to 82%</div>
         </div>
-        <button class="btn btn-sm btn-primary" aria-pressed="true">Active</button>
+        <span class="pill-status saved">Active</span>
       </div>
       <div class="balance-row">
         <div>
           <div class="font-semibold">Seal Hairlines</div>
           <div class="stat-lbl">Cuts infiltration 0.8 to 0.4 ACH</div>
         </div>
-        <button class="btn btn-sm btn-secondary" aria-pressed="false">Enable</button>
+        <span class="pill-status">Recommended</span>
       </div>
     </div>
-    <div class="card mt-1">
-      <div class="card-header">
-        <h3 class="card-title" data-i18n="indoor_plants_title">🌿 Indoor Plants vs. HEPA Reality Check</h3>
+    <div class="card card-inset mt-1">
+      <div class="card-header card-header-wrap">
+        <h3 class="card-title text-sm" data-i18n="indoor_plants_title">🌿 Indoor Plants vs. HEPA Reality Check</h3>
         <span class="pill-status warn" id="plant-vs-hepa-pill">Plants: &lt;1% clearance</span>
       </div>
       <p class="stat-lbl text-xs mb-05">Potted plants clear ~0.1 m³/h CADR per plant (Cummings &amp; Waring 2020) vs 300 m³/h HEPA purifier.</p>
@@ -348,11 +363,11 @@
           <label for="plant-count-range" class="font-semibold text-xs">Potted Plants: <span id="plant-count-label" class="text-accent font-bold">5 plants</span></label>
           <span id="plant-cadr-label" class="text-xs stat-lbl">CADR: 0.5 m³/h</span>
         </div>
-        <input type="range" id="plant-count-range" min="0" max="30" value="5" class="w-full">
+        <input type="range" id="plant-count-range" min="0" max="30" value="5" class="range w-full">
       </div>
-      <div class="surface-box p-05 text-xs text-left" id="plant-reality-verdict">5 plants clear ~0.5 m³/h. A 300 m³/h HEPA purifier is 600× faster for winter smog. Wipe leaves weekly and avoid overwatering.</div>
+      <div class="surface-box text-xs text-left" id="plant-reality-verdict">5 plants clear ~0.5 m³/h. A 300 m³/h HEPA purifier is 600× faster for winter smog. Wipe leaves weekly and avoid overwatering.</div>
       <div class="flex justify-end mt-05">
-        <button id="btn-pet-care-indoor" class="btn btn-sm btn-secondary">🐾 Indoor Pet Air Advisor (Cats &amp; Birds)</button>
+        <button id="btn-pet-care-indoor" class="btn btn-sm btn-tonal" type="button">🐾 Indoor Pet Air Advisor (Cats &amp; Birds)</button>
       </div>
     </div>
   </div>
@@ -360,24 +375,24 @@
 
 <section id="tab-swaps" class="tab-pane" hidden aria-labelledby="swaps-heading">
   <div class="card">
-    <div class="card-header">
+    <div class="card-header card-header-wrap">
       <h2 id="swaps-heading" class="card-title" data-i18n="swaps_title">Clean Daily Habits &amp; RWA Action</h2>
       <span class="pill-status saved" id="swaps-avoided-pill">▲ 148 µg avoided</span>
     </div>
     <p class="stat-lbl text-xs mb-05" data-i18n="swaps_subtitle">Realistic Pan-India urban alternatives tailored for apartments, homes, and resident societies.</p>
 
-    <div class="card-title text-sm mt-05 mb-05" data-i18n="habits_title">🏠 Personal &amp; Indoor Daily Habits</div>
-    <div class="flex-col gap-05 mb-1" id="swaps-list">
-      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="45" data-co2="0.0" checked><div><div class="font-semibold" data-i18n="habit_chimney">Kitchen Exhaust / Chimney during Tadka</div><div class="stat-lbl text-xs" data-i18n="habit_chimney_desc">Cuts indoor cooking PM2.5 spike (saves ~45 µg inhaled/meal)</div></div></div><span class="pill-status saved">Active</span></label>
-      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="60" data-co2="0.0" checked><div><div class="font-semibold" data-i18n="habit_coils">Liquid Repellent vs. Mosquito Coils &amp; Dhoop</div><div class="stat-lbl text-xs" data-i18n="habit_coils_desc">Eliminates major indoor combustion smoke (saves ~60 µg inhaled)</div></div></div><span class="pill-status saved">Active</span></label>
-      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="25" data-co2="1.8" checked><div><div class="font-semibold" data-i18n="habit_car_ac">Car AC Recirculation + Combine Errands / WFH</div><div class="stat-lbl text-xs" data-i18n="habit_car_ac_desc">Cuts in-cabin PM2.5 exposure 50% + saves 1.8 kg CO₂ tailpipe emission</div></div></div><span class="pill-status saved">Active</span></label>
-      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="18" data-co2="0.0" checked><div><div class="font-semibold" data-i18n="habit_mopping">Wet Mopping vs. Dry Jhadu &amp; Shoe-Off Entry</div><div class="stat-lbl text-xs" data-i18n="habit_mopping_desc">Prevents resuspension of toxic fine floor dust (saves ~18 µg inhaled)</div></div></div><span class="pill-status saved">Active</span></label>
+    <div class="micro-label mt-05 mb-05" data-i18n="habits_title">🏠 Personal &amp; Indoor Daily Habits</div>
+    <div class="habit-list mb-1" id="swaps-list">
+      <label class="balance-row habit-card cursor-pointer"><span class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="45" data-co2="0.0" checked><span><span class="font-semibold block" data-i18n="habit_chimney">Kitchen Exhaust / Chimney during Tadka</span><span class="stat-lbl text-xs block" data-i18n="habit_chimney_desc">Cuts indoor cooking PM2.5 spike (saves ~45 µg inhaled/meal)</span></span></span><span class="pill-status saved">Active</span></label>
+      <label class="balance-row habit-card cursor-pointer"><span class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="60" data-co2="0.0" checked><span><span class="font-semibold block" data-i18n="habit_coils">Liquid Repellent vs. Mosquito Coils &amp; Dhoop</span><span class="stat-lbl text-xs block" data-i18n="habit_coils_desc">Eliminates major indoor combustion smoke (saves ~60 µg inhaled)</span></span></span><span class="pill-status saved">Active</span></label>
+      <label class="balance-row habit-card cursor-pointer"><span class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="25" data-co2="1.8" checked><span><span class="font-semibold block" data-i18n="habit_car_ac">Car AC Recirculation + Combine Errands / WFH</span><span class="stat-lbl text-xs block" data-i18n="habit_car_ac_desc">Cuts in-cabin PM2.5 exposure 50% + saves 1.8 kg CO₂ tailpipe emission</span></span></span><span class="pill-status saved">Active</span></label>
+      <label class="balance-row habit-card cursor-pointer"><span class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="18" data-co2="0.0" checked><span><span class="font-semibold block" data-i18n="habit_mopping">Wet Mopping vs. Dry Jhadu &amp; Shoe-Off Entry</span><span class="stat-lbl text-xs block" data-i18n="habit_mopping_desc">Prevents resuspension of toxic fine floor dust (saves ~18 µg inhaled)</span></span></span><span class="pill-status saved">Active</span></label>
     </div>
 
-    <div class="card-title text-sm mt-1 mb-05" data-i18n="rwa_title">🏘️ RWA &amp; Apartment Society Winter Action</div>
-    <div class="flex-col gap-05 mb-1" id="rwa-action-list">
-      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk rwa-chk" data-smoke="0.54" checked><div><div class="font-semibold" data-i18n="rwa_heaters">Electric Radiant Heaters for Night Security Guards</div><div class="stat-lbl text-xs" data-i18n="rwa_heaters_desc">Replaces open wood/coal bonfires at security gates (~0.54 kg smoke/gate/month)</div></div></div><span class="pill-status saved">Active</span></label>
-      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk rwa-chk" data-smoke="0.72" checked><div><div class="font-semibold" data-i18n="rwa_compost">Society Dry-Leaf &amp; Garden Waste Composting</div><div class="stat-lbl text-xs" data-i18n="rwa_compost_desc">Zero open leaf burning in society compound (~0.72 kg smoke prevented)</div></div></div><span class="pill-status saved">Active</span></label>
+    <div class="micro-label mt-1 mb-05" data-i18n="rwa_title">🏘️ RWA &amp; Apartment Society Winter Action</div>
+    <div class="habit-list mb-1" id="rwa-action-list">
+      <label class="balance-row habit-card cursor-pointer"><span class="flex items-center gap-05"><input type="checkbox" class="swap-chk rwa-chk" data-smoke="0.54" checked><span><span class="font-semibold block" data-i18n="rwa_heaters">Electric Radiant Heaters for Night Security Guards</span><span class="stat-lbl text-xs block" data-i18n="rwa_heaters_desc">Replaces open wood/coal bonfires at security gates (~0.54 kg smoke/gate/month)</span></span></span><span class="pill-status saved">Active</span></label>
+      <label class="balance-row habit-card cursor-pointer"><span class="flex items-center gap-05"><input type="checkbox" class="swap-chk rwa-chk" data-smoke="0.72" checked><span><span class="font-semibold block" data-i18n="rwa_compost">Society Dry-Leaf &amp; Garden Waste Composting</span><span class="stat-lbl text-xs block" data-i18n="rwa_compost_desc">Zero open leaf burning in society compound (~0.72 kg smoke prevented)</span></span></span><span class="pill-status saved">Active</span></label>
     </div>
 
     <div class="stat-box mb-1 text-left">
@@ -390,10 +405,10 @@
         </label>
         <span id="society-flats-count-label" class="font-bold text-accent text-lg">120 flats</span>
       </div>
-      <input type="range" id="society-flats-range" min="10" max="500" value="120" step="10" class="w-full">
+      <input type="range" id="society-flats-range" min="10" max="500" value="120" step="10" class="range w-full">
     </div>
 
-    <div class="hero-grid mb-1">
+    <div class="metric-grid metric-grid-2 mb-1">
       <div class="stat-box">
         <div class="stat-val saved" id="society-smoke-prevented-val">151.2 kg</div>
         <div class="stat-lbl" data-i18n="society_smoke_label">Collective Smoke Prevented / mo</div>
@@ -404,12 +419,10 @@
       </div>
     </div>
 
-    <div class="flex justify-between items-center gap-05">
-      <button id="btn-copy-rwa-note" class="btn btn-secondary w-full">
-        📋 <span data-i18n="btn_copy_rwa">Copy RWA WhatsApp Action Note</span>
-      </button>
-    </div>
-    <div id="rwa-copy-feedback" class="text-xs text-saved mt-05 text-center" hidden>✓ Copied note to clipboard!</div>
+    <button id="btn-copy-rwa-note" class="btn btn-primary btn-lg w-full" type="button">
+      📋 <span data-i18n="btn_copy_rwa">Copy RWA WhatsApp Action Note</span>
+    </button>
+    <div id="rwa-copy-feedback" class="copy-feedback text-saved" role="status" aria-live="polite" hidden>✓ Copied!</div>
   </div>
 </section>
 
@@ -417,7 +430,7 @@
   <div class="modal-sheet">
     <div class="card-header">
       <h3 id="why-title" class="card-title">How HawaKhata Calculates Numbers</h3>
-      <button id="modal-why-close" class="btn btn-sm btn-secondary" aria-label="Close dialog">✕</button>
+      <button id="modal-why-close" class="btn btn-sm btn-icon" type="button" aria-label="Close dialog">✕</button>
     </div>
     <p class="mb-05 text-sm"><strong>Air Budget:</strong> WHO 24-h PM2.5 (15 µg/m³) × breathing volume.</p>
     <p class="mb-05 text-sm"><strong>Cigarette Equiv:</strong> Berkeley Earth: 22 µg/m³ over 24h = 1 cig.</p>
@@ -429,28 +442,28 @@
   <div class="modal-sheet">
     <div class="card-header">
       <h3 id="city-modal-title" class="card-title">Location &amp; City Selector</h3>
-      <button id="modal-city-close" class="btn btn-sm btn-secondary" aria-label="Close dialog">✕</button>
+      <button id="modal-city-close" class="btn btn-sm btn-icon" type="button" aria-label="Close dialog">✕</button>
     </div>
     <div class="flex-col gap-05 mt-05">
-      <label for="city-search-input" class="stat-lbl text-xs font-semibold" data-i18n="city_search_label">Search any Indian city or town</label>
-      <input type="search" id="city-search-input" class="btn text-left w-full" autocomplete="off" maxlength="60"
+      <label for="city-search-input" class="micro-label" data-i18n="city_search_label">Search any Indian city or town</label>
+      <input type="search" id="city-search-input" class="field field-search w-full" autocomplete="off" maxlength="60"
              placeholder="Search any Indian city or town... (Lucknow, Jaipur, Patna, Pune, Kochi)"
              data-i18n-placeholder="city_search_placeholder" aria-controls="city-search-results">
       <div id="city-search-status" class="stat-lbl text-xs" role="status" aria-live="polite"></div>
       <div id="city-search-results" class="flex-col gap-05" role="listbox" aria-label="Search results"></div>
-      <div class="stat-lbl text-xs font-semibold mt-05" data-i18n="city_quick_label">Quick select metro</div>
+      <div class="micro-label mt-05" data-i18n="city_quick_label">Quick select metro</div>
       <div id="city-chips" class="flex gap-05 flex-wrap"></div>
       <button id="btn-use-gps" class="btn btn-primary w-full mt-05" type="button">📍 Use My Current Location</button>
       <details class="surface-box mt-05 text-left">
         <summary class="font-semibold text-xs">Custom Location Coordinates</summary>
         <div class="flex gap-05 mb-05 mt-05">
           <label class="sr-only" for="custom-lat">Latitude</label>
-          <input type="number" id="custom-lat" class="btn text-left flex-1" placeholder="Lat" step="0.01" min="-90" max="90">
+          <input type="number" id="custom-lat" class="field flex-1" placeholder="Lat" step="0.01" min="-90" max="90">
           <label class="sr-only" for="custom-lng">Longitude</label>
-          <input type="number" id="custom-lng" class="btn text-left flex-1" placeholder="Lng" step="0.01" min="-180" max="180">
+          <input type="number" id="custom-lng" class="field flex-1" placeholder="Lng" step="0.01" min="-180" max="180">
         </div>
         <label class="sr-only" for="custom-city-name">Area name</label>
-        <input type="text" id="custom-city-name" class="btn text-left w-full mb-05" placeholder="Area Name" maxlength="100">
+        <input type="text" id="custom-city-name" class="field w-full mb-05" placeholder="Area Name" maxlength="100">
         <button id="btn-apply-custom-loc" class="btn btn-primary w-full" type="button">Apply Coordinates</button>
       </details>
     </div>
@@ -461,12 +474,12 @@
   <div class="modal-sheet">
     <div class="card-header">
       <h3 id="pet-modal-title" class="card-title">🐾 Pet Care Air Advisor</h3>
-      <button id="modal-pet-close" class="btn btn-sm btn-secondary" aria-label="Close dialog">✕</button>
+      <button id="modal-pet-close" class="btn btn-sm btn-icon" type="button" aria-label="Close dialog">✕</button>
     </div>
-    <div class="flex gap-05 mb-05">
-      <button class="btn btn-sm btn-primary flex-1 pet-tab-btn" data-species="dog">🐕 Dogs</button>
-      <button class="btn btn-sm btn-secondary flex-1 pet-tab-btn" data-species="cat">🐈 Cats</button>
-      <button class="btn btn-sm btn-secondary flex-1 pet-tab-btn" data-species="bird">🦜 Birds</button>
+    <div class="segmented segmented-full mb-05" role="group" aria-label="Pet species">
+      <button class="seg-btn pet-tab-btn" type="button" data-species="dog" aria-pressed="true">🐕 Dogs</button>
+      <button class="seg-btn pet-tab-btn" type="button" data-species="cat" aria-pressed="false">🐈 Cats</button>
+      <button class="seg-btn pet-tab-btn" type="button" data-species="bird" aria-pressed="false">🦜 Birds</button>
     </div>
     <div class="stat-box text-left mb-05" id="pet-walk-box">
       <div class="font-semibold text-xs mb-05">Outdoor Walk Guidance</div>
@@ -490,32 +503,32 @@
   <div class="modal-sheet">
     <div class="card-header">
       <h3 id="member-modal-title" class="card-title">Manage Family Member</h3>
-      <button id="modal-member-close" class="btn btn-sm btn-secondary" aria-label="Close dialog">✕</button>
+      <button id="modal-member-close" class="btn btn-sm btn-icon" type="button" aria-label="Close dialog">✕</button>
     </div>
     <form id="member-form" class="flex-col gap-05 mt-05">
       <input type="hidden" id="member-edit-id" value="">
       <div>
-        <label for="member-name-input" class="stat-lbl text-xs">Name</label>
-        <input type="text" id="member-name-input" class="btn text-left w-full mt-05" placeholder="e.g. Dadi, Aarav" required>
+        <label for="member-name-input" class="micro-label">Name</label>
+        <input type="text" id="member-name-input" class="field w-full mt-05" placeholder="e.g. Dadi, Aarav" required>
       </div>
       <div>
-        <label for="member-age-select" class="stat-lbl text-xs">Age Band</label>
-        <select id="member-age-select" class="btn text-left w-full mt-05">
+        <label for="member-age-select" class="micro-label">Age Band</label>
+        <select id="member-age-select" class="field w-full mt-05">
           <option value="child">Child (6-11y · 12 m³/d · 180 µg budget)</option>
           <option value="12_17">Teen (12-17y · 15.2 m³/d · 228 µg budget)</option>
           <option value="31_41" selected>Adult (31-41y · 16 m³/d · 240 µg budget)</option>
           <option value="senior">Senior (65y+ · 14.2 m³/d · 213 µg budget)</option>
         </select>
       </div>
-      <div>
-        <label class="stat-lbl text-xs">Sensitivities</label>
+      <fieldset class="plain-fieldset">
+        <legend class="micro-label">Sensitivities</legend>
         <div class="flex gap-05 flex-wrap mt-05">
-          <label class="btn btn-sm btn-secondary flex items-center gap-05"><input type="checkbox" id="sens-asthma" value="asthma"> Asthma</label>
-          <label class="btn btn-sm btn-secondary flex items-center gap-05"><input type="checkbox" id="sens-heart" value="cardiovascular"> Heart</label>
-          <label class="btn btn-sm btn-secondary flex items-center gap-05"><input type="checkbox" id="sens-copd" value="copd"> COPD</label>
-          <label class="btn btn-sm btn-secondary flex items-center gap-05"><input type="checkbox" id="sens-pregnancy" value="pregnancy"> Pregnancy</label>
+          <label class="chip-filter"><input type="checkbox" id="sens-asthma" value="asthma"> Asthma</label>
+          <label class="chip-filter"><input type="checkbox" id="sens-heart" value="cardiovascular"> Heart</label>
+          <label class="chip-filter"><input type="checkbox" id="sens-copd" value="copd"> COPD</label>
+          <label class="chip-filter"><input type="checkbox" id="sens-pregnancy" value="pregnancy"> Pregnancy</label>
         </div>
-      </div>
+      </fieldset>
       <div class="flex gap-05 mt-1">
         <button type="submit" id="btn-save-member" class="btn btn-primary flex-1">Save</button>
         <button type="button" id="btn-cancel-member" class="btn btn-secondary">Cancel</button>

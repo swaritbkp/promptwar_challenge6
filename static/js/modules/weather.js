@@ -3,6 +3,7 @@
 // Every number shown here arrives from the backend engine; this module only formats it.
 
 import { $, el, setText, t, catClass } from "./dom.js";
+import { renderInversionLid, severityMiniBar } from "./charts.js";
 
 const REGIME_KEYS = {
   "Afternoon Mixing Lift": "disp_mixing",
@@ -21,6 +22,7 @@ export function renderLiveWeather(w, ctx) {
   setText("weather-humidity-val", `${fmt(w.humidity_pct, 0)} %`);
   setText("weather-wind-val", `${fmt(w.wind_speed_kmh)} km/h`);
   setText("weather-blh-val", `${fmt(w.boundary_layer_height_m, 0)} m`);
+  renderInversionLid(w, ctx.isHi);
 
   const pill = $("live-weather-regime-pill");
   if (pill && w.dispersion_regime) {
@@ -40,21 +42,24 @@ export function renderLiveWeather(w, ctx) {
 export function renderFourDayCards(days, ctx) {
   const grid = $("four-day-cards-grid");
   if (!grid || !Array.isArray(days)) return;
-  grid.replaceChildren();
-  days.forEach((day) => {
+  const peaks = days.map((d) => d.peak_aqi);
+  const maxPeak = Math.max(1, ...peaks);
+  const minPeak = Math.min(...peaks);
+  grid.replaceChildren(...days.map((day) => {
     const cls = catClass(day.naqi_category.toLowerCase().replace(/ /g, "_"));
     const catName = ctx.isHi ? t(ctx.s, `cat_${cls.replace(/-/g, "_")}`, day.naqi_category) : day.naqi_category;
     const dayName = ctx.isHi ? t(ctx.s, day.day_label.toLowerCase().replace(" ", "_"), day.day_label) : day.day_label;
-    const card = el("div", "outlook-card");
+    const card = el("div", `outlook-card${day.peak_aqi === minPeak ? " is-cleanest" : ""}`);
     card.append(
-      el("div", "font-bold text-xs", dayName),
-      el("span", `pill-status ${cls}`, `AQI ${day.peak_aqi} · ${catName}`),
-      el("div", "text-xs font-semibold text-saved", `▲ ${day.cleanest_window_start}–${day.cleanest_window_end} · ${Math.round(day.cleanest_pm25)} µg/m³`),
+      el("div", "outlook-day", dayName),
+      el("span", `pill-status ${cls}`, `${ctx.isHi ? "शिखर" : "Peak"} AQI ${day.peak_aqi} · ${catName}`),
+      severityMiniBar(day.peak_aqi, maxPeak, cls, ctx.isHi),
+      el("span", "pill-status saved", `▲ ${day.cleanest_window_start}–${day.cleanest_window_end} · ${Math.round(day.cleanest_pm25)} µg/m³`),
       el("div", "text-xs stat-lbl", `${regimeName(day.dispersion_regime, ctx)} · ${day.wind_kmh} km/h`),
       el("div", "text-xs text-muted", `BLH ${Math.round(day.blh_m)} m · P90 ${Math.round(day.uncertainty_p90)}`)
     );
-    grid.append(card);
-  });
+    return card;
+  }));
 }
 
 /** Data-source pill: "Source: Open-Meteo Live AQ · PM2.5 184 / PM10 262 µg/m³ · Updated 18:30 IST". */
@@ -93,18 +98,20 @@ export function bindGrapToggle() {
 export function renderDayParts(parts, ctx, containerId) {
   const wrap = $(containerId);
   if (!wrap || !Array.isArray(parts)) return;
-  wrap.replaceChildren();
-  parts.forEach((p) => {
+  wrap.replaceChildren(...parts.map((p) => {
     const cls = catClass(p.category_code);
     const cat = ctx.isHi ? t(ctx.s, `cat_${p.category_code}`, p.category_label) : p.category_label;
-    const card = el("div", "daypart-card");
+    const pm = el("div", "daypart-pm", `PM2.5 ${Math.round(p.mean_pm25)}`);
+    pm.append(el("small", null, "µg/m³"));
+    const card = el("div", `daypart-card ${cls}`);
     card.append(
-      el("div", "font-bold text-xs", `${ctx.isHi ? p.label_hi : p.label_en} · ${String(p.start_hour).padStart(2, "0")}–${p.end_hour}h`),
-      el("span", `pill-status ${cls}`, `PM2.5 ${Math.round(p.mean_pm25)} · AQI ${p.aqi} · ${cat}`),
+      el("div", "micro-label", `${ctx.isHi ? p.label_hi : p.label_en} · ${String(p.start_hour).padStart(2, "0")}–${p.end_hour}h`),
+      pm,
+      el("span", `pill-status ${cls}`, `AQI ${p.aqi} · ${cat}`),
       el("div", "text-xs stat-lbl", ctx.isHi ? p.guidance_hi : p.guidance_en)
     );
-    wrap.append(card);
-  });
+    return card;
+  }));
 }
 
 /** Right-Now action strip driven by the same live PM2.5/AQI as the header chip. */

@@ -25,6 +25,7 @@ import httpx
 
 from hawakhata.core.logging import get_logger
 from hawakhata.engine.aqi import pm25_to_naqi_category, pm25_to_sub_index
+from hawakhata.engine.constants import get_constant
 from hawakhata.engine.planner import align_to_clock
 
 if TYPE_CHECKING:
@@ -230,32 +231,18 @@ def parse_open_meteo_hourly(
     return pts
 
 
-CITY_CALIBRATED_SCALES: list[tuple[float, float, float]] = [
-    (28.4595, 77.0266, 1.00),  # Northern Plains primary baseline (~320-380 µg/m³, AQI 420-434)
-    (30.7333, 76.7794, 0.75),  # Northern Foothills baseline (~180-240 µg/m³, AQI 350)
-    (19.0760, 72.8777, 0.20),  # Mumbai (~64 µg/m³, AQI 113 Moderate)
-    (12.9716, 77.5946, 0.14),  # Bengaluru (~45 µg/m³, Satisfactory)
-    (22.5726, 88.3639, 0.50),  # Kolkata (~160 µg/m³, Very Poor)
-    (13.0827, 80.2707, 0.13),  # Chennai (~42 µg/m³, Satisfactory)
-    (17.3850, 78.4867, 0.20),  # Hyderabad (~64 µg/m³, Moderate)
-    (18.5204, 73.8567, 0.20),  # Pune (~64 µg/m³, Moderate)
-    (26.9124, 75.7873, 0.45),  # Jaipur (~144 µg/m³, Very Poor)
-    (26.8467, 80.9462, 0.88),  # Lucknow (~280 µg/m³, Severe)
-    (25.5941, 85.1376, 0.94),  # Patna (~300 µg/m³, Severe)
-    (23.0225, 72.5714, 0.40),  # Ahmedabad (~128 µg/m³, Very Poor)
-]
-
-
 def resolve_city_scale(lat: float, lng: float) -> float:
-    """Resolve calibrated scaling factor based on nearest Indian metro coordinates."""
+    """Fixture-mode PM2.5 scale for the nearest metro (data/constants.v1.json)."""
+    cfg = get_constant("city_pm25_fixture_scale").value
     min_dist, best_scale = float("inf"), 1.0
-    for c_lat, c_lng, s in CITY_CALIBRATED_SCALES:
-        d = _haversine_km(lat, lng, c_lat, c_lng)
+    for c_lat, c_lng, s, _name in cfg["anchors"]:
+        d = _haversine_km(lat, lng, float(c_lat), float(c_lng))
         if d < min_dist:
-            min_dist, best_scale = d, s
-    if min_dist <= 200.0:
+            min_dist, best_scale = d, float(s)
+    if min_dist <= float(cfg["max_match_km"]):
         return best_scale
-    return 0.20 if lat < 21.0 else 0.70
+    south = lat < float(cfg["fallback_split_lat"])
+    return float(cfg["fallback_south"] if south else cfg["fallback_north"])
 
 
 def _load_nearest_fixture(

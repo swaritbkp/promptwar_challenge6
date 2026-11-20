@@ -134,9 +134,9 @@ export function initChatDrawer({ getSessionId, setSessionId, getLanguage, getPro
 
         // Render follow-up chips if present
         if (Array.isArray(data.chips) && data.chips.length > 0) {
-          const chipBox = el("div", "flex gap-05 flex-wrap mt-05");
+          const chipBox = el("div", "flex gap-05 flex-wrap");
           data.chips.forEach((chipText) => {
-            const chipBtn = el("button", "btn btn-sm btn-secondary text-xs", chipText);
+            const chipBtn = el("button", "chip-filter", chipText);
             chipBtn.type = "button";
             chipBtn.addEventListener("click", () => {
               input.value = chipText;

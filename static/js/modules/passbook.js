@@ -23,7 +23,7 @@ export function updateHero(d, app) {
     headline.textContent = over
       ? (hi ? `एयर बजट पार हो गया${who}` : `Air budget exceeded${who}`)
       : (hi ? "WHO बजट के भीतर ✓ – परिवार सुरक्षित" : "Within WHO budget ✓ – Household protected");
-    headline.className = `card-title ${over ? "text-debit" : "text-saved"}`;
+    headline.className = `hero-headline ${over ? "text-debit" : "text-saved"}`;
   }
   if (d.peak_pm25 != null) setText("peak-warning-tag", `▼ ${hi ? "शिखर" : "Peak"} PM2.5: ${Math.round(d.peak_pm25)} µg/m³`);
 }
@@ -49,15 +49,12 @@ export function renderMembers(entries, app) {
     const barWrap = el("div", "member-bar-wrap");
     if (e) {
       const pct = e.budget_ug > 0 ? (e.debit_ug / e.budget_ug) * 100 : 100;
-      const bar = svgEl("svg", { width: "100%", height: "10", role: "img", "aria-label": `${Math.round(pct)}% of budget` });
-      bar.append(
-        svgEl("rect", { width: "100%", height: "10", rx: "5", fill: "#e2e8f0" }),
-        svgEl("rect", { width: `${Math.min(100, Math.max(2, pct))}%`, height: "10", rx: "5", fill: pct < 75 ? "#0F6E66" : pct <= 100 ? "#C9A400" : "#C62828" })
-      );
+      const bar = svgEl("svg", { width: "100%", height: "8", role: "img", "aria-label": `${Math.round(pct)}% ${hi ? "बजट का" : "of WHO daily budget"}` });
+      bar.append(svgEl("rect", { width: `${Math.min(100, Math.max(2, pct))}%`, height: "8", rx: "4", class: pct < 75 ? "fill-accent" : pct <= 100 ? "fill-moderate" : "fill-very-poor" }));
       barWrap.append(bar);
     }
 
-    const del = el("button", "btn btn-sm btn-secondary", "✕");
+    const del = el("button", "btn btn-sm btn-icon", "✕");
     del.type = "button";
     del.setAttribute("aria-label", `${hi ? "हटाएँ" : "Remove"} ${m.name}`);
     del.addEventListener("click", async () => {
@@ -66,8 +63,11 @@ export function renderMembers(entries, app) {
       app.saveProfile();
       await app.recalculatePassbook();
     });
-    const acts = el("div", "flex gap-05 items-center");
-    if (e) acts.append(el("span", `pill-status ${e.debit_ug > e.budget_ug ? "debit" : "saved"}`, `${Math.round(e.debit_ug)} µg`));
+    const acts = el("div", "member-acts flex gap-05 items-center");
+    if (e) {
+      acts.append(el("span", `pill-status ${e.debit_ug > e.budget_ug ? "debit" : "saved"}`, `${Math.round(e.debit_ug)} µg`));
+      if (e.cigarette_equivalent != null) acts.append(el("span", "pill-status", `🚬 ${e.cigarette_equivalent.toFixed(1)}`));
+    }
     acts.append(del);
     row.append(info, barWrap, acts);
     list.append(row);
@@ -103,7 +103,7 @@ export async function initPersonas(app) {
     const hi = app.currentLang === "hi";
     bar.replaceChildren(
       ...personas.map((p) => {
-        const b = el("button", `btn btn-sm persona-btn ${app.activePersona === p.id ? "btn-primary" : "btn-secondary"}`);
+        const b = el("button", "chip-filter persona-btn");
         b.type = "button";
         b.setAttribute("aria-pressed", String(app.activePersona === p.id));
         b.append(el("span", "font-semibold", hi ? p.label_hi : p.label_en), el("span", "text-xs persona-sub", hi ? p.subtitle_hi : p.subtitle_en));
@@ -145,7 +145,7 @@ export function initLocationModal(app) {
     if (!wrap) return;
     wrap.replaceChildren(
       ...cities.map((c) => {
-        const b = el("button", "btn btn-sm btn-secondary", c.name);
+        const b = el("button", "chip-filter", c.name);
         b.type = "button";
         b.addEventListener("click", () => choose(c.name, c.lat, c.lng));
         return b;
@@ -175,7 +175,7 @@ export function initLocationModal(app) {
         results.replaceChildren(
           ...places.map((p) => {
             const label = p.admin1 ? `${p.name}, ${p.admin1}` : p.name;
-            const b = el("button", "btn btn-sm btn-secondary w-full text-left", `📍 ${label}`);
+            const b = el("button", "chip-filter w-full", `📍 ${label}`);
             b.type = "button";
             b.setAttribute("role", "option");
             b.addEventListener("click", () => choose(label, p.lat, p.lng));

@@ -3,6 +3,7 @@
 
 import { api } from "./api.js";
 import { $, $$, el, setText } from "./dom.js";
+import { renderMaskMeter } from "./charts.js";
 
 const ACTIVITIES = {
   pet_walk: { title: "Dog / Pet Walk", micro_env: "outdoor", activity: "pet_walk", usual: 7 },
@@ -53,8 +54,11 @@ export async function updateMaskResult(app) {
       el("div", `text-xs font-semibold ${d.within_budget ? "text-saved" : "text-debit"}`,
         `${verdict} (${d.budget_share_pct}% ${hi ? "का" : "of"} ${d.budget_ug} µg)`)
     );
+    const maskBtn = document.querySelector(`.mask-btn[data-mask="${app.maskType}"]`);
+    renderMaskMeter(d, app.maskType === "none" ? (hi ? "बिना मास्क" : "No mask") : (maskBtn?.textContent || app.maskType), hi);
   } catch {
     box.replaceChildren(el("div", "stat-lbl text-xs", hi ? "मास्क गणना उपलब्ध नहीं" : "Mask calculation unavailable"));
+    renderMaskMeter(null);
   }
 }
 
@@ -65,8 +69,6 @@ export function bindPlan(app) {
   const setHorizon = (multi) => {
     tabToday?.setAttribute("aria-selected", String(!multi));
     tabMulti?.setAttribute("aria-selected", String(multi));
-    if (tabToday) tabToday.className = `btn btn-sm flex-1 ${multi ? "btn-secondary" : "btn-primary"}`;
-    if (tabMulti) tabMulti.className = `btn btn-sm flex-1 ${multi ? "btn-primary" : "btn-secondary"}`;
     const single = $("plan-shifts-container");
     const many = $("multiday-slots-container");
     if (single) single.hidden = multi;
@@ -82,7 +84,6 @@ export function bindPlan(app) {
       $$(".mask-btn").forEach((x) => {
         const on = x === b;
         x.setAttribute("aria-pressed", String(on));
-        x.className = `btn btn-sm flex-1 mask-btn ${on ? "btn-primary" : "btn-secondary"}`;
       });
       updateMaskResult(app);
     });

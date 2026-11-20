@@ -476,7 +476,7 @@ def build_four_day_outlook(
         hourly_weather: Optional parallel 96-hour Open-Meteo weather points.
         seed: Random seed for uncertainty sampling.
         synthetic: True when the series comes from a fixture/offline fallback.
-            Only when synthetic=True are CITY_CALIBRATED_SCALES and synoptic
+            Only when synthetic=True are city fixture scales (constants.v1.json) and synoptic
             day modifiers applied. Live readings pass through unmodified.
         start_hour: Local clock hour of the first reading; series are re-indexed with
             ``align_to_clock`` so each day's windows use true clock hours.

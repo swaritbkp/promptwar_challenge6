@@ -3,8 +3,8 @@
 // rendering lives in ./modules/*. Every number displayed comes from the backend engine.
 
 import { api } from "./modules/api.js";
-import { $, $$, setText, t, catClass } from "./modules/dom.js";
-import { renderPlanHourlyChart, renderHoursStrip, renderMultiDaySlots } from "./modules/charts.js";
+import { $, $$, setText, t, catClass, copyText } from "./modules/dom.js";
+import { renderPlanHourlyChart, renderHoursStrip, renderMultiDaySlots, renderNaqiGauge, pmBand } from "./modules/charts.js";
 import { initChatDrawer } from "./modules/chat.js";
 import { initSwaps } from "./modules/swaps.js";
 import { exportSlotIcs } from "./modules/ics.js";
@@ -49,6 +49,7 @@ class HawaKhataApp {
     this.activePersona = null;
     this.currentOutdoorPm25 = null;
     this.currentAQI = null;
+    this.currentPm10 = null;
     this.currentCategory = null;
     this.currentCategoryLabel = "";
     this.dataMode = "fixture";
@@ -159,7 +160,7 @@ class HawaKhataApp {
       const hi = this.currentLang === "hi";
       try {
         const digest = await api.postDigest(this.familyProfile, this.currentLang);
-        await navigator.clipboard?.writeText(digest);
+        if (!(await copyText(digest))) throw new Error("copy blocked");
         copyBtn.textContent = hi ? "✓ WhatsApp के लिए कॉपी हुआ!" : "✓ Copied for WhatsApp!";
       } catch {
         copyBtn.textContent = hi ? "कॉपी नहीं हो सका" : "Copy unavailable";
@@ -200,7 +201,7 @@ class HawaKhataApp {
         if (v) node.setAttribute("placeholder", v);
       });
     } catch {}
-    setText("lang-label", lang === "en" ? "हिन्दी" : "English");
+    $("lang-toggle-btn")?.setAttribute("data-lang", lang);
     $("lang-toggle-btn")?.setAttribute("aria-label", lang === "en" ? "Switch language to Hindi" : "Switch language to English");
     document.documentElement.lang = lang;
     this.voice?.stop();
@@ -256,6 +257,7 @@ class HawaKhataApp {
     if (d?.current_pm25 == null) return;
     this.currentOutdoorPm25 = Math.round(d.current_pm25);
     this.currentAQI = Math.round(d.current_aqi);
+    this.currentPm10 = d.current_pm10 != null ? Math.round(d.current_pm10) : null;
     this.currentCategory = d.current_category;
     this.currentCategoryLabel = d.current_category_label;
     this.dataMode = d.data_mode || "fixture";
@@ -268,8 +270,18 @@ class HawaKhataApp {
   renderLiveAQ() {
     if (this.currentAQI == null) return;
     const cls = catClass(this.currentCategory);
-    setText("top-aqi-val", String(this.currentAQI));
-    setText("top-aqi-cat", this.ctx.isHi ? t(this.i18nStrings, `cat_${this.currentCategory}`, this.currentCategoryLabel) : this.currentCategoryLabel);
+    const catLabel = this.ctx.isHi ? t(this.i18nStrings, `cat_${this.currentCategory}`, this.currentCategoryLabel) : this.currentCategoryLabel;
+    setText("top-aqi-val", `AQI ${this.currentAQI}`);
+    setText("top-aqi-cat", catLabel);
+    setText("hero-aqi-val", String(this.currentAQI));
+    setText("hero-aqi-cat", catLabel);
+    const heroCat = $("hero-aqi-cat");
+    if (heroCat) heroCat.className = `hero-aqi-cat ${cls}`;
+    const pm10 = this.currentPm10 != null ? ` · PM10 ${this.currentPm10}` : "";
+    setText("hero-pm-readout", `PM2.5 ${this.currentOutdoorPm25}${pm10} µg/m³`);
+    $("brief-card")?.setAttribute("data-aqi-band", cls);
+    $("indoor-outdoor-val")?.closest(".compare-tile")?.setAttribute("class", `compare-tile tile-outdoor ${pmBand(this.currentOutdoorPm25)}`);
+    renderNaqiGauge(this.currentAQI, this.ctx.isHi);
     const chip = $("top-aqi-chip");
     if (chip) {
       chip.className = `chip-aqi ${cls}`;

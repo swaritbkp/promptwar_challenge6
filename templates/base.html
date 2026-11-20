@@ -1,5 +1,92 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="description" content="HawaKhata: Air passbook for winter smog."><meta name="theme-color" content="#0F6E66"><title>{% block title %}HawaKhata · Air Passbook{% endblock %}</title><link rel="stylesheet" href="/static/css/app.css"></head><body>
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="HawaKhata: Air passbook for winter smog.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#F3F6FA">
+<title>{% block title %}HawaKhata · Air Passbook{% endblock %}</title>
+<link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/js/theme.js"></script>
+</head>
+<body>
 {% include "partials/icons.svg.html" %}
-<a href="#main-content" class="skip-link">Skip to main content</a><div id="a11y-announcer" class="sr-only" aria-live="polite" role="status"></div><header class="top-bar"><a href="/" class="brand" aria-label="HawaKhata Home"><span class="brand-name" data-i18n="brand_name">HawaKhata</span><span class="brand-sub" data-i18n="brand_sub">हवा खाता</span></a><div class="top-actions"><button id="refresh-btn" class="btn btn-sm btn-secondary" aria-label="Refresh Data"><span id="data-mode-badge" class="pill-status saved text-xs">Live</span><span id="refresh-time-label" class="stat-lbl text-xs">Just now</span></button><button id="city-btn" class="btn btn-sm btn-secondary" aria-haspopup="dialog" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#icon-today"/></svg><span id="city-name-label">Gurugram</span></button><div id="top-aqi-chip" class="chip-aqi very-poor" role="status" aria-label="Air Quality: Very Poor"><svg class="icon" aria-hidden="true"><use href="#icon-naqi-very-poor"/></svg><span id="top-aqi-val">317</span><span id="top-aqi-cat">Very Poor</span></div><button id="lang-toggle-btn" class="btn btn-sm btn-secondary" aria-label="Switch Language to Hindi"><span id="lang-label">हिन्दी</span></button></div></header><div class="app-container"><nav class="nav-rail" aria-label="Desktop navigation"><button class="nav-item active" data-tab="today"><svg class="icon" aria-hidden="true"><use href="#icon-today"/></svg><span data-i18n="nav_today">Today</span></button><button class="nav-item" data-tab="plan"><svg class="icon" aria-hidden="true"><use href="#icon-plan"/></svg><span data-i18n="nav_plan">Plan</span></button><button class="nav-item" data-tab="indoor"><svg class="icon" aria-hidden="true"><use href="#icon-home"/></svg><span data-i18n="nav_indoor">Home Air</span></button><button class="nav-item" data-tab="swaps"><svg class="icon" aria-hidden="true"><use href="#icon-swaps"/></svg><span data-i18n="nav_swaps">Swaps</span></button><a href="/how-it-works" class="nav-item nav-item-bottom"><svg class="icon" aria-hidden="true"><use href="#icon-info"/></svg><span data-i18n="nav_how">How it works</span></a></nav><main id="main-content" class="main-content" tabindex="-1"><div id="fixture-notice" class="story-banner" hidden role="status"><span><strong>Demo Mode:</strong> Using validated winter smog fixtures.</span></div>
+<a href="#main-content" class="skip-link">Skip to main content</a>
+<div id="a11y-announcer" class="sr-only" aria-live="polite" role="status"></div>
+<header class="top-bar">
+  <a href="/" class="brand" aria-label="HawaKhata Home">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name" data-i18n="brand_name">HawaKhata</span>
+    <span class="brand-sub" data-i18n="brand_sub">हवा खाता</span>
+  </a>
+  <div class="top-actions">
+    <button id="refresh-btn" class="chip chip-live" type="button" aria-label="Refresh Data">
+      <span id="data-mode-badge" class="pill-status saved text-xs">Live</span>
+      <span id="refresh-time-label" class="chip-time">Just now</span>
+    </button>
+    <button id="city-btn" class="chip chip-city" type="button" aria-haspopup="dialog" aria-expanded="false">
+      <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-today"/></svg>
+      <span id="city-name-label" class="chip-city-name">Locating…</span>
+      <span class="chip-caret" aria-hidden="true">▾</span>
+    </button>
+    <div id="top-aqi-chip" class="chip-aqi" role="status" aria-label="Air Quality: loading">
+      <svg class="icon icon-sm" aria-hidden="true"><use href="#icon-naqi-very-poor"/></svg>
+      <span id="top-aqi-val" class="chip-aqi-val">AQI —</span>
+      <span id="top-aqi-cat" class="chip-aqi-cat"></span>
+    </div>
+    <button id="lang-toggle-btn" class="chip chip-seg" data-lang="en" type="button" aria-label="Switch Language to Hindi">
+      <span class="seg-opt seg-en">EN</span><span id="lang-label" class="seg-opt seg-hi">हिन्दी</span>
+    </button>
+    <button id="btn-theme-toggle" class="chip chip-icon" type="button" aria-pressed="false" aria-label="Switch to dark theme">
+      <span id="theme-icon" aria-hidden="true">🌙</span>
+    </button>
+  </div>
+</header>
+<div class="app-container">
+  <nav class="nav-rail" aria-label="Desktop navigation">
+    <button class="nav-item active" data-tab="today" aria-current="page"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-today"/></svg></span><span data-i18n="nav_today">Today</span></button>
+    <button class="nav-item" data-tab="plan"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-plan"/></svg></span><span data-i18n="nav_plan">Plan</span></button>
+    <button class="nav-item" data-tab="indoor"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-home"/></svg></span><span data-i18n="nav_indoor">Home Air</span></button>
+    <button class="nav-item" data-tab="swaps"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-swaps"/></svg></span><span data-i18n="nav_swaps">Swaps</span></button>
+    <a href="/how-it-works" class="nav-item nav-item-bottom"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-info"/></svg></span><span data-i18n="nav_how">How it works</span></a>
+  </nav>
+  <main id="main-content" class="main-content" tabindex="-1">
+    <div id="fixture-notice" class="story-banner" hidden role="status"><span><strong>Demo Mode:</strong> Using validated winter smog fixtures.</span></div>
     {% block content %}{% endblock %}
-  </main></div><nav class="nav-bottom" aria-label="Mobile navigation"><button class="nav-item active" data-tab="today"><svg class="icon" aria-hidden="true"><use href="#icon-today"/></svg><span data-i18n="nav_today">Today</span></button><button class="nav-item" data-tab="plan"><svg class="icon" aria-hidden="true"><use href="#icon-plan"/></svg><span data-i18n="nav_plan">Plan</span></button><button class="nav-item" data-tab="indoor"><svg class="icon" aria-hidden="true"><use href="#icon-home"/></svg><span data-i18n="nav_indoor">Home Air</span></button><button class="nav-item" data-tab="swaps"><svg class="icon" aria-hidden="true"><use href="#icon-swaps"/></svg><span data-i18n="nav_swaps">Swaps</span></button></nav><button id="fab-ask-btn" class="fab-ask" aria-label="Open Ask HawaKhata chat"><svg class="icon icon-lg" aria-hidden="true"><use href="#icon-ask"/></svg></button><aside id="ask-drawer" class="ask-drawer" aria-label="Ask HawaKhata chat" hidden><div class="card-header ask-header"><h3 class="card-title" data-i18n="btn_ask">Ask HawaKhata</h3><button id="ask-close-btn" class="btn btn-sm btn-secondary" aria-label="Close Chat"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button></div><div id="ask-chat-msgs" class="ask-messages" role="log" aria-live="polite"><div class="msg assistant">Namaste! Ask about your air budget, clean windows, or hacks.</div></div><div class="ask-samples" role="group" aria-label="Sample questions"><span class="stat-lbl text-xs" data-i18n="ask_samples_label">Try asking:</span><button type="button" class="btn btn-sm btn-secondary text-xs ask-sample-btn" data-i18n="ask_sample_1">Is it safe for Dadi to walk at 7 AM or 4 PM today?</button><button type="button" class="btn btn-sm btn-secondary text-xs ask-sample-btn" data-i18n="ask_sample_2">Which day in the next 4 days is best for market shopping?</button><button type="button" class="btn btn-sm btn-secondary text-xs ask-sample-btn" data-i18n="ask_sample_3">Is a short dog walk safe today, and are my indoor birds okay?</button><button type="button" class="btn btn-sm btn-secondary text-xs ask-sample-btn" data-i18n="ask_sample_4">How do I cut smoke from tadka cooking, and what purifier size do I need?</button></div><form id="ask-form" class="ask-form"><input type="text" id="ask-input" class="btn ask-input" placeholder="Ask about smog or plan..." aria-label="Query"><button type="submit" class="btn btn-primary" aria-label="Send">Send</button></form></aside><aside id="story-tour" class="story-tour-card" hidden role="region" aria-label="Story tour"><div class="flex-1"><div id="story-step-text" class="story-step-text">Step 1 of 5</div><div id="story-caption-text" class="story-caption-text">Tour...</div></div><div class="flex gap-05"><button id="story-prev-btn" class="btn btn-sm btn-secondary" aria-label="Previous">Back</button><button id="story-next-btn" class="btn btn-sm btn-primary" aria-label="Next">Next</button><button id="story-close-btn" class="btn btn-sm btn-secondary" aria-label="Exit">✕</button></div></aside><script type="module" src="/static/js/app.js"></script></body></html>
+  </main>
+</div>
+<nav class="nav-bottom" aria-label="Mobile navigation">
+  <button class="nav-item active" data-tab="today" aria-current="page"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-today"/></svg></span><span data-i18n="nav_today">Today</span></button>
+  <button class="nav-item" data-tab="plan"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-plan"/></svg></span><span data-i18n="nav_plan">Plan</span></button>
+  <button class="nav-item" data-tab="indoor"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-home"/></svg></span><span data-i18n="nav_indoor">Home Air</span></button>
+  <button class="nav-item" data-tab="swaps"><span class="nav-ind"><svg class="icon" aria-hidden="true"><use href="#icon-swaps"/></svg></span><span data-i18n="nav_swaps">Swaps</span></button>
+</nav>
+<button id="fab-ask-btn" class="fab-ask" type="button" aria-label="Open Ask HawaKhata chat">
+  <svg class="icon icon-lg" aria-hidden="true"><use href="#icon-ask"/></svg><span class="fab-label" data-i18n="btn_ask">Ask HawaKhata</span>
+</button>
+<aside id="ask-drawer" class="ask-drawer" aria-label="Ask HawaKhata chat" hidden>
+  <div class="ask-header">
+    <div class="ask-title-wrap"><span class="ask-avatar" aria-hidden="true">हवा</span><h3 class="card-title" data-i18n="btn_ask">Ask HawaKhata</h3></div>
+    <button id="ask-close-btn" class="btn btn-sm btn-icon" type="button" aria-label="Close Chat"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
+  </div>
+  <div id="ask-chat-msgs" class="ask-messages" role="log" aria-live="polite"><div class="msg assistant">Namaste! Ask about your air budget, clean windows, or hacks.</div></div>
+  <div class="ask-samples" role="group" aria-label="Sample questions">
+    <span class="micro-label" data-i18n="ask_samples_label">Try asking:</span>
+    <button type="button" class="chip-filter ask-sample-btn" data-i18n="ask_sample_1">Is it safe for Dadi to walk at 7 AM or 4 PM today?</button>
+    <button type="button" class="chip-filter ask-sample-btn" data-i18n="ask_sample_2">Which day in the next 4 days is best for market shopping?</button>
+    <button type="button" class="chip-filter ask-sample-btn" data-i18n="ask_sample_3">Is a short dog walk safe today, and are my indoor birds okay?</button>
+    <button type="button" class="chip-filter ask-sample-btn" data-i18n="ask_sample_4">How do I cut smoke from tadka cooking, and what purifier size do I need?</button>
+  </div>
+  <form id="ask-form" class="ask-form">
+    <input type="text" id="ask-input" class="field ask-input" placeholder="Ask about smog or plan..." aria-label="Query" data-i18n-placeholder="ask_placeholder">
+    <button type="submit" class="btn btn-primary ask-send" aria-label="Send">Send</button>
+  </form>
+</aside>
+<aside id="story-tour" class="story-tour-card" hidden role="region" aria-label="Story tour">
+  <div class="flex-1"><div id="story-step-text" class="story-step-text">Step 1 of 5</div><div id="story-caption-text" class="story-caption-text">Tour...</div></div>
+  <div class="flex gap-05"><button id="story-prev-btn" class="btn btn-sm btn-secondary" aria-label="Previous">Back</button><button id="story-next-btn" class="btn btn-sm btn-primary" aria-label="Next">Next</button><button id="story-close-btn" class="btn btn-sm btn-secondary" aria-label="Exit">✕</button></div>
+</aside>
+<script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

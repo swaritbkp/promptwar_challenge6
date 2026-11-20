@@ -121,3 +121,15 @@ async def test_mumbai_city_scaling_and_96h_variations() -> None:
     assert max(day1_pm) != max(day2_pm)
     assert max(day2_pm) != max(day3_pm)
     assert max(day3_pm) != max(day4_pm)
+
+
+def test_city_fixture_scale_is_data_driven() -> None:
+    """Fixture city scales come from data/constants.v1.json, not hard-coded Python."""
+    from hawakhata.engine.constants import get_constant
+    from hawakhata.integrations.air_quality import resolve_city_scale
+
+    cfg = get_constant("city_pm25_fixture_scale").value
+    for lat, lng, scale, _name in cfg["anchors"]:
+        assert resolve_city_scale(lat, lng) == scale
+    assert resolve_city_scale(8.5, 70.0) == cfg["fallback_south"]  # far south, no anchor
+    assert resolve_city_scale(34.1, 74.8) == cfg["fallback_north"]  # Srinagar, no anchor
