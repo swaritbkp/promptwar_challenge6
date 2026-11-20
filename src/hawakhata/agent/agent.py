@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,6 +20,7 @@ from hawakhata.agent.fallback import (
 from hawakhata.agent.grounding import check_numeric_grounding, extract_numbers
 from hawakhata.agent.guardrails import (
     detect_health_red_flags,
+    detect_medical_dosing_request,
     detect_prompt_injection,
     enforce_output_policy,
     mask_pii,
@@ -39,7 +41,8 @@ from hawakhata.integrations.air_quality import AirQualityClient
 from hawakhata.integrations.gemini import GeminiCascadeClient
 
 logger = get_logger(__name__)
-CANARY_TOKEN = "HAWAKHATA_SEC_CANARY_7X9Q"  # noqa: S105
+# Ephemeral per-process canary — generated at startup, never a literal secret in source
+CANARY_TOKEN: str = f"HK_CANARY_{secrets.token_hex(8)}"
 
 
 @dataclass(frozen=True)
@@ -243,6 +246,18 @@ class HawaKhataAgent:
             return AgentTurnResult(refusal, lang, [], [], [], None, True, False)
 
         safe_input = mask_pii(cleaned).masked_text
+
+        # Input-level medical dosing guardrail — catch prescription/dosing queries immediately
+        if detect_medical_dosing_request(safe_input).blocked:
+            disclaimer = (
+                "यह चिकित्सीय परामर्श नहीं है। इनहेलर, दवा या खुराक के बारे में कृपया पंजीकृत चिकित्सक से संपर्क करें। "
+                "हवा खाता केवल वायु प्रदूषण मार्गदर्शन प्रदान करता है।"
+                if lang == "hi"
+                else "HawaKhata provides air quality guidance only, not medical advice or prescriptions. "
+                "For inhaler doses, medication regimens, or any health treatment, please consult a certified medical doctor."
+            )
+            return AgentTurnResult(disclaimer, lang, [], [], [], None, True, False)
+
         health = detect_health_red_flags(safe_input)
 
         token = set_current_context(ToolContext(profile, location, aq_client, date_iso))
@@ -265,9 +280,11 @@ class HawaKhataAgent:
                 not out_v.safe
                 or "canary_leak" in out_v.blocked_reasons
                 or CANARY_TOKEN.lower() in reply_text.lower()
-                or "canary_7x9q" in reply_text.lower()
                 or CANARY_TOKEN.lower() in final_reply.lower()
+                or "canary_7x9q" in reply_text.lower()
                 or "canary_7x9q" in final_reply.lower()
+                or "hawakhata_sec_canary" in reply_text.lower()
+                or "hawakhata_sec_canary" in final_reply.lower()
             )
             if canary_detected:
                 logger.warning(
@@ -286,10 +303,12 @@ class HawaKhataAgent:
                 tool_outputs = [fb["tool_output"]]
                 fb_used = True
 
-            # Final sanitize to guarantee zero canary substring reaches response
-            if "canary_7x9q" in final_reply.lower() or CANARY_TOKEN.lower() in final_reply.lower():
+            # Final sanitize to guarantee no canary substring reaches the response
+            if CANARY_TOKEN.lower() in final_reply.lower() or "canary" in final_reply.lower():
                 final_reply = re.sub(
-                    r"(?i)<*HAWAKHATA_SEC_CANARY_[A-Z0-9]+>*", "", final_reply
+                    rf"(?i)<*HK_CANARY_[A-F0-9]+>*|<*HAWAKHATA_SEC_CANARY_[A-Z0-9]+>*|{re.escape(CANARY_TOKEN)}",
+                    "",
+                    final_reply,
                 ).strip()
             nums = [n.value for n in extract_numbers(final_reply)]
             self.sessions.add_message(session_id, "user", user_message)

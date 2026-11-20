@@ -345,3 +345,80 @@ def test_four_day_forecast_metro_cities(client: TestClient) -> None:
         assert len(set(day_aqis)) >= 3, f"{city_name} peak AQIs not distinct enough: {day_aqis}"
         assert min(day_aqis) < max(day_aqis)
         assert data["top_slots"][0]["savings_ug"] > 0
+
+
+def test_chat_turn1_hour_comparison_live_endpoint(client: TestClient) -> None:
+    payload = {
+        "message": "Is it safe for Dadi to walk at 7 AM or 4 PM today?",
+        "session_id": "test_turn1_sess",
+        "language": "en",
+        "profile": {
+            "id": "fam_01",
+            "name": "Mehra Family",
+            "location": {"lat": 28.4595, "lng": 77.0266, "city_name": "Delhi NCR"},
+            "rooms": [],
+            "sources": [],
+            "members": [
+                {
+                    "id": "dadi",
+                    "name": "Dadi",
+                    "age_band": "61_plus",
+                    "sensitivities": ["cardiac"],
+                    "schedule_blocks": [
+                        {
+                            "start_hour": 7,
+                            "end_hour": 8,
+                            "micro_env": "outdoor",
+                            "activity": "light",
+                            "label": "Morning Walk",
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+    resp = client.post("/api/v1/chat", json=payload)
+    assert resp.status_code == 200, f"Chat failed: {resp.text}"
+    data = resp.json()["data"]
+    assert data["follow_up"] is None
+    reply = data["reply"].lower()
+    assert "07:00" in reply and "16:00" in reply
+    assert "dadi" in reply
+    assert "what duration and time window" not in reply
+
+
+def test_four_day_forecast_unified_live_aqi_and_hourly(client: TestClient) -> None:
+    resp = client.get("/api/v1/forecast/4day?lat=28.4595&lng=77.0266&city=Delhi+NCR")
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert "hourly_pm25_24h" in data
+    assert len(data["hourly_pm25_24h"]) == 24
+    assert data["current_aqi"] > 0
+    assert data["current_pm25"] > 0
+    assert data["current_category"] in (
+        "good",
+        "satisfactory",
+        "moderate",
+        "poor",
+        "very_poor",
+        "severe",
+    )
+    assert data["data_mode"] in ("live", "fixture")
+
+
+def test_live_vs_synthetic_four_day_outlook() -> None:
+    from hawakhata.engine.planner import build_four_day_outlook
+
+    # Distinct 96-hour series simulating genuine varied live API forecast
+    var_96 = [50.0 + (i // 24) * 20.0 + (i % 24) * 3.0 for i in range(96)]
+    outlook_live = build_four_day_outlook(var_96, synthetic=False)
+    # With synthetic=False, daily peak PM2.5 reflects unmodified data slices
+    for d in range(4):
+        expected_peak = max(var_96[d * 24 : (d + 1) * 24])
+        assert abs(outlook_live.days[d].peak_pm25 - expected_peak) < 1e-2
+
+    # With synthetic=True, synoptic scaling is applied to add variation
+    identical_96 = [200.0] * 96
+    outlook_synth = build_four_day_outlook(identical_96, synthetic=True)
+    peaks = [day.peak_pm25 for day in outlook_synth.days]
+    assert len(set(peaks)) > 1

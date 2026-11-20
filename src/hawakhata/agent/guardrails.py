@@ -103,6 +103,22 @@ def detect_health_red_flags(text: str) -> HealthVerdict:
     return HealthVerdict(urgent=len(matched) > 0, matched_terms=matched)
 
 
+def detect_medical_dosing_request(text: str) -> InjectionVerdict:
+    """Detect direct medical dosing or prescription requests (without injection phrasing).
+
+    Catches queries like 'What inhaler dose should my child take?', 'prescribe an inhaler',
+    'how many puffs per day', 'mg/kg', 'steroid/nebulizer dose' — returning blocked=True
+    so the caller can return a clean medical disclaimer immediately.
+    """
+    patterns = _load_guardrails_config().get("medical_dosing_patterns", [])
+    matched = [
+        item.get("id", "")
+        for item in patterns
+        if item.get("regex") and re.search(item["regex"], text)
+    ]
+    return InjectionVerdict(blocked=len(matched) > 0, matched_rule_ids=matched)
+
+
 def enforce_output_policy(
     reply: str, urgent: bool = False, canary: str | None = None, language: str = "en"
 ) -> OutputPolicyVerdict:
@@ -111,7 +127,8 @@ def enforce_output_policy(
     canary_detected = False
     if canary and canary.lower() in reply_low:
         canary_detected = True
-    if "hawakhata_sec_canary" in reply_low or "canary_7x9q" in reply_low:
+    # Also catch the fixed prefix pattern used by ephemeral canary tokens
+    if re.search(r"hk_canary_[0-9a-f]+", reply_low):
         canary_detected = True
 
     if canary_detected:

@@ -119,6 +119,13 @@ class FourDayForecastResponse(StrictBaseModel):
     safe_house_flush: SafeFlushWindow
     top_slots: list[MultiDaySlot] = Field(default_factory=list, max_length=3)
     current_weather: WeatherSummary | None = None
+    # Current live AQ snapshot — same source as passbook endpoint
+    current_aqi: int = 317
+    current_pm25: float = 150.0
+    current_category: str = "very_poor"
+    current_category_label: str = "Very Poor"
+    data_mode: str = "fixture"
+    hourly_pm25_24h: list[float] = Field(default_factory=list, max_length=24)
 
 
 class PassbookRequest(BaseComputeRequest):
@@ -202,6 +209,7 @@ class ChatRequest(BaseComputeRequest):
     message: str = Field(min_length=1, max_length=1000)
     history: list[ChatMessageInput] = Field(default_factory=list, max_length=20)
     profile: FamilyProfileInput | None = None
+    location: LocationInput | None = None
     language: str = Field(default="en", max_length=5)
 
 

@@ -32,6 +32,9 @@ CATEGORIES: dict[str, NAQICategory] = {
 }
 
 _PM25_BREAKPOINTS: tuple[tuple[float, float, int, int, str], ...] = (
+    # CPCB NAQI Table 1: PM2.5 24h breakpoints (integer boundaries per constants.v1.json)
+    # [0–30]: Good, [31–60]: Satisfactory, [61–90]: Moderate, [91–120]: Poor,
+    # [121–250]: Very Poor, [251–∞]: Severe
     (0.0, 30.0, 0, 50, "good"),
     (30.0, 60.0, 50, 100, "satisfactory"),
     (60.0, 90.0, 100, 200, "moderate"),
@@ -42,7 +45,14 @@ _PM25_BREAKPOINTS: tuple[tuple[float, float, int, int, str], ...] = (
 
 
 def pm25_to_naqi_category(pm25_ug_m3: float) -> NAQICategory:
-    """Map a PM2.5 concentration in ug/m3 to the corresponding CPCB NAQI category."""
+    """Map a PM2.5 concentration in ug/m3 to the CPCB NAQI category.
+
+    CPCB NAQI 2014 Table 1 PM2.5 24h breakpoints (ug/m3):
+      Good: 0–30, Satisfactory: 31–60, Moderate: 61–90,
+      Poor: 91–120, Very Poor: 121–250, Severe: 251+
+    Half-open intervals: upper band-edge belongs to the LOWER severity band
+    (e.g. exactly 30 ug/m3 → Good; 30.001 → Satisfactory).
+    """
     c = max(0.0, pm25_ug_m3)
     if c <= 30.0:
         return CATEGORIES["good"]

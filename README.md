@@ -2,7 +2,7 @@
 
 > Air passbook for winter smog: debit (inhaled PM2.5), savings (exposure avoided), and balance under WHO 2021 guidelines.
 
-[![Tests](https://img.shields.io/badge/tests-197%20passed-brightgreen.svg)]() [![Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen.svg)]() [![Security](https://img.shields.io/badge/security-verified-blue.svg)]() [![WCAG](https://img.shields.io/badge/a11y-WCAG%202.2%20AA-success.svg)]()
+[![Tests](https://img.shields.io/badge/tests-208%20passed-brightgreen.svg)]() [![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)]() [![Security](https://img.shields.io/badge/security-verified-blue.svg)]() [![WCAG](https://img.shields.io/badge/a11y-WCAG%202.2%20AA-success.svg)]()
 
 ## 1. Problem → Solution
 | Brief Clause | Feature | Engine Citation |
@@ -63,7 +63,7 @@ FastAPI Gateway (`app.py: create_app()`)
 
 ## 6. Testing & Quickstart
 ```bash
-python scripts/gate.py                # Lint, format, mypy, 194 tests, audit
+python scripts/gate.py                # Lint, format, mypy, 208 tests, audit, eval
 uvicorn hawakhata.app:create_app --factory --app-dir src --reload --port 8000
 ```
 Open `http://localhost:8000` (live) or `http://localhost:8000/?story=ncr` (tour).

@@ -16,6 +16,7 @@ _ENV_FILE = _PROJECT_ROOT / ".env"
 class Settings(BaseSettings):
     """Typed, validated application settings loaded from env vars / .env."""
 
+    # extra="ignore" permits ambient Cloud Run and OS environment variables without raising ValidationError
     model_config = SettingsConfigDict(
         env_file=(_ENV_FILE, ".env"), env_file_encoding="utf-8", extra="ignore", frozen=True
     )

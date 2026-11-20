@@ -7,7 +7,8 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from hawakhata.agent.agent import HawaKhataAgent, unwrap_agent_reply
+from hawakhata.agent.agent import CANARY_TOKEN, HawaKhataAgent, unwrap_agent_reply
+from hawakhata.agent.fallback import execute_fallback_turn, is_clock_comparison_query
 from hawakhata.agent.grounding import (
     check_numeric_grounding,
     collect_allowed_numbers,
@@ -15,6 +16,7 @@ from hawakhata.agent.grounding import (
 )
 from hawakhata.agent.guardrails import (
     detect_health_red_flags,
+    detect_medical_dosing_request,
     detect_prompt_injection,
     enforce_output_policy,
     mask_pii,
@@ -24,10 +26,15 @@ from hawakhata.agent.prompts import clear_prompt_cache, list_prompts, load_promp
 from hawakhata.agent.sessions import SessionStore
 from hawakhata.agent.tools import (
     ToolContext,
+    check_indoor_plants_impact,
+    evaluate_swaps,
     explain_number,
     get_air_forecast,
     get_family_passbook,
     get_four_day_schedule,
+    get_household_priority_triage,
+    get_pet_air_guidance,
+    get_shareable_passbook_digest,
     get_smog_brief,
     plan_clean_windows,
     reset_current_context,
@@ -101,6 +108,9 @@ def test_sanitize_and_injection_guardrails() -> None:
     ]
     assert all(detect_prompt_injection(i).blocked for i in injs)
     assert not detect_prompt_injection("What is AQI in Delhi?").blocked
+    assert detect_medical_dosing_request("What inhaler dose should my child take?").blocked
+    assert detect_medical_dosing_request("इन्हेलर की कितनी खुराक लेनी चाहिए?").blocked
+    assert not detect_medical_dosing_request("What is AQI in Delhi?").blocked
 
 
 def test_pii_and_health_guardrails() -> None:
@@ -355,3 +365,227 @@ async def test_turn1_hour_comparison_fallback(
     assert "safer" in lower2 or "better" in lower2 or "mixing" in lower2
     assert "µg/m³" in res2.reply or "aqi" in lower2
     assert "recommendation" in lower2 or "avoid" in lower2
+
+
+@pytest.mark.asyncio
+async def test_medical_dosing_refusal_standalone(
+    sample_profile: FamilyProfileInput,
+    sample_location: LocationInput,
+    sample_aq_client: AirQualityClient,
+) -> None:
+    client = GeminiCascadeClient(settings=_make_gemini_settings(has_key=False))
+    agent = HawaKhataAgent(gemini_client=client)
+    kw = {"profile": sample_profile, "location": sample_location, "aq_client": sample_aq_client}
+
+    # English query
+    res_en = await agent.run_turn(
+        session_id="med_dose_en",
+        user_message="What inhaler dose should my child take for severe asthma?",
+        **kw,
+    )
+    assert res_en.grounded is True
+    assert "medical advice or prescriptions" in res_en.reply
+    assert "consult a certified medical doctor" in res_en.reply
+
+    # Hindi query
+    res_hi = await agent.run_turn(
+        session_id="med_dose_hi",
+        user_message="मेरे बच्चे को इनहेलर की कितनी खुराक या दवा देनी चाहिए?",
+        **kw,
+    )
+    assert res_hi.grounded is True
+    assert "चिकित्सीय परामर्श नहीं है" in res_hi.reply
+    assert "पंजीकृत चिकित्सक से संपर्क करें" in res_hi.reply
+
+
+@pytest.mark.asyncio
+async def test_ephemeral_canary_leak_stripping(
+    sample_profile: FamilyProfileInput,
+    sample_location: LocationInput,
+    sample_aq_client: AirQualityClient,
+) -> None:
+    client = GeminiCascadeClient(settings=_make_gemini_settings(has_key=True))
+    agent = HawaKhataAgent(gemini_client=client)
+    mock_sdk = MagicMock()
+    mock_sdk.aio.models.generate_content = AsyncMock(
+        return_value=MagicMock(text=f"Live alert: {CANARY_TOKEN} please stay indoors today.")
+    )
+    client._client = mock_sdk
+    kw = {"profile": sample_profile, "location": sample_location, "aq_client": sample_aq_client}
+    res = await agent.run_turn(session_id="ephem_canary_s1", user_message="What is the air?", **kw)
+    assert CANARY_TOKEN not in res.reply
+    assert CANARY_TOKEN.lower() not in res.reply.lower()
+    assert res.fallback_used is True
+    assert res.grounded is True
+
+
+@pytest.mark.asyncio
+async def test_fallback_router_comprehensive_intents(
+    sample_profile: FamilyProfileInput,
+    sample_location: LocationInput,
+    sample_aq_client: AirQualityClient,
+) -> None:
+    # Clock comparison query regex checks
+    assert is_clock_comparison_query("Is 7 AM or 4 PM better?") is True
+    assert is_clock_comparison_query("Walk at 7:00 or 16:00?") is True
+    assert is_clock_comparison_query("क्या सुबह 7 बजे या 4 बजे सैर करें?") is True
+
+    # Fallback turn execution across distinct intents
+    date_iso = "2026-11-20"
+    for msg in [
+        "How can we simulate indoor air in Living Room?",
+        "What sustainable swaps reduce community emissions?",
+        "Do snake plants or areca palms remove winter PM2.5?",
+        "Is it safe to walk my dog outside right now?",
+        "Give me the 4 day forecast and dispersion outlook.",
+    ]:
+        res = await execute_fallback_turn(
+            msg, sample_profile, sample_location, sample_aq_client, date_iso
+        )
+        assert res["reply"]
+        assert res["tool_name"]
+        assert isinstance(res["tool_output"], dict)
+
+
+@pytest.mark.asyncio
+async def test_agent_tools_execution(
+    sample_profile: FamilyProfileInput,
+    sample_location: LocationInput,
+    sample_aq_client: AirQualityClient,
+) -> None:
+    token = set_current_context(
+        ToolContext(sample_profile, sample_location, sample_aq_client, "2026-11-20")
+    )
+    try:
+        # Indoor simulation tool
+        ind = await simulate_indoor_air(room_name="Kids Room")
+        assert "mean_pm25_ug_m3" in ind["result"]
+
+        # Swaps tool
+        sw = await evaluate_swaps("commute_car_to_metro", households=10)
+        assert "total_emissions_avoided_kg" in sw["result"]
+
+        # Pets tool
+        pet = await get_pet_air_guidance("dog")
+        assert "safe_walk_duration_min" in pet["result"]
+
+        # Plants tool
+        pl = await check_indoor_plants_impact(plant_count=8)
+        assert "plant_cadr_m3_per_h" in pl["result"]
+
+        # Triage and digest tools
+        tr = await get_household_priority_triage()
+        assert "priority_ranking" in tr["result"]
+        dg = await get_shareable_passbook_digest()
+        assert "digest_text" in dg["result"]
+
+        # Four day schedule tool
+        fd = await get_four_day_schedule("walk", duration_min=60)
+        assert "tomorrow_watch" in fd["result"]
+
+        # Number explanation tool
+        exp = await explain_number("who_aqg_pm25_24h")
+        assert "value" in exp["result"]
+
+        # Air forecast tool
+        fc = await get_air_forecast(hours=24)
+        assert "current_pm25" in fc["result"]
+
+        # Family passbook tool
+        pb = await get_family_passbook()
+        assert "members" in pb["result"]
+    finally:
+        reset_current_context(token)
+
+
+@pytest.mark.asyncio
+async def test_agent_helper_branches_and_follow_up(
+    sample_profile: FamilyProfileInput,
+    sample_location: LocationInput,
+    sample_aq_client: AirQualityClient,
+) -> None:
+    client = GeminiCascadeClient(_make_gemini_settings(has_key=True))
+    agent = HawaKhataAgent(gemini_client=client)
+
+    # 1. unwrap_agent_reply edge cases
+    assert unwrap_agent_reply('{"reply": 12345}') == "12345"
+    assert unwrap_agent_reply('{"reply": "simple reply"}') == "simple reply"
+    assert unwrap_agent_reply('{"reply": "{\\"reply\\": \\"nested\\"}"}') == "nested"
+    assert unwrap_agent_reply('```json\n{"reply": "code block"}\n```') == "code block"
+    assert unwrap_agent_reply("```\njust markdown code\n```") == "just markdown code"
+    assert unwrap_agent_reply("raw text") == "raw text"
+
+    # 2. _get_adk_agent
+    adk1 = agent._get_adk_agent("test instruction")
+    assert adk1.instruction == "test instruction"
+    adk2 = agent._get_adk_agent("test instruction")
+    assert adk1 is adk2
+
+    # 3. _resolve_follow_up EN and HI
+    tool_outs_missing = [{"missing_fields": ["duration_min", "preferred_window"]}]
+    fu_en = agent._resolve_follow_up(tool_outs_missing, "en", "walk outdoor")
+    assert fu_en is not None
+    assert "What duration" in fu_en.question
+
+    fu_hi = agent._resolve_follow_up(tool_outs_missing, "hi", "सैर")
+    assert fu_hi is not None
+    assert "सैर या दौड़ कितने समय" in fu_hi.question
+
+    # Clock comparison query should suppress follow up
+    fu_clock = agent._resolve_follow_up(tool_outs_missing, "en", "Is 7 AM or 4 PM better?")
+    assert fu_clock is None
+
+
+@pytest.mark.asyncio
+async def test_fallback_turn_hindi_and_ungrounded(
+    sample_profile: FamilyProfileInput,
+    sample_location: LocationInput,
+    sample_aq_client: AirQualityClient,
+) -> None:
+    date_iso = "2026-11-20"
+    # Hindi queries for various intents
+    for msg in [
+        "आज का स्मॉग ब्रीफ क्या है?",
+        "क्या मुझे N95 मास्क पहनना चाहिए?",
+        "स्वास्थ्य संबंधी सावधानियां क्या हैं?",
+        "मेरा हवा खाता पासबुक दिखाएं",
+        "क्या सुबह 7 बजे या 4 बजे सैर करें?",
+        "घर के पौधों का क्या असर होता है?",
+        "अगले 4 दिन का मौसम कैसा रहेगा?",
+    ]:
+        res = await execute_fallback_turn(
+            msg, sample_profile, sample_location, sample_aq_client, date_iso
+        )
+        assert res["reply"]
+        assert res["tool_name"]
+
+    # Plan intent with and without schedule blocks
+    no_sched_mem = MemberInput(id="m_none", name="Rohan", age_band="adult", schedule_blocks=[])
+    no_sched_profile = FamilyProfileInput(
+        id="p_none", name="NoSched", location=sample_location, members=[no_sched_mem], rooms=[]
+    )
+    res_plan_empty = await execute_fallback_turn(
+        "Can you plan my day?", no_sched_profile, sample_location, sample_aq_client, date_iso
+    )
+    assert res_plan_empty["tool_name"] == "plan_clean_windows"
+
+    res_plan = await execute_fallback_turn(
+        "Can you plan my day?", sample_profile, sample_location, sample_aq_client, date_iso
+    )
+    assert res_plan["tool_name"] == "get_smog_brief"
+
+    # Test ungrounded live reply triggers fallback
+    client = GeminiCascadeClient(_make_gemini_settings(has_key=True))
+    agent = HawaKhataAgent(gemini_client=client)
+    mock_sdk = MagicMock()
+    # Return an ungrounded hallucinated number that cannot be in tool output
+    mock_sdk.aio.models.generate_content = AsyncMock(
+        return_value=MagicMock(
+            text='{"reply": "The toxic pollution level today is 99998888 ug/m3 everywhere."}'
+        )
+    )
+    client._client = mock_sdk
+    kw = {"profile": sample_profile, "location": sample_location, "aq_client": sample_aq_client}
+    res = await agent.run_turn(session_id="ungrounded_s1", user_message="What is the air?", **kw)
+    assert res.fallback_used is True
+    assert "99998888" not in res.reply

@@ -78,15 +78,18 @@ async def get_air_forecast(hours: int = 24) -> dict[str, Any]:
     )
     cur = s.points[0] if s.points else None
     cur_pm, cur_aqi, _cur_code, cur_cat = compute_live_aq_snapshot(cur.pm25_ug_m3 if cur else 150.0)
-    pts = [
-        {
-            "hour": int(p.time_local[11:13]) if len(p.time_local) >= 13 else 0,
-            "pm25_ug_m3": round(p.pm25_ug_m3, 1),
-            "aqi": compute_live_aq_snapshot(p.pm25_ug_m3)[1],
-            "category": compute_live_aq_snapshot(p.pm25_ug_m3)[3],
-        }
-        for p in s.points
-    ]
+    pts = []
+    for p in s.points:
+        _, p_aqi, _, p_cat = compute_live_aq_snapshot(p.pm25_ug_m3)
+        h = int(p.time_local[11:13]) if len(p.time_local) >= 13 else 0
+        pts.append(
+            {
+                "hour": h,
+                "pm25_ug_m3": round(p.pm25_ug_m3, 1),
+                "aqi": p_aqi,
+                "category": p_cat,
+            }
+        )
     return _wrap(
         {
             "city": c.location.city_name,

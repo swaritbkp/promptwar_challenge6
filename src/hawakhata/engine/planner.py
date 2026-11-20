@@ -377,8 +377,19 @@ def build_four_day_outlook(
     hourly_pm25: list[float],
     hourly_weather: list[Any] | None = None,
     seed: int = 42,
+    *,
+    synthetic: bool = False,
 ) -> FourDayOutlook:
-    """Group 96-hour series into 4 daily cards with NAQI categories and dispersion regimes."""
+    """Group 96-hour series into 4 daily cards with NAQI categories and dispersion regimes.
+
+    Args:
+        hourly_pm25: 96-hour PM2.5 series from AQ API or fixtures.
+        hourly_weather: Optional parallel 96-hour Open-Meteo weather points.
+        seed: Random seed for uncertainty sampling.
+        synthetic: True when the series comes from a fixture/offline fallback.
+            Only when synthetic=True are CITY_CALIBRATED_SCALES and synoptic
+            day modifiers applied. Live Google AQ readings pass through unmodified.
+    """
     pm = (
         (hourly_pm25 * (96 // max(1, len(hourly_pm25)) + 1))[:96]
         if len(hourly_pm25) < 96
@@ -388,13 +399,20 @@ def build_four_day_outlook(
     day_means = [sum(pm[d * 24 : (d + 1) * 24]) / 24.0 for d in range(4)]
     all_days_identical = max(day_means) - min(day_means) < 1e-3
 
-    disp_factors = compute_daily_dispersion_factors(hourly_weather, days=4)
+    # Apply synoptic modulation ONLY on synthetic/fixture data to introduce day-to-day variation.
+    # Live Google AQ 96h forecasts already contain genuine day-to-day variation.
+    apply_modulation = synthetic or all_days_identical
+    disp_factors = (
+        compute_daily_dispersion_factors(hourly_weather, days=4)
+        if apply_modulation
+        else [1.0, 1.0, 1.0, 1.0]
+    )
     cards: list[DayOutlook] = []
     modulated_days: list[list[float]] = []
 
     for d in range(4):
         slice_pm = [float(p) for p in pm[d * 24 : (d + 1) * 24]]
-        if hourly_weather or all_days_identical:
+        if apply_modulation:
             day_disp_mod = disp_factors[d]
             day_pm = [round(max(10.0, p * day_disp_mod), 1) for p in slice_pm]
         else:
@@ -494,8 +512,19 @@ def optimize_multi_day_activity(
     duration_min: int,
     hourly_pm25: list[float],
     hourly_weather: list[Any] | None = None,
+    *,
+    synthetic: bool = False,
 ) -> list[MultiDaySlot]:
-    """Evaluate daytime hours (06:00-20:00) across 4 days and return top 3 cleanest slots."""
+    """Evaluate daytime hours (06:00-20:00) across 4 days and return top 3 cleanest slots.
+
+    Args:
+        age_band: Age band string for inhalation rate lookup.
+        activity_type: Activity type for inhalation rate.
+        duration_min: Duration of the activity in minutes.
+        hourly_pm25: Up to 96-hour PM2.5 series.
+        hourly_weather: Optional parallel Open-Meteo weather points.
+        synthetic: True when pm25 series is from fixture; apply synoptic scaling.
+    """
     if not hourly_pm25:
         return []
     base_day_pm = (
@@ -503,13 +532,20 @@ def optimize_multi_day_activity(
         if len(hourly_pm25) < 24
         else hourly_pm25[:24]
     )
-    disp_factors = compute_daily_dispersion_factors(hourly_weather, days=4)
-    pm: list[float] = []
     if len(hourly_pm25) >= 96:
         day_means = [sum(hourly_pm25[d * 24 : (d + 1) * 24]) / 24.0 for d in range(4)]
         all_days_identical = max(day_means) - min(day_means) < 1e-3
     else:
         all_days_identical = True
+
+    # Apply synoptic scaling only on synthetic/fixture data or when all days are identical
+    apply_modulation = synthetic or all_days_identical
+    disp_factors = (
+        compute_daily_dispersion_factors(hourly_weather, days=4)
+        if apply_modulation
+        else [1.0, 1.0, 1.0, 1.0]
+    )
+    pm: list[float] = []
 
     for d in range(4):
         slice_pm = (
@@ -517,7 +553,7 @@ def optimize_multi_day_activity(
             if len(hourly_pm25) >= (d + 1) * 24
             else base_day_pm
         )
-        if hourly_weather or all_days_identical:
+        if apply_modulation:
             pm.extend([round(max(10.0, p * disp_factors[d]), 1) for p in slice_pm])
         else:
             pm.extend([round(max(10.0, p), 1) for p in slice_pm])

@@ -95,6 +95,9 @@ def is_clock_comparison_query(text: str) -> bool:
     times_colon = re.findall(r"\b\d{1,2}:00\b", text)
     if len(times_colon) >= 2:
         return True
+    times_baje = re.findall(r"\d{1,2}\s*बजे", text)
+    if len(times_baje) >= 2:
+        return True
     return bool(re.search(r"\b\d{1,2}\s*(am|pm)\b.*\b\d{1,2}\s*(am|pm)\b", text, re.IGNORECASE))
 
 
@@ -124,7 +127,7 @@ def _extract_hours_and_member(text: str, members: list[Any]) -> tuple[list[int],
         h = int(match.group(1))
         if 0 <= h <= 23 and h not in hours:
             hours.append(h)
-    for match in re.finditer(r"\b(\d{1,2})\s*बजे\b", text):
+    for match in re.finditer(r"(\d{1,2})\s*बजे", text):
         h = int(match.group(1))
         if h <= 5:
             h += 12

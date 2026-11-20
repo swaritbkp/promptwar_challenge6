@@ -32,6 +32,7 @@ from hawakhata.api.schemas import (
     WeatherSummary,
 )
 from hawakhata.config import get_settings
+from hawakhata.engine.aqi import compute_live_aq_snapshot
 from hawakhata.engine.pets import evaluate_pet_walk_risk, get_indoor_pet_guidance
 from hawakhata.engine.planner import (
     build_four_day_outlook,
@@ -95,13 +96,16 @@ async def get_four_day_forecast(
         weather_client.get_hourly_weather(lat=lat, lng=resolved_lng, hours=96),
     )
     hourly_pm25 = [p.pm25_ug_m3 for p in aq_series.points]
-    outlook = build_four_day_outlook(hourly_pm25, weather_series.points)
+    outlook = build_four_day_outlook(
+        hourly_pm25, weather_series.points, synthetic=aq_series.data_mode == "fixture"
+    )
     top_slots = optimize_multi_day_activity(
         age_band=age_band,
         activity_type=activity,
         duration_min=duration_min,
         hourly_pm25=hourly_pm25,
         hourly_weather=weather_series.points,
+        synthetic=aq_series.data_mode == "fixture",
     )
 
     resolved_city = city or ("Chandigarh" if abs(lat - 30.7) < 1.0 else "Delhi NCR")
@@ -124,6 +128,10 @@ async def get_four_day_forecast(
             physical_explanation=exp,
         )
 
+    cur_pm, cur_aqi, cat_code, cat_label = compute_live_aq_snapshot(
+        hourly_pm25[0] if hourly_pm25 else 150.0
+    )
+
     response_data = FourDayForecastResponse(
         city=resolved_city,
         tomorrow_watch_headline=outlook.tomorrow_watch_headline,
@@ -132,6 +140,12 @@ async def get_four_day_forecast(
         safe_house_flush=outlook.safe_house_flush,
         top_slots=top_slots,
         current_weather=weather_summary,
+        current_aqi=cur_aqi,
+        current_pm25=cur_pm,
+        current_category=cat_code,
+        current_category_label=cat_label,
+        data_mode=aq_series.data_mode,
+        hourly_pm25_24h=hourly_pm25[:24],
     )
     return Envelope(
         data=response_data,
@@ -358,6 +372,8 @@ async def post_chat(
     client_ip = getattr(getattr(request, "client", None), "host", "127.0.0.1")
     session_id = req.session_id or f"sess_{uuid.uuid4().hex[:12]}"
     profile = req.profile or _default_profile()
+    if req.location is not None:
+        profile = profile.model_copy(update={"location": req.location})
     date_iso = (req.now or get_settings().demo_clock_iso or "2026-11-18")[:10]
 
     result = await agent.run_turn(
