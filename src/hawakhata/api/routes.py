@@ -28,10 +28,15 @@ from hawakhata.api.schemas import (
     PlanRequest,
     SensitiveAlert,
     SwapsImpactRequest,
+    WeatherSummary,
 )
 from hawakhata.config import get_settings
 from hawakhata.engine.pets import evaluate_pet_walk_risk, get_indoor_pet_guidance
-from hawakhata.engine.planner import build_four_day_outlook, optimize_multi_day_activity
+from hawakhata.engine.planner import (
+    build_four_day_outlook,
+    classify_dispersion,
+    optimize_multi_day_activity,
+)
 from hawakhata.integrations.air_quality import AirQualityClient
 from hawakhata.integrations.weather import WeatherClient
 from hawakhata.services.brief_service import generate_morning_brief
@@ -97,6 +102,25 @@ async def get_four_day_forecast(
     )
 
     resolved_city = city or ("Chandigarh" if abs(lat - 30.7) < 1.0 else "Delhi NCR")
+    curr_w = weather_series.points[0] if weather_series.points else None
+    weather_summary: WeatherSummary | None = None
+    if curr_w:
+        regime, exp = classify_dispersion(
+            curr_w.wind_speed_kmh,
+            curr_w.boundary_layer_height_m,
+            curr_w.relative_humidity_pct,
+            curr_w.precipitation_mm,
+        )
+        weather_summary = WeatherSummary(
+            temperature_c=curr_w.temperature_c,
+            humidity_pct=curr_w.relative_humidity_pct,
+            wind_speed_kmh=curr_w.wind_speed_kmh,
+            precipitation_mm=curr_w.precipitation_mm,
+            boundary_layer_height_m=curr_w.boundary_layer_height_m,
+            dispersion_regime=regime,
+            physical_explanation=exp,
+        )
+
     response_data = FourDayForecastResponse(
         city=resolved_city,
         tomorrow_watch_headline=outlook.tomorrow_watch_headline,
@@ -104,6 +128,7 @@ async def get_four_day_forecast(
         days=outlook.days,
         safe_house_flush=outlook.safe_house_flush,
         top_slots=top_slots,
+        current_weather=weather_summary,
     )
     return Envelope(
         data=response_data,

@@ -79,6 +79,37 @@ def test_compute_transit_delta_breathe_helpers() -> None:
     assert tb("car", "metro", 100.0, "unknown_age", 1.0) < 0
 
 
+def test_evaluate_urban_indian_daily_habits_and_rwa_impact() -> None:
+    # Kitchen chimney / exhaust during tadka
+    r_chimney = evaluate_swap("kitchen_chimney_tadka", units_per_day=1.0)
+    assert r_chimney.delta_breathe_daily_ug == -45.0
+    assert r_chimney.delta_emit_daily.kg_co2 == 0.0
+
+    # Skip coils and incense
+    r_coils = evaluate_swap("skip_coils_and_incense", units_per_day=1.0)
+    assert r_coils.delta_breathe_daily_ug == -60.0
+
+    # Wet mopping vs dry jhadu
+    r_mop = evaluate_swap("wet_mopping_vs_jhadu", units_per_day=1.0)
+    assert r_mop.delta_breathe_daily_ug == -18.0
+
+    # Car AC recirculation + combine errands / WFH
+    r_car = evaluate_swap("car_recirc_wfh_errands", units_per_day=15.0)
+    assert r_car.delta_emit_daily.kg_co2 < 0
+    assert r_car.delta_breathe_daily_ug < 0
+
+    # RWA guard heaters & composting
+    r_guard = evaluate_swap("rwa_guard_heaters", units_per_day=4.0)
+    assert r_guard.delta_emit_daily.g_pm25 < 0
+    r_comp = evaluate_swap("rwa_leaf_composting", units_per_day=2.0)
+    assert r_comp.delta_emit_daily.g_pm25 < 0
+    assert r_comp.delta_emit_daily.kg_co2 < 0
+
+    # RWA scaling across society flats (120 flats)
+    c_rwa = scale_to_community(r_comp, households=120, participation_rate=1.0)
+    assert c_rwa.community_delta_pm25_g_monthly < -1000.0
+
+
 def test_scale_to_community_validation_errors() -> None:
     sr = evaluate_swap("commute_car_to_metro", units_per_day=10.0)
     with pytest.raises(ValueError):

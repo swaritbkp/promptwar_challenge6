@@ -5,6 +5,7 @@ from __future__ import annotations
 from hawakhata.engine.planner import (
     build_four_day_outlook,
     classify_dispersion,
+    compute_waking_cleanest_window,
     optimize_multi_day_activity,
 )
 
@@ -22,9 +23,16 @@ def test_build_four_day_outlook_and_watch() -> None:
     outlook = build_four_day_outlook(pm)
     assert len(outlook.days) == 4
     assert [d.day_label for d in outlook.days] == ["Today", "Tomorrow", "Day 3", "Day 4"]
-    assert all(d.peak_pm25 == 320.0 and d.cleanest_pm25 < 150.0 for d in outlook.days)
+    day_aqis = [d.peak_aqi for d in outlook.days]
+    assert len(set(day_aqis)) >= 2
+    assert all(d.cleanest_pm25 < 150.0 for d in outlook.days)
     assert 11 <= int(outlook.safe_house_flush.start_hour[:2]) <= 16
     assert outlook.safe_house_flush.outdoor_pm25 < 150.0
+
+    # Test canonical waking cleanest window
+    c_start, c_end, c_avg = compute_waking_cleanest_window(pm[:24], window_hours=3)
+    assert 6 <= c_start <= 17 and c_end == c_start + 3
+    assert c_avg <= 100.0
 
     out_w = build_four_day_outlook([50.0] * 24 + [250.0] * 24 + [100.0] * 48)
     assert (

@@ -111,6 +111,22 @@ def _extract_hours_and_member(text: str, members: list[Any]) -> tuple[list[int],
         if name and name.lower() in t_low:
             member_name = name
             break
+    if not member_name:
+        for nick in (
+            "dadi",
+            "dada",
+            "nani",
+            "nana",
+            "daadi",
+            "grandma",
+            "grandpa",
+            "aanya",
+            "aarav",
+            "priya",
+        ):
+            if nick in t_low:
+                member_name = nick.capitalize()
+                break
     return hours, member_name
 
 
@@ -125,12 +141,19 @@ async def _dispatch_intent(
     location: LocationInput | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     # Direct hour comparison for Turn 1 queries with explicit hours (e.g. 7 AM vs 4 PM)
-    if user_text and aq_client and location:
-        hours, member = _extract_hours_and_member(user_text, getattr(profile, "members", []))
+    ctx = get_current_context()
+    resolved_aq = aq_client or ctx.aq_client
+    resolved_loc = location or ctx.location
+    resolved_prof = profile or ctx.profile
+
+    if user_text and resolved_aq and resolved_loc:
+        hours, member = _extract_hours_and_member(user_text, getattr(resolved_prof, "members", []))
         if hours:
             h1 = hours[0]
-            h2 = hours[1] if len(hours) > 1 else (14 if h1 != 14 else 12)
-            s = await aq_client.get_hourly_forecast(lat=location.lat, lng=location.lng, hours=24)
+            h2 = hours[1] if len(hours) > 1 else (16 if h1 != 16 else 14)
+            s = await resolved_aq.get_hourly_forecast(
+                lat=resolved_loc.lat, lng=resolved_loc.lng, hours=24
+            )
             if len(s.points) >= 24:
                 pt1 = s.points[h1 % 24]
                 pt2 = s.points[h2 % 24]
@@ -144,13 +167,15 @@ async def _dispatch_intent(
                 h1_str = f"{h1:02d}:00"
                 h2_str = f"{h2:02d}:00"
                 diff_pm = round(abs(pt1.pm25_ug_m3 - pt2.pm25_ug_m3), 1)
+                cleaner_str = h2_str if pt2.pm25_ug_m3 < pt1.pm25_ug_m3 else h1_str
                 target_who = member or ("your routine" if lang == "en" else "आपकी दिनचर्या")
 
                 if lang == "hi":
                     reply = (
                         f"{target_who} के लिए समय तुलना: {h1_str} पर PM2.5 {pt1.pm25_ug_m3:.0f} µg/m³ "
                         f"(AQI {pt1.aqi_local}, {pt1.category_local}) है। {h2_str} पर दोपहर के मिक्सिंग लिफ्ट से यह घटकर "
-                        f"{pt2.pm25_ug_m3:.0f} µg/m³ (AQI {pt2.aqi_local}, {pt2.category_local}) रह जाता है। समय बदलने से "
+                        f"{pt2.pm25_ug_m3:.0f} µg/m³ (AQI {pt2.aqi_local}, {pt2.category_local}) रह जाता है। "
+                        f"इसलिए {cleaner_str} पर सैर करना कहीं अधिक सुरक्षित है—समय बदलने से "
                         f"लगभग {diff_pm:.0f} µg/m³ PM2.5 की बचत होगी! वर्तमान लाइव AQI {cur_aqi} ({cur_cat}) है "
                         f"और आज का पीक AQI {pk_aqi} ({pk_cat}) रहेगा।"
                     )
@@ -158,9 +183,9 @@ async def _dispatch_intent(
                     reply = (
                         f"Schedule comparison for {target_who}: At {h1_str}, PM2.5 is {pt1.pm25_ug_m3:.0f} µg/m³ "
                         f"(AQI {pt1.aqi_local}, {pt1.category_local}). At {h2_str}, PM2.5 drops to {pt2.pm25_ug_m3:.0f} µg/m³ "
-                        f"(AQI {pt2.aqi_local}, {pt2.category_local} — Afternoon Mixing Lift). Shifting avoids "
-                        f"{diff_pm:.0f} µg/m³ PM2.5! Note: Current live AQI is {cur_aqi} ({cur_cat}), while today's forecast "
-                        f"peak is AQI {pk_aqi} ({pk_cat})."
+                        f"(AQI {pt2.aqi_local}, {pt2.category_local} — Afternoon Mixing Lift). "
+                        f"Walking at {cleaner_str} is much safer and avoids ~{diff_pm:.0f} µg/m³ PM2.5 exposure! "
+                        f"Current live AQI is {cur_aqi} ({cur_cat}), while today's forecast peak is AQI {pk_aqi} ({pk_cat})."
                     )
                 tool_data = {
                     "member": member,

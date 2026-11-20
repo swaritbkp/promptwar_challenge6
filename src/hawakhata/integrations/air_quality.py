@@ -10,7 +10,7 @@ import random
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -29,6 +29,7 @@ DATA_ROOT = Path(__file__).resolve().parent.parent.parent.parent / "data" / "fix
 AQ_API_BASE = "https://airquality.googleapis.com/v1"
 DELHI_NCR_COORDS = (28.4595, 77.0266)
 CHANDIGARH_COORDS = (30.7333, 76.7794)
+IST = timezone(timedelta(hours=5, minutes=30), name="IST")
 
 
 def round_coordinates(lat: float, lng: float) -> tuple[float, float]:
@@ -140,9 +141,14 @@ def _normalise_raw_forecast_point(raw: dict[str, Any]) -> HourlyAirPoint:
                 pm10 = float(val)
 
     recs = {k: v for k, v in raw.get("healthRecommendations", {}).items() if isinstance(v, str)}
-    return HourlyAirPoint(
-        dt, dt[11:16] if len(dt) >= 16 else dt, pm25, pm10, aqi_l, aqi_u, cat_l, dom, recs
-    )
+    time_local = dt[11:16] if len(dt) >= 16 else dt
+    if dt:
+        with contextlib.suppress(Exception):
+            p_dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+            if p_dt.tzinfo is None:
+                p_dt = p_dt.replace(tzinfo=UTC)
+            time_local = f"{p_dt.astimezone(IST).hour:02d}:00"
+    return HourlyAirPoint(dt, time_local, pm25, pm10, aqi_l, aqi_u, cat_l, dom, recs)
 
 
 CITY_CALIBRATED_SCALES: list[tuple[float, float, float]] = [
@@ -180,10 +186,11 @@ def _load_nearest_fixture(
     d_c = _haversine_km(lat, lng, CHANDIGARH_COORDS[0], CHANDIGARH_COORDS[1])
     p = DATA_ROOT / ("chandigarh_mohali_winter.json" if d_c < d_n else "delhi_gurugram_winter.json")
     raw = json.loads(p.read_text("utf-8")).get("hourlyForecasts", [])
-    now_dt = datetime.now(UTC)
+    now_dt = datetime.now(IST)
     if demo_clock_iso:
         with contextlib.suppress(ValueError):
-            now_dt = datetime.fromisoformat(demo_clock_iso.replace("Z", "+00:00"))
+            p_dt = datetime.fromisoformat(demo_clock_iso.replace("Z", "+00:00"))
+            now_dt = p_dt
 
     scale = resolve_city_scale(lat, lng)
     # Day-to-day synoptic modifier: Today (1.0), Tomorrow (+10% inversion trap), Day 3 (-18% mixing lift), Day 4 (recovery)
@@ -192,7 +199,7 @@ def _load_nearest_fixture(
     pts = []
     num_raw = len(raw) if raw else 1
     for i in range(hours):
-        tod = i % num_raw
+        tod = (now_dt.hour + i) % num_raw
         day_idx = min(3, i // 24)
         day_mod = synoptic_mods[day_idx]
         norm = _normalise_raw_forecast_point(raw[tod])
@@ -205,7 +212,7 @@ def _load_nearest_fixture(
         pt_dt = now_dt + timedelta(hours=i)
         pts.append(
             HourlyAirPoint(
-                pt_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                pt_dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                 f"{(now_dt.hour + i) % 24:02d}:00",
                 p_pm25,
                 p_pm10,

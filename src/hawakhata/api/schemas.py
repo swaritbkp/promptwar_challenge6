@@ -101,6 +101,16 @@ class ForecastRequest(StrictBaseModel):
     language_code: str = Field(default="en", max_length=5)
 
 
+class WeatherSummary(StrictBaseModel):
+    temperature_c: float
+    humidity_pct: float
+    wind_speed_kmh: float
+    precipitation_mm: float
+    boundary_layer_height_m: float
+    dispersion_regime: str
+    physical_explanation: str
+
+
 class FourDayForecastResponse(StrictBaseModel):
     city: str
     tomorrow_watch_headline: str
@@ -108,6 +118,7 @@ class FourDayForecastResponse(StrictBaseModel):
     days: list[DayOutlook] = Field(min_length=4, max_length=4)
     safe_house_flush: SafeFlushWindow
     top_slots: list[MultiDaySlot] = Field(default_factory=list, max_length=3)
+    current_weather: WeatherSummary | None = None
 
 
 class PassbookRequest(BaseComputeRequest):

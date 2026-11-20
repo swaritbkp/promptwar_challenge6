@@ -146,6 +146,32 @@ class HawaKhataApp {
         twBadge.className = `pill-status ${d.tomorrow_watch_direction === "worsens" ? "debit" : (d.tomorrow_watch_direction === "improves" ? "saved" : "")}`;
       }
 
+      if (d.current_weather) {
+        const w = d.current_weather;
+        const tempEl = $("weather-temp-val"), humEl = $("weather-humidity-val"),
+              windEl = $("weather-wind-val"), blhEl = $("weather-blh-val"),
+              regPill = $("live-weather-regime-pill"), expEl = $("weather-smog-driver-explanation");
+        if (tempEl) tempEl.textContent = `${w.temperature_c.toFixed(1)} °C`;
+        if (humEl) humEl.textContent = `${Math.round(w.humidity_pct)} %`;
+        if (windEl) windEl.textContent = `${w.wind_speed_kmh.toFixed(1)} km/h`;
+        if (blhEl) blhEl.textContent = `${Math.round(w.boundary_layer_height_m)} m`;
+        if (regPill) {
+          const isHi = this.currentLang === "hi";
+          const regKey = w.dispersion_regime === "Afternoon Mixing Lift" ? "disp_mixing" : (w.dispersion_regime === "Inversion Trap" ? "disp_inversion" : "disp_stagnant");
+          const regName = (isHi && this.i18nStrings[regKey]) ? this.i18nStrings[regKey] : w.dispersion_regime;
+          regPill.textContent = `${isHi ? "प्रसार" : "Dispersion"}: ${regName}`;
+          regPill.className = `pill-status ${w.dispersion_regime === "Inversion Trap" ? "debit" : "saved"}`;
+        }
+        if (expEl) {
+          const isHi = this.currentLang === "hi";
+          if (isHi) {
+            expEl.textContent = `धीमी हवा (${w.wind_speed_kmh.toFixed(1)} km/h) और कम मिक्सिंग परत (${Math.round(w.boundary_layer_height_m)}m) जमीन के पास धुआं रोक रही है; दोपहर 13:00 के बाद धूप से प्रसार बेहतर होता है।`;
+          } else {
+            expEl.textContent = `${w.wind_speed_kmh.toFixed(1)} km/h wind + ${Math.round(w.boundary_layer_height_m)}m boundary layer ceiling: ${w.physical_explanation}`;
+          }
+        }
+      }
+
       const grid = $("four-day-cards-grid");
       if (grid && Array.isArray(d.days)) {
         grid.replaceChildren();
@@ -169,6 +195,14 @@ class HawaKhataApp {
           );
           grid.append(card);
         });
+
+        if (d.days[0]) {
+          this.cleanestWindow = `${d.days[0].cleanest_window_start} – ${d.days[0].cleanest_window_end}`;
+          const cleanTag = $("clean-window-tag"), recText = $("brief-recommendation"), chartPill = $("chart-clean-window-pill");
+          if (cleanTag) cleanTag.textContent = `▲ Cleanest: ${this.cleanestWindow}`;
+          if (recText) recText.textContent = `Cleanest window: ${this.cleanestWindow}.`;
+          if (chartPill) chartPill.textContent = `▲ ${this.currentLang === "hi" ? "स्वच्छतम दिन का समय" : "Cleanest Daytime Window"}: ${this.cleanestWindow}`;
+        }
       }
 
       const flushTime = $("safe-flush-time"), flushPm = $("safe-flush-pm");
@@ -199,6 +233,16 @@ class HawaKhataApp {
     const s = $("hours-strip");
     if (!s) return;
     s.replaceChildren();
+
+    let bestStart = 13, bestAvg = Infinity;
+    for (let h = 6; h <= 17 && h < points.length - 2; h++) {
+      const avg = ((points[h].pm25_ug_m3 || 0) + (points[h + 1].pm25_ug_m3 || 0) + (points[h + 2].pm25_ug_m3 || 0)) / 3;
+      if (avg < bestAvg) {
+        bestAvg = avg;
+        bestStart = h;
+      }
+    }
+
     points.slice(0, 24).forEach((pt, h) => {
       const pm = pt.pm25_ug_m3 || 0;
       let cat = "severe";
@@ -207,8 +251,9 @@ class HawaKhataApp {
       else if (pm <= 90) cat = "moderate";
       else if (pm <= 120) cat = "poor";
       else if (pm <= 250) cat = "very-poor";
-      const cell = el("div", `hour-cell ${cat}${h >= 12 && h <= 15 ? " highlight" : ""}`, `${h}`);
-      cell.setAttribute("title", `${h}:00 · ${Math.round(pm)} µg/m³`);
+      const isClean = h >= bestStart && h < bestStart + 3;
+      const cell = el("div", `hour-cell ${cat}${isClean ? " highlight" : ""}`, `${h}`);
+      cell.setAttribute("title", `${h}:00 · ${Math.round(pm)} µg/m³${isClean ? " (Cleanest Window)" : ""}`);
       s.appendChild(cell);
     });
   }
@@ -628,11 +673,23 @@ class HawaKhataApp {
     svg.setAttribute("role", "img");
     svg.setAttribute("aria-label", "24-Hour PM2.5 Hourly Chart");
 
-    // Cleanest daytime window highlight (hours 12 to 15)
+    // Compute cleanest waking window (06:00 to 20:00) from actual pts
+    let bestStart = 13, bestAvg = Infinity;
+    const maxStart = Math.min(pts.length - 3, 17);
+    for (let h = 6; h <= maxStart; h++) {
+      const avg = (pts[h] + pts[h + 1] + pts[h + 2]) / 3;
+      if (avg < bestAvg) {
+        bestAvg = avg;
+        bestStart = h;
+      }
+    }
+    const winWidth = 60;
+    const hlX = bestStart * 20 + 2;
+
     const hlRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    hlRect.setAttribute("x", `${12 * 20 + 2}`);
+    hlRect.setAttribute("x", `${hlX}`);
     hlRect.setAttribute("y", "6");
-    hlRect.setAttribute("width", "60");
+    hlRect.setAttribute("width", `${winWidth}`);
     hlRect.setAttribute("height", "96");
     hlRect.setAttribute("rx", "4");
     hlRect.setAttribute("fill", "#0F6E66");
@@ -643,7 +700,7 @@ class HawaKhataApp {
     svg.appendChild(hlRect);
 
     const hlText = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    hlText.setAttribute("x", "272");
+    hlText.setAttribute("x", `${hlX + winWidth / 2}`);
     hlText.setAttribute("y", "16");
     hlText.setAttribute("fill", "#0F6E66");
     hlText.setAttribute("font-size", "8");
@@ -651,6 +708,14 @@ class HawaKhataApp {
     hlText.setAttribute("text-anchor", "middle");
     hlText.textContent = this.currentLang === "hi" ? "स्वच्छ समय" : "CLEANEST";
     svg.appendChild(hlText);
+
+    const cleanPill = $("chart-clean-window-pill");
+    if (cleanPill) {
+      const isHi = this.currentLang === "hi";
+      const startStr = `${String(bestStart).padStart(2, "0")}:00`;
+      const endStr = `${String(bestStart + 3).padStart(2, "0")}:00`;
+      cleanPill.textContent = `▲ ${isHi ? "स्वच्छतम दिन का समय" : "Cleanest Daytime Window"}: ${startStr} – ${endStr}`;
+    }
 
     // Axis line
     const axis = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -971,12 +1036,23 @@ class HawaKhataApp {
     }
 
     const petBtn = $("btn-pet-care");
+    const petBtnIndoor = $("btn-pet-care-indoor");
     const petModal = $("modal-pet");
     const petClose = $("modal-pet-close");
     if (petBtn && petModal) {
       petBtn.addEventListener("click", () => {
         petModal.hidden = false;
         this._loadPetGuidance("dog");
+      });
+    }
+    if (petBtnIndoor && petModal) {
+      petBtnIndoor.addEventListener("click", () => {
+        petModal.hidden = false;
+        $$(".pet-tab-btn").forEach((b) => {
+          const sp = b.getAttribute("data-species");
+          b.className = sp === "cat" ? "btn btn-sm btn-primary flex-1 pet-tab-btn" : "btn btn-sm btn-secondary flex-1 pet-tab-btn";
+        });
+        this._loadPetGuidance("cat");
       });
     }
     if (petClose && petModal) {
@@ -1101,17 +1177,28 @@ class HawaKhataApp {
   }
 
   _bindSwaps() {
-    const rng = $("mohalla-range"), chks = $$(".swap-chk");
-    const cLbl = $("mohalla-count-label"), cVal = $("community-emissions-val"), hVal = $("household-dose-saved"), sPill = $("swaps-avoided-pill");
+    const rng = $("society-flats-range") || $("mohalla-range");
+    const chks = $$(".swap-chk");
+    const cLbl = $("society-flats-count-label") || $("mohalla-count-label");
+    const sSmokeVal = $("society-smoke-prevented-val") || $("community-emissions-val");
+    const hVal = $("household-dose-saved");
+    const sPill = $("swaps-avoided-pill");
+    const copyBtn = $("btn-copy-rwa-note");
+    const copyFb = $("rwa-copy-feedback");
 
     const update = () => {
-      let co2 = 0, pm = 0;
+      let doseSaved = 0;
+      let rwaSmokePerFlat = 0;
+      let totalCo2 = 0;
+
       chks.forEach((c) => {
         const row = c.closest(".balance-row");
         const pill = row ? row.querySelector(".pill-status") : null;
-        if (c.checked) {
-          co2 += parseFloat(c.getAttribute("data-co2") || "0");
-          pm += parseFloat(c.getAttribute("data-pm25") || "0");
+        const isChecked = c.checked;
+        if (isChecked) {
+          doseSaved += parseFloat(c.getAttribute("data-dose") || c.getAttribute("data-pm25") || "0");
+          totalCo2 += parseFloat(c.getAttribute("data-co2") || "0");
+          rwaSmokePerFlat += parseFloat(c.getAttribute("data-smoke") || "0");
           if (pill) {
             pill.textContent = this.currentLang === "hi" ? "सक्रिय" : "Active";
             pill.className = "pill-status saved";
@@ -1123,16 +1210,45 @@ class HawaKhataApp {
           }
         }
       });
-      const count = parseInt(rng?.value || "50", 10);
+
+      const flats = parseInt(rng?.value || "120", 10);
       const isHi = this.currentLang === "hi";
-      if (cLbl) cLbl.textContent = `${count} ${isHi ? "घर" : "homes"}`;
-      if (cVal) cVal.textContent = `${(count * co2).toFixed(1)} kg`;
-      if (hVal) hVal.textContent = `${Math.round(pm)} µg`;
-      if (sPill) sPill.textContent = `▲ ${co2.toFixed(1)} kg ${isHi ? "बचाया गया" : "avoided"}`;
+      if (cLbl) cLbl.textContent = `${flats} ${isHi ? "फ्लैट / घर" : "flats / homes"}`;
+      const collectiveSmoke = (flats * rwaSmokePerFlat) || (flats * totalCo2);
+      if (sSmokeVal) sSmokeVal.textContent = `${collectiveSmoke.toFixed(1)} kg`;
+      if (hVal) hVal.textContent = `${Math.round(doseSaved)} µg`;
+      if (sPill) sPill.textContent = `▲ ${Math.round(doseSaved)} µg ${isHi ? "बचाया गया" : "avoided"}`;
     };
 
     if (rng) rng.addEventListener("input", update);
     chks.forEach((c) => c.addEventListener("change", update));
+
+    if (copyBtn) {
+      copyBtn.addEventListener("click", async () => {
+        const flats = parseInt(rng?.value || "120", 10);
+        let rwaSmoke = 0;
+        $$(".rwa-chk").forEach((c) => {
+          if (c.checked) rwaSmoke += parseFloat(c.getAttribute("data-smoke") || "0");
+        });
+        const totalSmoke = (flats * (rwaSmoke || 1.26)).toFixed(1);
+        const isHi = this.currentLang === "hi";
+        const note = isHi
+          ? `*हवा खाता - RWA वायु सुरक्षा निवेदन*\nप्रिय पड़ोसियों,\nसर्दियों में हमारी सोसाइटी दो कदम उठा सकती है:\n1. सुरक्षा गार्डों को इलेक्ट्रिक हीटर दें ताकि अलाव न जले।\n2. सूखे पत्तों की खाद बनाएं।\n${flats} फ्लैटों से लगभग ${totalSmoke} kg धुआं रुकेगा।\n— हवा खाता`
+          : `*HawaKhata RWA Winter Smog Action*\nDear Neighbors,\nOur society can take two high-impact winter steps:\n1. Provide electric heaters to guards to avoid open fires.\n2. Compost dry leaves with zero burning.\nFor ${flats} homes, this avoids ~${totalSmoke} kg toxic smoke.\n— HawaKhata`;
+
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(note);
+          }
+          if (copyFb) {
+            copyFb.hidden = false;
+            copyFb.textContent = isHi ? "✓ क्लिपबोर्ड पर कॉपी हो गया!" : "✓ Copied note to clipboard!";
+            setTimeout(() => { if (copyFb) copyFb.hidden = true; }, 3000);
+          }
+        } catch {}
+      });
+    }
+
     update();
   }
 
@@ -1143,7 +1259,7 @@ class HawaKhataApp {
     const cats = "ssvvvpppoooooooppvvsssss".split("").map((c) => m[c]);
     s.replaceChildren();
     for (let h = 0; h < 24; h++) {
-      s.appendChild(el("div", `hour-cell ${cats[h]}${h >= 12 && h <= 15 ? " highlight" : ""}`, `${h}`));
+      s.appendChild(el("div", `hour-cell ${cats[h]}${h >= 13 && h <= 16 ? " highlight" : ""}`, `${h}`));
     }
   }
 }

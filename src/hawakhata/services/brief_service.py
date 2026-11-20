@@ -8,7 +8,11 @@ from typing import Any, Literal
 from hawakhata.api.schemas import FamilyProfileInput, ForecastShiftInfo
 from hawakhata.engine.dose import ScheduleBlock
 from hawakhata.engine.explain import Explanation
-from hawakhata.engine.planner import FlexibleActivity, optimise_day_plan
+from hawakhata.engine.planner import (
+    FlexibleActivity,
+    compute_waking_cleanest_window,
+    optimise_day_plan,
+)
 from hawakhata.engine.recommendations import rank_indoor_hacks
 from hawakhata.engine.swaps import evaluate_swap
 from hawakhata.integrations.air_quality import HourlyAirPoint, HourlyAirSeries
@@ -167,28 +171,10 @@ def replan_if_needed(
 def _compute_cleanest_window(
     pts: list[HourlyAirPoint], pm25_vals: list[float]
 ) -> tuple[str, float]:
-    best_start, best_avg = -1, float("inf")
-    # Waking daytime hours 06:00 to 20:00 (start 6 to 18)
-    for i in range(len(pm25_vals) - 1):
-        hr = -1
-        if i < len(pts) and pts[i].time_local:
-            try:
-                hr = int(pts[i].time_local.split(":")[0])
-            except ValueError:
-                hr = i % 24
-        else:
-            hr = i % 24
-        if 6 <= hr <= 18:
-            win_avg = (pm25_vals[i] + pm25_vals[i + 1]) / 2.0
-            if win_avg < best_avg:
-                best_avg, best_start = win_avg, i
-    if best_start == -1:
-        best_start = 0
-        best_avg = (pm25_vals[0] + pm25_vals[1]) / 2.0 if len(pm25_vals) > 1 else pm25_vals[0]
-    end_idx = min(len(pts) - 1, best_start + 2)
-    return f"{pts[best_start].time_local}-{pts[end_idx].time_local}", round(
-        best_avg if best_avg < float("inf") else 0.0, 1
-    )
+    if not pm25_vals:
+        return "13:00 – 16:00", 0.0
+    best_start, best_end, best_avg = compute_waking_cleanest_window(pm25_vals[:24], window_hours=3)
+    return f"{best_start:02d}:00 – {best_end:02d}:00", best_avg
 
 
 def _build_sensitive_alerts(

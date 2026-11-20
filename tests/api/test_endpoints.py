@@ -101,6 +101,10 @@ def test_swaps_endpoints(client: TestClient) -> None:
         resp.status_code == 200
         and resp.json()["data"]["household"]["delta_emit_daily"]["kg_co2"] < 0
     )
+    p_chimney = dict(p, swap_id="kitchen_chimney_tadka", units_per_day=1.0)
+    resp_ch = client.post("/api/v1/swaps/impact", json=p_chimney)
+    assert resp_ch.status_code == 200
+    assert resp_ch.json()["data"]["household"]["delta_breathe_daily_ug"] == -45.0
     assert (
         client.post("/api/v1/swaps/impact", json=dict(p, participation_rate=1.5)).status_code == 422
     )
@@ -310,3 +314,9 @@ def test_extra_routes_coverage(client: TestClient, sample_profile_data: dict[str
     assert "tomorrow_watch_headline" in d_4d
     assert "safe_house_flush" in d_4d
     assert len(d_4d["top_slots"]) <= 3
+    assert "current_weather" in d_4d and d_4d["current_weather"] is not None
+    assert d_4d["current_weather"]["temperature_c"] is not None
+    assert d_4d["current_weather"]["wind_speed_kmh"] is not None
+    assert d_4d["current_weather"]["boundary_layer_height_m"] is not None
+    day_aqis = [d["peak_aqi"] for d in d_4d["days"]]
+    assert len(set(day_aqis)) >= 2

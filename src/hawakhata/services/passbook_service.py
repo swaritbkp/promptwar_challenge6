@@ -10,6 +10,7 @@ from hawakhata.engine.aqi import pm25_to_naqi_category, pm25_to_sub_index
 from hawakhata.engine.budget import PassbookEntry, build_passbook_entry
 from hawakhata.engine.dose import ScheduleBlock, build_member_timeline, compute_member_dose
 from hawakhata.engine.indoor_model import IndoorSourceEvent, simulate_indoor_pm25
+from hawakhata.engine.planner import compute_waking_cleanest_window
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,17 +86,8 @@ def compute_family_passbook(
     cat = pm25_to_naqi_category(cur_pm)
     pk_pm = max(outdoor_pm25_series) if outdoor_pm25_series else 150.0
 
-    best_start, best_avg = 12, float("inf")
-    # Restrict cleanest window strictly to daytime waking hours (06:00 to 20:00, starts 6 to 17)
-    max_h = min(len(outdoor_pm25_series) - 2, 18)
-    if len(outdoor_pm25_series) >= 3 and max_h > 6:
-        for i in range(6, max_h):
-            win_avg = sum(outdoor_pm25_series[i : i + 3]) / 3.0
-            if win_avg < best_avg:
-                best_avg, best_start = win_avg, i
-        clean_win = f"{best_start:02d}:00 – {best_start + 3:02d}:00"
-    else:
-        clean_win = "12:00 – 15:00"
+    c_start, c_end, _ = compute_waking_cleanest_window(outdoor_pm25_series, window_hours=3)
+    clean_win = f"{c_start:02d}:00 – {c_end:02d}:00"
 
     n_members = max(1, len(profile.members))
     avg_cigs = round(tot_cigs / n_members, 1)

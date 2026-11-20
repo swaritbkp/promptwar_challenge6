@@ -29,6 +29,51 @@
     <div class="flex gap-05 flex-wrap" id="action-strip-pills"></div>
   </div>
 
+  <div class="card" id="live-weather-card">
+    <div class="card-header">
+      <h3 class="card-title text-sm">
+        <span class="has-tooltip" tabindex="0">
+          <span data-i18n="live_weather_title">🌤️ Live Weather &amp; Smog Drivers</span>
+          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_weather_drivers">Real-time Open-Meteo meteorological factors driving pollutant dispersion.</span>
+        </span>
+      </h3>
+      <span class="pill-status saved" id="live-weather-regime-pill">Dispersion: —</span>
+    </div>
+    <div class="hero-grid" id="live-weather-grid">
+      <div class="stat-box">
+        <span class="has-tooltip" tabindex="0">
+          <div class="stat-val" id="weather-temp-val">— °C</div>
+          <div class="stat-lbl" data-i18n="weather_temp">Temperature</div>
+          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_temp">Surface ambient temperature driving thermal inversion and air density layers.</span>
+        </span>
+      </div>
+      <div class="stat-box">
+        <span class="has-tooltip" tabindex="0">
+          <div class="stat-val" id="weather-humidity-val">— %</div>
+          <div class="stat-lbl" data-i18n="weather_humidity">Humidity</div>
+          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_humidity">High humidity (&gt;70%) accelerates aerosol particle growth and dense winter fog/smog.</span>
+        </span>
+      </div>
+      <div class="stat-box">
+        <span class="has-tooltip" tabindex="0">
+          <div class="stat-val" id="weather-wind-val">— km/h</div>
+          <div class="stat-lbl" data-i18n="weather_wind">Wind Speed</div>
+          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_wind">Calm winds (&lt;6 km/h) trap smoke locally; winds &gt;12 km/h promote horizontal advection.</span>
+        </span>
+      </div>
+      <div class="stat-box">
+        <span class="has-tooltip" tabindex="0">
+          <div class="stat-val" id="weather-blh-val">— m</div>
+          <div class="stat-lbl" data-i18n="weather_blh">Boundary Layer</div>
+          <span class="tooltip-bubble" role="tooltip" data-i18n="tt_blh_driver">Planetary boundary ceiling; shallow &lt;400m traps emissions; afternoon sun lifts it &gt;800m.</span>
+        </span>
+      </div>
+    </div>
+    <div class="surface-box p-05 text-xs text-left mt-05" id="weather-smog-driver-explanation">
+      Loading Open-Meteo atmospheric dispersion physics...
+    </div>
+  </div>
+
   <div class="card" id="tomorrow-watch-card">
     <div class="card-header">
       <h3 class="card-title text-sm">
@@ -163,12 +208,12 @@
     <div class="surface-box mt-05 mb-05" id="plan-chart-container" role="region" aria-label="24-Hour PM2.5 Hourly Chart">
       <div class="flex justify-between items-center mb-05 text-xs">
         <span class="font-semibold" data-i18n="plan_band_title">24-Hour Hourly PM2.5 &amp; NAQI Severity</span>
-        <span class="text-saved font-semibold" id="chart-clean-window-pill">▲ Cleanest Daytime Window: 12:00 – 15:00</span>
+        <span class="text-saved font-semibold" id="chart-clean-window-pill">▲ Cleanest Daytime Window: 13:00 – 16:00</span>
       </div>
       <div id="plan-hourly-svg-wrap" class="w-full"></div>
     </div>
 
-    <div class="card-title text-sm mt-05 mb-05" data-i18n="plan_band_title">24-Hour Air Quality Band (Cleanest: 12:00 – 15:00)</div>
+    <div class="card-title text-sm mt-05 mb-05" data-i18n="plan_band_title" id="plan-band-title">24-Hour Air Quality Band</div>
     <div id="hours-strip" class="hours-strip" role="img" aria-label="24 hour air quality chart"></div>
 
     <div class="mt-1">
@@ -277,6 +322,9 @@
         <input type="range" id="plant-count-range" min="0" max="30" value="5" class="w-full">
       </div>
       <div class="surface-box p-05 text-xs text-left" id="plant-reality-verdict">5 plants clear ~0.5 m³/h. A 300 m³/h HEPA purifier is 600× faster for winter smog. Wipe leaves weekly and avoid overwatering.</div>
+      <div class="flex justify-end mt-05">
+        <button id="btn-pet-care-indoor" class="btn btn-sm btn-secondary">🐾 Indoor Pet Air Advisor (Cats &amp; Birds)</button>
+      </div>
     </div>
   </div>
 </section>
@@ -284,69 +332,55 @@
 <section id="tab-swaps" class="tab-pane" hidden aria-labelledby="swaps-heading">
   <div class="card">
     <div class="card-header">
-      <h2 id="swaps-heading" class="card-title" data-i18n="swaps_title">Clean Community Swaps</h2>
-      <span class="pill-status saved" id="swaps-avoided-pill">▲ 2.1 kg avoided</span>
+      <h2 id="swaps-heading" class="card-title" data-i18n="swaps_title">Clean Daily Habits &amp; RWA Action</h2>
+      <span class="pill-status saved" id="swaps-avoided-pill">▲ 148 µg avoided</span>
     </div>
-    <div class="surface-box mb-1" role="img" aria-label="Mohalla scaling">
-      <svg class="custom-viz" viewBox="0 0 400 44" fill="none" aria-hidden="true">
-        <circle cx="200" cy="22" r="20" fill="#167A3A" fill-opacity=".1" stroke="#167A3A" stroke-width="1.2" stroke-dasharray="2 2"/>
-        <text x="200" y="26" fill="#167A3A" font-size="9" font-weight="700" text-anchor="middle">MOHALLA MULTIPLIER</text>
-      </svg>
-    </div>
+    <p class="stat-lbl text-xs mb-05" data-i18n="swaps_subtitle">Realistic Pan-India urban alternatives tailored for apartments, homes, and resident societies.</p>
+
+    <div class="card-title text-sm mt-05 mb-05" data-i18n="habits_title">🏠 Personal &amp; Indoor Daily Habits</div>
     <div class="flex-col gap-05 mb-1" id="swaps-list">
-      <label class="balance-row cursor-pointer">
-        <div class="flex items-center gap-05">
-          <input type="checkbox" class="swap-chk" data-co2="2.1" data-pm25="15" checked>
-          <div>
-            <div class="font-semibold">Commute: Car → Metro</div>
-            <div class="stat-lbl text-xs">Saves 2.1 kg CO₂, 15 µg PM2.5 inhaled</div>
-          </div>
-        </div>
-        <span class="pill-status saved">Active</span>
-      </label>
-      <label class="balance-row cursor-pointer">
-        <div class="flex items-center gap-05">
-          <input type="checkbox" class="swap-chk" data-co2="0.2" data-pm25="18000" checked>
-          <div>
-            <div class="font-semibold">Heating: Angithi → Electric</div>
-            <div class="stat-lbl text-xs">Saves 0.2 kg CO₂, avoids 18 g PM2.5 smoke</div>
-          </div>
-        </div>
-        <span class="pill-status saved">Active</span>
-      </label>
-      <label class="balance-row cursor-pointer">
-        <div class="flex items-center gap-05">
-          <input type="checkbox" class="swap-chk" data-co2="2.5" data-pm25="24000">
-          <div>
-            <div class="font-semibold">Compost vs Burning Leaves</div>
-            <div class="stat-lbl text-xs">Saves 2.5 kg CO₂, avoids 24 g PM2.5 smoke</div>
-          </div>
-        </div>
-        <span class="pill-status">Enable</span>
-      </label>
+      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="45" data-co2="0.0" checked><div><div class="font-semibold" data-i18n="habit_chimney">Kitchen Exhaust / Chimney during Tadka</div><div class="stat-lbl text-xs" data-i18n="habit_chimney_desc">Cuts indoor cooking PM2.5 spike (saves ~45 µg inhaled/meal)</div></div></div><span class="pill-status saved">Active</span></label>
+      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="60" data-co2="0.0" checked><div><div class="font-semibold" data-i18n="habit_coils">Liquid Repellent vs. Mosquito Coils &amp; Dhoop</div><div class="stat-lbl text-xs" data-i18n="habit_coils_desc">Eliminates major indoor combustion smoke (saves ~60 µg inhaled)</div></div></div><span class="pill-status saved">Active</span></label>
+      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="25" data-co2="1.8" checked><div><div class="font-semibold" data-i18n="habit_car_ac">Car AC Recirculation + Combine Errands / WFH</div><div class="stat-lbl text-xs" data-i18n="habit_car_ac_desc">Cuts in-cabin PM2.5 exposure 50% + saves 1.8 kg CO₂ tailpipe emission</div></div></div><span class="pill-status saved">Active</span></label>
+      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk habit-chk" data-dose="18" data-co2="0.0" checked><div><div class="font-semibold" data-i18n="habit_mopping">Wet Mopping vs. Dry Jhadu &amp; Shoe-Off Entry</div><div class="stat-lbl text-xs" data-i18n="habit_mopping_desc">Prevents resuspension of toxic fine floor dust (saves ~18 µg inhaled)</div></div></div><span class="pill-status saved">Active</span></label>
     </div>
+
+    <div class="card-title text-sm mt-1 mb-05" data-i18n="rwa_title">🏘️ RWA &amp; Apartment Society Winter Action</div>
+    <div class="flex-col gap-05 mb-1" id="rwa-action-list">
+      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk rwa-chk" data-smoke="0.54" checked><div><div class="font-semibold" data-i18n="rwa_heaters">Electric Radiant Heaters for Night Security Guards</div><div class="stat-lbl text-xs" data-i18n="rwa_heaters_desc">Replaces open wood/coal bonfires at security gates (~0.54 kg smoke/gate/month)</div></div></div><span class="pill-status saved">Active</span></label>
+      <label class="balance-row cursor-pointer"><div class="flex items-center gap-05"><input type="checkbox" class="swap-chk rwa-chk" data-smoke="0.72" checked><div><div class="font-semibold" data-i18n="rwa_compost">Society Dry-Leaf &amp; Garden Waste Composting</div><div class="stat-lbl text-xs" data-i18n="rwa_compost_desc">Zero open leaf burning in society compound (~0.72 kg smoke prevented)</div></div></div><span class="pill-status saved">Active</span></label>
+    </div>
+
     <div class="stat-box mb-1 text-left">
       <div class="flex justify-between items-center mb-05">
-        <label for="mohalla-range" class="font-semibold text-sm">
+        <label for="society-flats-range" class="font-semibold text-sm">
           <span class="has-tooltip" tabindex="0">
-            <span data-i18n="community_multiplier">Mohalla Multiplier (Homes)</span>
-            <span class="tooltip-bubble" role="tooltip" data-i18n="tt_mohalla">Scaling impact when neighbouring households adopt the same clean routine.</span>
+            <span data-i18n="society_size_label">Society Size (Flats / Homes)</span>
+            <span class="tooltip-bubble" role="tooltip" data-i18n="tt_society_size">Number of flats or homes participating in community winter clean heat &amp; zero-burning.</span>
           </span>
         </label>
-        <span id="mohalla-count-label" class="font-bold text-accent text-lg">50 homes</span>
+        <span id="society-flats-count-label" class="font-bold text-accent text-lg">120 flats</span>
       </div>
-      <input type="range" id="mohalla-range" min="1" max="500" value="50" class="w-full">
+      <input type="range" id="society-flats-range" min="10" max="500" value="120" step="10" class="w-full">
     </div>
-    <div class="hero-grid">
+
+    <div class="hero-grid mb-1">
       <div class="stat-box">
-        <div class="stat-val saved" id="community-emissions-val">115.0 kg</div>
-        <div class="stat-lbl">Community Avoided</div>
+        <div class="stat-val saved" id="society-smoke-prevented-val">151.2 kg</div>
+        <div class="stat-lbl" data-i18n="society_smoke_label">Collective Smoke Prevented / mo</div>
       </div>
       <div class="stat-box">
-        <div class="stat-val saved" id="household-dose-saved">15 µg</div>
-        <div class="stat-lbl" data-i18n="household_saving">Household Inhaled Saved</div>
+        <div class="stat-val saved" id="household-dose-saved">148 µg</div>
+        <div class="stat-lbl" data-i18n="household_saving">Personal Inhaled Saved / day</div>
       </div>
     </div>
+
+    <div class="flex justify-between items-center gap-05">
+      <button id="btn-copy-rwa-note" class="btn btn-secondary w-full">
+        📋 <span data-i18n="btn_copy_rwa">Copy RWA WhatsApp Action Note</span>
+      </button>
+    </div>
+    <div id="rwa-copy-feedback" class="text-xs text-saved mt-05 text-center" hidden>✓ Copied note to clipboard!</div>
   </div>
 </section>
 

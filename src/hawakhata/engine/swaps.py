@@ -126,17 +126,28 @@ def evaluate_swap(
     )
     d_co2_monthly = round(d_co2_weekly * 4.33, 4)
     d_pm_monthly = round(d_pm_weekly * 4.33, 4)
-    delta_breathe = (
-        _compute_transit_delta_breathe(
+    if "breathe_transit" in swap_def.get("affects", []):
+        delta_breathe = _compute_transit_delta_breathe(
             swap_def.get("before"),
             swap_def.get("after"),
             outdoor_pm25_mean,
             member_age_band,
             transit_duration_hours,
         )
-        if "breathe_transit" in swap_def.get("affects", [])
-        else 0.0
-    )
+    elif "breathe_indoor" in swap_def.get("affects", []):
+        habit_doses = {
+            "kitchen_chimney_tadka": -45.0,
+            "skip_coils_and_incense": -60.0,
+            "wet_mopping_vs_jhadu": -18.0,
+            "no_incense_on_severe_days": -40.0,
+            "coil_to_net_or_repellent": -35.0,
+            "frying_to_steaming_on_severe_days": -50.0,
+        }
+        delta_breathe = round(
+            habit_doses.get(swap_id, -30.0) * max(0.2, min(5.0, units_per_day)), 2
+        )
+    else:
+        delta_breathe = 0.0
 
     return SwapImpactResult(
         swap_id=swap_id,

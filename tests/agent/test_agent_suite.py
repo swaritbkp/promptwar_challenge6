@@ -340,3 +340,15 @@ async def test_turn1_hour_comparison_fallback(
         or "saving" in lower_reply
         or "mixing" in lower_reply
     )
+
+    # Verbatim user query precedence check: direct comparison ahead of generic walk-clarification
+    res2 = await agent.run_turn(
+        session_id="hour_cmp_s2",
+        user_message="Is it safe for Dadi to walk at 7 AM or 4 PM today?",
+        **kw,
+    )
+    assert res2.follow_up is None
+    lower2 = res2.reply.lower()
+    assert "07:00" in lower2 and "16:00" in lower2
+    assert "dadi" in lower2
+    assert "safer" in lower2 or "better" in lower2 or "mixing" in lower2

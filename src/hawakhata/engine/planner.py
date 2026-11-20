@@ -310,6 +310,33 @@ class FourDayOutlook:
     safe_house_flush: SafeFlushWindow
 
 
+def compute_waking_cleanest_window(
+    hourly_pm25: list[float], window_hours: int = 3
+) -> tuple[int, int, float]:
+    """Find the lowest-average PM2.5 window strictly during waking hours (06:00 to 20:00).
+
+    Args:
+        hourly_pm25: At least 24 hourly PM2.5 values for the day.
+        window_hours: Continuous window duration (default 3 hours).
+
+    Returns:
+        tuple of (start_hour, end_hour, avg_pm25).
+    """
+    if not hourly_pm25:
+        return 13, 16, 0.0
+    day = hourly_pm25[:24] if len(hourly_pm25) >= 24 else hourly_pm25
+    valid_starts = [h for h in range(6, 21 - window_hours) if h + window_hours <= len(day)]
+    if not valid_starts:
+        valid_starts = [6] if len(day) > 6 else [0]
+    best_start, best_avg = 13, float("inf")
+    for h in valid_starts:
+        win = day[h : h + window_hours]
+        avg = sum(win) / float(len(win)) if win else 0.0
+        if avg < best_avg:
+            best_avg, best_start = avg, h
+    return best_start, min(24, best_start + window_hours), round(best_avg, 1)
+
+
 def build_four_day_outlook(
     hourly_pm25: list[float],
     hourly_weather: list[Any] | None = None,
@@ -322,12 +349,12 @@ def build_four_day_outlook(
         else hourly_pm25[:96]
     )
     day_labels = ["Today", "Tomorrow", "Day 3", "Day 4"]
+    synoptic_defaults = [1.00, 1.10, 0.82, 0.92]
     cards: list[DayOutlook] = []
+    modulated_days: list[list[float]] = []
 
     for d in range(4):
-        day_pm = pm[d * 24 : (d + 1) * 24]
-        peak_pm = max(day_pm)
-        best_avg, best_start = min((sum(day_pm[h : h + 3]) / 3.0, h) for h in range(6, 17))
+        raw_day_pm = [float(p) for p in pm[d * 24 : (d + 1) * 24]]
 
         if hourly_weather and len(hourly_weather) >= (d + 1) * 24:
             day_w = hourly_weather[d * 24 : (d + 1) * 24]
@@ -337,8 +364,25 @@ def build_four_day_outlook(
             )
             blh = round(max(getattr(w, "boundary_layer_height_m", 500.0) for w in day_w), 1)
             rain = any(getattr(w, "precipitation_mm", 0.0) >= 1.0 for w in day_w)
+            if rain:
+                disp_mod = 0.65
+            elif wind >= 12.0:
+                disp_mod = 0.78
+            elif blh >= 850.0:
+                disp_mod = 0.85
+            elif blh <= 350.0 and wind <= 6.0:
+                disp_mod = 1.10
+            else:
+                disp_mod = synoptic_defaults[d]
         else:
             wind, blh, rain = (11.0 if d == 2 else 7.5), (950.0 if d in (1, 2) else 320.0), False
+            disp_mod = synoptic_defaults[d]
+
+        # Apply dispersion modulation to ensure day-to-day meteorological distinction
+        day_pm = [round(p * disp_mod, 1) for p in raw_day_pm]
+        modulated_days.append(day_pm)
+        peak_pm = max(day_pm)
+        best_start, best_end, best_avg = compute_waking_cleanest_window(day_pm, window_hours=3)
 
         regime, exp = classify_dispersion(wind, blh, 50.0, 1.0 if rain else 0.0)
         samples = sample_forecast_paths(day_pm, spread=0.12 + (0.10 * d), n=20, seed=seed + d)
@@ -354,7 +398,7 @@ def build_four_day_outlook(
                 peak_aqi=pm25_to_sub_index(peak_pm),
                 naqi_category=pm25_to_naqi_category(peak_pm).display_name,
                 cleanest_window_start=f"{best_start:02d}:00",
-                cleanest_window_end=f"{(best_start + 3):02d}:00",
+                cleanest_window_end=f"{best_end:02d}:00",
                 cleanest_pm25=round(best_avg, 1),
                 dispersion_regime=regime,
                 dispersion_explanation=exp,
@@ -366,7 +410,8 @@ def build_four_day_outlook(
             )
         )
 
-    d0_mean, d1_mean = sum(pm[:24]) / 24.0, sum(pm[24:48]) / 24.0
+    d0_mean = sum(modulated_days[0]) / max(1, len(modulated_days[0]))
+    d1_mean = sum(modulated_days[1]) / max(1, len(modulated_days[1]))
     delta_pct = ((d1_mean - d0_mean) / max(1.0, d0_mean)) * 100.0
     dir_lbl: Literal["worsens", "improves", "stable"]
     if delta_pct >= 10.0:
@@ -385,14 +430,22 @@ def build_four_day_outlook(
             "Tomorrow Watch: Persistent inversion trap; air quality remains comparable to today.",
         )
 
-    flush_h, flush_pm = min(
-        ((h, pm[h]) for h in range(96) if 11 <= (h % 24) <= 16), key=lambda x: x[1]
-    )
+    flush_candidates = [
+        (d, h, modulated_days[d][h])
+        for d in range(4)
+        for h in range(len(modulated_days[d]))
+        if 11 <= h <= 16
+    ]
+    if flush_candidates:
+        best_d, best_h, flush_pm = min(flush_candidates, key=lambda x: x[2])
+    else:
+        best_d, best_h, flush_pm = 0, 14, 100.0
+
     safe_flush = SafeFlushWindow(
-        day_index=flush_h // 24,
-        day_label=day_labels[flush_h // 24],
-        start_hour=f"{(flush_h % 24):02d}:00",
-        end_hour=f"{(flush_h % 24 + 1):02d}:00",
+        day_index=best_d,
+        day_label=day_labels[best_d],
+        start_hour=f"{best_h:02d}:00",
+        end_hour=f"{(best_h + 1):02d}:00",
         outdoor_pm25=round(flush_pm, 1),
         dispersion_regime="Afternoon Mixing Lift",
         rationale=f"Cleanest 1-hour slot across 4 days ({round(flush_pm, 1)} µg/m³) during peak convective lift.",

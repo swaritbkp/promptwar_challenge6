@@ -168,7 +168,14 @@ class HawaKhataAgent:
             intent, _ = route_intent(safe_input)
             if intent not in ("brief", "mask"):
                 _, intent_tool_name, intent_tool_out = await _dispatch_intent(
-                    intent, lang, location.city_name or "your area", date_iso
+                    intent,
+                    lang,
+                    location.city_name or "your area",
+                    date_iso,
+                    user_text=safe_input,
+                    profile=profile,
+                    aq_client=aq_client,
+                    location=location,
                 )
                 tool_calls.append(intent_tool_name)
                 tool_outputs.append(intent_tool_out)
