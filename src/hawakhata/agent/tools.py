@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextvars
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -265,7 +266,7 @@ async def get_smog_brief() -> dict[str, Any]:
     cur_pm, cur_aqi, _cur_code, cur_cat = compute_live_aq_snapshot(
         s.points[0].pm25_ug_m3 if s.points else 150.0
     )
-    parts = str(brief.cleanest_window_local).split("-")
+    parts = re.split(r"\s*[-–]\s*", str(brief.cleanest_window_local).strip())
     alerts = [{"name": a.name, "message": a.alert_text} for a in brief.sensitive_member_alerts]
     return _wrap(
         {
@@ -274,6 +275,9 @@ async def get_smog_brief() -> dict[str, Any]:
             "current_pm25": cur_pm,
             "current_aqi": cur_aqi,
             "category": cur_cat,
+            # Structured so the grounding gate can verify numbers quoted from the headline.
+            "peak_pm25": round(brief.worst_pm25, 1),
+            "peak_hour": brief.worst_hour_local,
             "cleanest_window": {
                 "start": parts[0] if parts else "12:00",
                 "end": parts[1] if len(parts) > 1 else "15:00",

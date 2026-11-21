@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr | None = None
     gemini_model_primary: str = Field(default="", max_length=80)
     gemini_model_fallback: str = Field(default="", max_length=80)
-    llm_timeout_s: float = Field(default=8.0, gt=0, le=60)
+    llm_timeout_s: float = Field(default=15.0, gt=0, le=60)
     aq_timeout_s: float = Field(default=4.0, gt=0, le=30)
 
     redis_url: str | None = None

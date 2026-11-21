@@ -170,6 +170,8 @@ async def test_gemini_cascade_success_and_fallback() -> None:
     client._client = mock_sdk
     resp = await client.generate_content("What is the air?", client_id="test_client_1")
     assert isinstance(resp, GeminiResponse) and resp.model_used == "gemini-3.5-flash"
+    cfg = mock_sdk.aio.models.generate_content.call_args.kwargs["config"]
+    assert cfg.thinking_config.thinking_level.name == "MINIMAL"
     mock_sdk.aio.models.generate_content = AsyncMock(
         side_effect=[Exception("Quota 429"), MagicMock(text="Fallback.")]
     )
@@ -206,7 +208,14 @@ async def test_tools_execution_with_context(
     try:
         assert (await get_air_forecast(hours=5))["result"]["city"] == "Demo Area"
         assert (await get_family_passbook())["result"]["total_budget_ug"] > 0
-        assert "headline" in (await get_smog_brief())["result"]
+        brief_res = (await get_smog_brief())["result"]
+        assert "headline" in brief_res
+        # Peak is structured (so the grounding gate can verify it) and appears in the headline.
+        assert str(brief_res["peak_pm25"]) in brief_res["headline"]
+        assert brief_res["peak_hour"] in brief_res["headline"]
+        # Window "HH:MM – HH:MM" is split into a real start/end, never a default end.
+        assert ":" in brief_res["cleanest_window"]["start"]
+        assert "–" not in brief_res["cleanest_window"]["start"]
         assert (await simulate_indoor_air("Kids Room"))["result"]["room_name"] == "Kids Room"
         assert "duration_min" in (await plan_clean_windows())["missing_fields"]
         plan_ok = await plan_clean_windows(

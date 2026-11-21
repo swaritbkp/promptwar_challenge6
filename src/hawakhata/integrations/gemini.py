@@ -86,6 +86,9 @@ class GeminiCascadeClient:
         if response_schema is not None:
             cfg_kw["response_mime_type"] = "application/json"
             cfg_kw["response_schema"] = response_schema
+        # Minimal thinking: default thinking made 3.5 Flash take ~10 s and risked empty text.
+        # (`thinking_budget=0` is rejected by Flash-Lite, `thinking_level` works on both.)
+        cfg_kw["thinking_config"] = types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL)
         config = types.GenerateContentConfig(**cfg_kw)
         res = await asyncio.wait_for(
             self._client.aio.models.generate_content(
