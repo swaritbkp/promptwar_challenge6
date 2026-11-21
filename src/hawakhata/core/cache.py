@@ -116,6 +116,10 @@ class RedisCache:
             self._prefix + key, json.dumps(value), ex=ttl_s or self._default_ttl_s
         )
 
+    async def ping(self) -> bool:
+        """Round-trip to Redis (readiness probe)."""
+        return bool(await self._client.ping())
+
     def stats(self) -> CacheStats:
         """Return hit/miss counters."""
         return CacheStats(hits=self._stats.hits, misses=self._stats.misses)

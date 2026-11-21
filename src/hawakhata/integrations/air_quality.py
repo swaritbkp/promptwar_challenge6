@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import httpx
 
 from hawakhata.core.logging import get_logger
+from hawakhata.core.metrics import UPSTREAM_ERRORS
 from hawakhata.engine.aqi import pm25_to_naqi_category, pm25_to_sub_index
 from hawakhata.engine.constants import get_constant
 from hawakhata.engine.planner import align_to_clock
@@ -374,6 +375,7 @@ class AirQualityClient:
                         PROVIDER_LABELS["open_meteo_live"],
                     )
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+                UPSTREAM_ERRORS.inc(provider="open_meteo")
                 logger.info("Open-Meteo AQ attempt %d failed: %s", attempt, type(exc).__name__)
         self._om_breaker.record_failure()
         return None
@@ -421,6 +423,7 @@ class AirQualityClient:
                         PROVIDER_LABELS["google_aq_live"],
                     )
             except (httpx.HTTPError, ValueError) as exc:
+                UPSTREAM_ERRORS.inc(provider="google_aq")
                 logger.info("Google AQ attempt %d failed: %s", attempt, type(exc).__name__)
             if attempt < 2:
                 await asyncio.sleep(0.1 + random.uniform(0.05, 0.15))  # noqa: S311

@@ -37,12 +37,16 @@ Format: **Context → Decision → Consequences** (with the rejected alternative
 - **Decision:** Explicit `now` and `data_source`; story mode uses a fixed clock and fixtures; `APP_ENV=test` forces fixtures.
 - **Consequences:** Identical numbers every run. Rejected: hardcoded numbers in code.
 
-## ADR-008 — Repo digest ceiling (400k → 750k chars)
+## ADR-008 — Repo digest ceiling (400k → 760k chars)
 - **Context:** `scripts/repo_audit.py` caps the reviewable digest; features grew (pan-India, pets, 4 SVG infographics, WCAG tests).
-- **Decision:** Raised stepwise to 500k, 560k, 700k and now 750k (`MAX_DIGEST_CHARS`). Do not raise again; tighten docs instead.
+- **Decision:** Raised stepwise to 500k, 560k, 700k, 750k and now 760k (`MAX_DIGEST_CHARS`); the last +10k is an explicit, owner-approved exception for the Sprint 1 SRE/AppSec hardening (ADR-010) after its own additions were compacted. Do not raise again; tighten docs instead.
 - **Consequences:** Docstrings, tests and CSS stay unminified. Rejected: stripping docstrings, comments, tests or minifying CSS.
 
 ## ADR-009 — Desktop top-nav, innermost GZip, `/api/v1/meta` telemetry
 - **Context:** The left rail wasted desktop width; outer `BaseHTTPMiddleware` layers re-stream bodies so compression never saw a full body; operators needed health insight.
 - **Decision:** Desktop uses a top navigation bar (mobile keeps the bottom bar); `GZipMiddleware(minimum_size=500)` is registered first (innermost); `/api/v1/meta` adds a read-only `runtime` block (`cache_backend`, `provider_chain`, `circuit_breakers`, `grounding_gate`, `rate_limit_enabled`).
 - **Consequences:** Smaller payloads and a visible degradation state; telemetry never exposes keys or URLs. Rejected: gzip at the outer layer, a separate admin endpoint.
+
+## ADR-010 — Spoof-proof client IP, liveness vs readiness, stdlib metrics
+- **Decision:** Client IP = the `TRUSTED_PROXY_HOPS`-th `X-Forwarded-For` entry from the right (Cloud Run GFE = 1), `ipaddress`-validated, else the peer. `/healthz` (Docker `HEALTHCHECK`) has no dependencies; `/readyz` checks config, prompts and a 1 s Redis ping, never upstream APIs. Logs carry `X-Cloud-Trace-Context`; `/metrics` is a stdlib Prometheus exporter with bounded labels.
+- **Rejected:** leftmost XFF (spoofable), `prometheus-client` (a dependency for six series), upstream calls in `/readyz` (blips would restart healthy containers).

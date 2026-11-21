@@ -10,6 +10,7 @@ from google.genai import Client, types
 
 from hawakhata.core.errors import RateLimitedError
 from hawakhata.core.logging import get_logger
+from hawakhata.core.metrics import UPSTREAM_ERRORS
 from hawakhata.core.rate_limit import DailyQuota, TokenBucketLimiter
 
 if TYPE_CHECKING:
@@ -118,6 +119,7 @@ class GeminiCascadeClient:
             )
             return GeminiResponse(text=text, model_used=self.primary_model, fallback_used=False)
         except Exception as exc:
+            UPSTREAM_ERRORS.inc(provider="gemini")
             logger.warning(
                 "Primary model %s failed (%s). Cascading to %s",
                 self.primary_model,
@@ -131,6 +133,7 @@ class GeminiCascadeClient:
             )
             return GeminiResponse(text=text, model_used=self.fallback_model, fallback_used=True)
         except Exception as exc:
+            UPSTREAM_ERRORS.inc(provider="gemini")
             logger.error("Fallback model %s failed: %s", self.fallback_model, exc)
             raise GeminiUnavailableError(
                 f"Both primary ({self.primary_model}) and fallback ({self.fallback_model}) failed: {exc}"

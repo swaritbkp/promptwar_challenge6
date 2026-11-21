@@ -8,9 +8,17 @@ from typing import TYPE_CHECKING
 
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.routing import Match
 
 from hawakhata.core.errors import ErrorCode, error_body
-from hawakhata.core.logging import bind_request_id, get_logger
+from hawakhata.core.logging import (
+    bind_request_id,
+    bind_trace,
+    get_logger,
+    parse_cloud_trace_context,
+)
+from hawakhata.core.metrics import HTTP_DURATION, HTTP_REQUESTS, RATE_LIMIT_REJECTIONS
+from hawakhata.core.rate_limit import resolve_client_ip
 
 if TYPE_CHECKING:
     from starlette.requests import Request
@@ -37,7 +45,7 @@ SECURITY_HEADERS: dict[str, str] = {
 
 
 STATIC_CACHE_CONTROL = "public, max-age=3600"
-NO_STORE_PATHS = ("/api/v1/chat",)
+NO_STORE_PATHS = ("/api/v1/chat", "/metrics", "/readyz")
 
 
 def cache_control_for(path: str) -> str | None:
@@ -49,24 +57,44 @@ def cache_control_for(path: str) -> str | None:
     return None
 
 
+def route_label(request: Request) -> str:
+    """Bounded metric label: a route template, never the raw (high-cardinality) path.
+
+    Called before routing (Mounts rewrite root_path while routing); paths of routes resolved
+    during routing are preferred via ``scope["route"]`` in RequestContextMiddleware.
+    """
+    for route in request.app.router.routes:
+        path = getattr(route, "path", None)
+        if isinstance(path, str) and route.matches(request.scope)[0] != Match.NONE:
+            return path
+    return "unmatched"
+
+
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """Assign a request id, expose it as X-Request-ID and log latency."""
+    """Assign a request id + Cloud Trace context, log latency and record HTTP metrics."""
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         incoming = request.headers.get("x-request-id", "")
         is_safe_id = 8 <= len(incoming) <= 64 and incoming.isalnum()  # noqa: PLR2004
         request_id = incoming if is_safe_id else uuid.uuid4().hex
         bind_request_id(request_id)
+        bind_trace(parse_cloud_trace_context(request.headers.get("x-cloud-trace-context")))
+        pre_route = route_label(request)
         started = time.perf_counter()
         response = await call_next(request)
+        elapsed = time.perf_counter() - started
         response.headers["X-Request-ID"] = request_id
+        route = getattr(request.scope.get("route"), "path", None) or pre_route
+        labels = {"route": str(route), "status": str(response.status_code)}
+        HTTP_REQUESTS.inc(**labels)
+        HTTP_DURATION.observe(elapsed, **labels)
         _log.info(
             "request",
             extra={
                 "route": request.url.path,
                 "method": request.method,
                 "status": response.status_code,
-                "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+                "latency_ms": round(elapsed * 1000, 1),
             },
         )
         return response
@@ -107,17 +135,27 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Apply the token-bucket limiter to /api/ routes."""
+    """Apply the token-bucket limiter to /api/ routes, keyed on the spoof-proof client IP."""
 
-    def __init__(self, app: ASGIApp, limiter: TokenBucketLimiter) -> None:
+    def __init__(
+        self, app: ASGIApp, limiter: TokenBucketLimiter, trusted_proxy_hops: int = 1
+    ) -> None:
         super().__init__(app)
         self._limiter = limiter
+        self._hops = trusted_proxy_hops
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
-        client = self._limiter.client_key(request.client.host if request.client else "unknown")
+        client_ip = resolve_client_ip(
+            request.headers.get("x-forwarded-for"),
+            request.client.host if request.client else None,
+            self._hops,
+        )
+        request.state.client_ip = client_ip
+        client = self._limiter.client_key(client_ip)
         if not self._limiter.allow(client):
+            RATE_LIMIT_REJECTIONS.inc()
             headers = {"Retry-After": str(self._limiter.retry_after_s(client))}
             return JSONResponse(
                 error_body(ErrorCode.RATE_LIMITED, "Too many requests.", retryable=True),

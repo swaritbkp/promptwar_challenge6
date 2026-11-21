@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     aq_timeout_s: float = Field(default=4.0, gt=0, le=30)
 
     redis_url: str | None = None
+    gcp_project_id: str | None = Field(default=None, max_length=64)
+    # Proxies that append to X-Forwarded-For (Cloud Run GFE = 1); 0 trusts only the socket peer.
+    trusted_proxy_hops: int = Field(default=1, ge=0, le=10)
     cache_max_entries: int = Field(default=2048, ge=16, le=100_000)
     aq_cache_ttl_s: int = Field(default=1800, ge=60, le=86_400)
 
@@ -57,7 +60,12 @@ class Settings(BaseSettings):
     demo_clock_iso: str | None = None
 
     @field_validator(
-        "google_maps_api_key", "gemini_api_key", "redis_url", "demo_clock_iso", mode="before"
+        "google_maps_api_key",
+        "gemini_api_key",
+        "redis_url",
+        "gcp_project_id",
+        "demo_clock_iso",
+        mode="before",
     )
     @classmethod
     def _blank_to_none(cls, value: object) -> object:

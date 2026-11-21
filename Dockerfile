@@ -43,9 +43,9 @@ RUN useradd --create-home --shell /bin/bash appuser \
 
 USER appuser
 
-# Healthcheck on internal metadata endpoint
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:' + str('${PORT:-8080}') + '/api/v1/meta').read()" || exit 1
+# Liveness: /healthz is dependency-free, so an upstream or Redis blip never marks a healthy
+# container unhealthy. Readiness (/readyz) is for the orchestrator's traffic gating.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3     CMD python -c "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('PORT', '8080') + '/healthz', timeout=3)" || exit 1
 
 EXPOSE 8080
 

@@ -16,4 +16,5 @@ hypothesis
 fakeredis
 ruff
 pip-audit
+bandit
 mypy

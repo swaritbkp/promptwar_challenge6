@@ -37,6 +37,7 @@ from hawakhata.agent.tools import (
 )
 from hawakhata.api.schemas import FamilyProfileInput, GuardrailKind, LocationInput
 from hawakhata.core.logging import get_logger
+from hawakhata.core.metrics import GUARDRAIL_BLOCKS, TurnTelemetry
 from hawakhata.integrations.air_quality import AirQualityClient
 from hawakhata.integrations.gemini import GeminiCascadeClient
 
@@ -160,9 +161,11 @@ class HawaKhataAgent:
         aq_client: AirQualityClient,
         client_ip: str,
         date_iso: str,
+        tel: TurnTelemetry,
     ) -> tuple[str, list[str], list[Any], bool]:
         if not self.client.is_configured or is_clock_comparison_query(safe_input):
-            fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
+            with tel.stage("aq"):
+                fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
             return fb["reply"], [fb["tool_name"]], [fb["tool_output"]], True
 
         lang_label = "Hindi (Devanagari script)" if lang == "hi" else "English"
@@ -170,24 +173,25 @@ class HawaKhataAgent:
         self._get_adk_agent(sys_prompt)
 
         try:
-            brief_tool = await get_smog_brief()
-            tool_outputs: list[Any] = [brief_tool]
-            tool_calls = ["get_smog_brief"]
+            with tel.stage("aq"):
+                brief_tool = await get_smog_brief()
+                tool_outputs: list[Any] = [brief_tool]
+                tool_calls = ["get_smog_brief"]
 
-            intent, _ = route_intent(safe_input)
-            if intent not in ("brief", "mask"):
-                _, intent_tool_name, intent_tool_out = await _dispatch_intent(
-                    intent,
-                    lang,
-                    location.city_name or "your area",
-                    date_iso,
-                    user_text=safe_input,
-                    profile=profile,
-                    aq_client=aq_client,
-                    location=location,
-                )
-                tool_calls.append(intent_tool_name)
-                tool_outputs.append(intent_tool_out)
+                intent, _ = route_intent(safe_input)
+                if intent not in ("brief", "mask"):
+                    _, intent_tool_name, intent_tool_out = await _dispatch_intent(
+                        intent,
+                        lang,
+                        location.city_name or "your area",
+                        date_iso,
+                        user_text=safe_input,
+                        profile=profile,
+                        aq_client=aq_client,
+                        location=location,
+                    )
+                    tool_calls.append(intent_tool_name)
+                    tool_outputs.append(intent_tool_out)
 
             facts = dict(brief_tool.get("result", {}))
             city = location.city_name or "your area"
@@ -206,21 +210,28 @@ class HawaKhataAgent:
                 f"<untrusted_user_input>\n{safe_input}\n</untrusted_user_input>"
             )
 
-            llm_resp = await self.client.generate_content(
-                prompt=prompt, system_instruction=sys_prompt, client_id=client_ip
-            )
+            with tel.stage("gemini"):
+                llm_resp = await self.client.generate_content(
+                    prompt=prompt, system_instruction=sys_prompt, client_id=client_ip
+                )
             reply = unwrap_agent_reply(llm_resp.text.strip())
 
             if not reply.strip():
                 logger.info("Empty reply from Gemini; falling back to deterministic.")
-                raise ValueError("Empty Gemini reply")
-
-            if check_numeric_grounding(reply, tool_outputs, user_text=safe_input).passed:
-                return reply, tool_calls, tool_outputs, False
-            logger.info("Live Gemini reply ungrounded; falling back to deterministic.")
+                tel.outcome = "fallback_empty"
+            else:
+                with tel.stage("grounding"):
+                    grounded = check_numeric_grounding(reply, tool_outputs, user_text=safe_input)
+                if grounded.passed:
+                    tel.outcome = "live_gemini"
+                    return reply, tool_calls, tool_outputs, False
+                logger.info("Live Gemini reply ungrounded; falling back to deterministic.")
+                tel.outcome = "fallback_ungrounded"
         except Exception as exc:
             logger.debug("Gemini live execution fallback: %s", exc)
-        fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
+            tel.outcome = "fallback_error"
+        with tel.stage("aq"):
+            fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
         return fb["reply"], [fb["tool_name"]], [fb["tool_output"]], True
 
     async def run_turn(
@@ -235,6 +246,7 @@ class HawaKhataAgent:
         date_iso: str = "2026-11-18",
     ) -> AgentTurnResult:
         """Run an end-to-end conversation turn through guardrails, tools, and grounding."""
+        tel = TurnTelemetry("chat_turn")
         cleaned = sanitize_input(user_message)
         lang = detect_language(cleaned)
 
@@ -244,8 +256,12 @@ class HawaKhataAgent:
                 if lang == "hi"
                 else "Request blocked: I cannot fulfill instructions overriding safety rules."
             )
-            return AgentTurnResult(
-                refusal, lang, [], [], [], None, True, False, guardrail="prompt_injection"
+            tel.outcome = "guardrail_block"
+            GUARDRAIL_BLOCKS.inc(category="prompt_injection")
+            return tel.finish(
+                AgentTurnResult(
+                    refusal, lang, [], [], [], None, True, False, guardrail="prompt_injection"
+                )
             )
 
         safe_input = mask_pii(cleaned).masked_text
@@ -259,8 +275,12 @@ class HawaKhataAgent:
                 else "HawaKhata provides air quality guidance only, not medical advice or prescriptions. "
                 "For inhaler doses, medication regimens, or any health treatment, please consult a certified medical doctor."
             )
-            return AgentTurnResult(
-                disclaimer, lang, [], [], [], None, True, False, guardrail="medical_dosing"
+            tel.outcome = "guardrail_block"
+            GUARDRAIL_BLOCKS.inc(category="medical_dosing")
+            return tel.finish(
+                AgentTurnResult(
+                    disclaimer, lang, [], [], [], None, True, False, guardrail="medical_dosing"
+                )
             )
 
         health = detect_health_red_flags(safe_input)
@@ -276,6 +296,7 @@ class HawaKhataAgent:
                 aq_client=aq_client,
                 client_ip=client_ip,
                 date_iso=date_iso,
+                tel=tel,
             )
             out_v = enforce_output_policy(
                 reply_text, urgent=health.urgent, canary=CANARY_TOKEN, language=lang
@@ -295,6 +316,8 @@ class HawaKhataAgent:
                 logger.warning(
                     "Security event: Canary token leak detected in model output. Discarding reply and falling back."
                 )
+                tel.outcome = "guardrail_block"
+                GUARDRAIL_BLOCKS.inc(category="canary_leak")
                 fb = await execute_fallback_turn(safe_input, profile, location, aq_client, date_iso)
                 final_reply = fb["reply"]
                 tool_calls = [fb["tool_name"]]
@@ -318,15 +341,17 @@ class HawaKhataAgent:
             nums = [n.value for n in extract_numbers(final_reply)]
             self.sessions.add_message(session_id, "user", user_message)
             self.sessions.add_message(session_id, "model", final_reply)
-            return AgentTurnResult(
-                final_reply,
-                lang,
-                nums,
-                tool_calls,
-                tool_outputs,
-                self._resolve_follow_up(tool_outputs, lang, safe_input),
-                True,
-                fb_used,
+            return tel.finish(
+                AgentTurnResult(
+                    final_reply,
+                    lang,
+                    nums,
+                    tool_calls,
+                    tool_outputs,
+                    self._resolve_follow_up(tool_outputs, lang, safe_input),
+                    True,
+                    fb_used,
+                )
             )
         finally:
             reset_current_context(token)

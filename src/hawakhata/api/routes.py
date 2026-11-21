@@ -8,6 +8,7 @@ from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import PlainTextResponse
 
 from hawakhata.agent.agent import HawaKhataAgent
 from hawakhata.api.dependencies import (
@@ -40,6 +41,7 @@ from hawakhata.api.schemas import (
     WeatherSummary,
 )
 from hawakhata.config import get_settings
+from hawakhata.core.metrics import TurnTelemetry, render_prometheus
 from hawakhata.engine.aqi import aqi_to_grap_stage, compute_live_aq_snapshot
 from hawakhata.engine.budget import daily_air_budget_ug
 from hawakhata.engine.dose import compute_masked_activity_dose
@@ -70,6 +72,15 @@ from hawakhata.services.story_service import load_demo_profiles, load_personas, 
 from hawakhata.services.swap_service import compute_swap_impact, list_available_swaps
 
 api_router = APIRouter(prefix="/api/v1")
+system_router = APIRouter(tags=["system"])
+
+
+@system_router.get("/metrics", response_class=PlainTextResponse)
+async def get_metrics() -> PlainTextResponse:
+    """Prometheus scrape target: bounded-label counters/histograms only (no PII, prompts, keys)."""
+    return PlainTextResponse(render_prometheus(), media_type="text/plain; version=0.0.4")
+
+
 AqClientDep = Annotated[AirQualityClient, Depends(get_aq_client)]
 WeatherClientDep = Annotated[WeatherClient, Depends(get_weather_client)]
 AgentDep = Annotated[HawaKhataAgent, Depends(get_agent)]
@@ -256,12 +267,14 @@ async def post_morning_brief(
     req: BriefRequest, request: Request, aq_client: AqClientDep
 ) -> Envelope[BriefResponse]:
     """Generate proactive morning brief with forecast-shift detection."""
+    tel = TurnTelemetry("brief_turn")
     lat, lng = (
         (req.profile.location.lat, req.profile.location.lng)
         if req.profile.location
         else (28.459, 77.026)
     )
-    s = await aq_client.get_hourly_forecast(lat=lat, lng=lng, hours=24)
+    with tel.stage("aq"):
+        s = await aq_client.get_hourly_forecast(lat=lat, lng=lng, hours=24)
     brief = generate_morning_brief(
         profile=req.profile,
         air_series=s,
@@ -281,7 +294,7 @@ async def post_morning_brief(
         forecast_shift=brief.forecast_shift,
         explanation=brief.explanation.to_dict(),
     )
-    return Envelope(data=data, meta=make_meta(request, data_mode=s.data_mode))
+    return tel.finish(Envelope(data=data, meta=make_meta(request, data_mode=s.data_mode)))
 
 
 @api_router.get("/demo/profiles", response_model=Envelope[dict[str, Any]], tags=["demo"])
@@ -454,7 +467,7 @@ async def post_chat(
     req: ChatRequest, request: Request, agent: AgentDep, aq_client: AqClientDep
 ) -> Envelope[ChatResponse]:
     """Execute conversational turn with tools, grounding gate, and fallback."""
-    client_ip = getattr(getattr(request, "client", None), "host", "127.0.0.1")
+    client_ip = str(getattr(request.state, "client_ip", "unknown"))  # set by RateLimitMiddleware
     session_id = req.session_id or f"sess_{uuid.uuid4().hex[:12]}"
     profile = req.profile or _default_profile()
     if req.location is not None:

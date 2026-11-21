@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      APP_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Lint and format
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Type check
+        run: mypy --strict src/
+      - name: Tests with coverage
+        run: pytest -q --cov=hawakhata --cov-report=term-missing:skip-covered --cov-fail-under=90
+      - name: Repo audit and grounding eval
+        run: |
+          python scripts/repo_audit.py
+          python eval/run_eval.py --mode fake
+      - name: SAST (bandit)
+        run: bandit -r src/ -ll
+      - name: Dependency CVE audit (pip-audit)
+        run: pip-audit -r requirements.txt
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image (verification only, never pushed or deployed)
+        run: docker build --tag hawakhata:ci .

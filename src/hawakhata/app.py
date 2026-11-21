@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -9,13 +10,14 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from hawakhata import version
+from hawakhata.agent.prompts import list_prompts, load_prompt
 from hawakhata.api.dependencies import get_aq_client
-from hawakhata.api.routes import api_router
+from hawakhata.api.routes import api_router, system_router
 from hawakhata.config import Settings, get_settings
 from hawakhata.core.cache import RedisCache, build_cache
 from hawakhata.core.errors import register_exception_handlers
@@ -33,7 +35,7 @@ from hawakhata.engine.cities import get_supported_cities
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the app with middleware, shared clients and system routes."""
     cfg = settings or get_settings()
-    configure_logging(cfg.log_level)
+    configure_logging(cfg.log_level, cfg.gcp_project_id)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -59,12 +61,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         RateLimitMiddleware,
         limiter=TokenBucketLimiter(cfg.rate_limit_per_min, cfg.rate_limit_max_clients),
+        trusted_proxy_hops=cfg.trusted_proxy_hops,
     )
     app.add_middleware(BodySizeLimitMiddleware, max_body_bytes=cfg.max_body_bytes)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestContextMiddleware)
     register_exception_handlers(app)
     app.include_router(api_router)
+    app.include_router(system_router)
 
     root_dir = Path(__file__).resolve().parent.parent.parent
     static_dir = root_dir / "static"
@@ -93,7 +97,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/healthz", tags=["system"])
     async def healthz() -> dict[str, str]:
+        """Liveness: zero dependencies, so an upstream blip never restarts a healthy container."""
         return {"status": "ok"}
+
+    @app.get("/readyz", tags=["system"])
+    async def readyz() -> JSONResponse:
+        """Readiness: internal dependencies only — never calls Open-Meteo, Google AQ or Gemini."""
+        checks = {"config": "ok" if app.state.settings is cfg else "fail", "redis": "skipped"}
+        try:
+            load_prompt("agent_system")
+            checks["prompts"] = "ok" if list_prompts() else "fail"
+        except (OSError, ValueError):
+            checks["prompts"] = "fail"
+        if cfg.redis_url and isinstance(app.state.cache, RedisCache):
+            try:
+                ok = await asyncio.wait_for(app.state.cache.ping(), timeout=1.0)
+                checks["redis"] = "ok" if ok else "fail"
+            except Exception:  # any Redis/network/timeout error means "not ready"
+                checks["redis"] = "fail"
+        ready = "fail" not in checks.values()
+        body = {"status": "ready" if ready else "not_ready", "checks": checks}
+        return JSONResponse(body, status_code=200 if ready else 503)
 
     @app.get("/api/v1/meta", tags=["system"])
     async def meta(request: Request) -> dict[str, object]:

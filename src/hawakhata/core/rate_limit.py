@@ -3,10 +3,35 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import time
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
+
+
+def _valid_ip(raw: str) -> str | None:
+    try:
+        return str(ipaddress.ip_address(raw.strip()))
+    except ValueError:
+        return None
+
+
+def resolve_client_ip(forwarded_for: str | None, peer: str | None, trusted_hops: int) -> str:
+    """Return the client IP recorded by the outermost trusted proxy.
+
+    Each trusted proxy appends the address it saw to ``X-Forwarded-For``, so the
+    ``trusted_hops``-th entry from the RIGHT is the real client; everything to its left is
+    client-supplied and spoofable. Falls back to the socket peer when the header is absent,
+    too short, invalid or ``trusted_hops == 0``.
+    """
+    if forwarded_for and trusted_hops > 0:
+        hops = forwarded_for.split(",")
+        if len(hops) >= trusted_hops:
+            candidate = _valid_ip(hops[-trusted_hops])
+            if candidate:
+                return candidate
+    return _valid_ip(peer or "") or "unknown"
 
 
 @dataclass(slots=True)
