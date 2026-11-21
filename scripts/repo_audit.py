@@ -44,7 +44,7 @@ TEXT_SUFFIXES = {
 JUNK_NAMES = {".env", ".coverage", ".digest.txt"}
 MAX_FILE_BYTES = 150_000
 MAX_FIXTURE_BYTES = 40_000
-MAX_DIGEST_CHARS = 760_000
+MAX_DIGEST_CHARS = 900_000
 
 BANNED: list[tuple[str, str]] = [
     (r"\bos\.(getenv|environ)\b", "env access outside config.py"),

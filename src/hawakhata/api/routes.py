@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
+import json
 import uuid
+from collections.abc import AsyncIterator, Callable
 from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 
 from hawakhata.agent.agent import HawaKhataAgent
 from hawakhata.api.dependencies import (
@@ -41,6 +44,8 @@ from hawakhata.api.schemas import (
     WeatherSummary,
 )
 from hawakhata.config import get_settings
+from hawakhata.core.errors import ErrorCode, error_body
+from hawakhata.core.logging import get_logger
 from hawakhata.core.metrics import TurnTelemetry, render_prometheus
 from hawakhata.engine.aqi import aqi_to_grap_stage, compute_live_aq_snapshot
 from hawakhata.engine.budget import daily_air_budget_ug
@@ -73,11 +78,26 @@ from hawakhata.services.swap_service import compute_swap_impact, list_available_
 
 api_router = APIRouter(prefix="/api/v1")
 system_router = APIRouter(tags=["system"])
+_log = get_logger(__name__)
 
 
 @system_router.get("/metrics", response_class=PlainTextResponse)
-async def get_metrics() -> PlainTextResponse:
-    """Prometheus scrape target: bounded-label counters/histograms only (no PII, prompts, keys)."""
+async def get_metrics(request: Request) -> Response:
+    """Prometheus scrape target: bounded-label counters/histograms only (no PII, prompts, keys).
+
+    With METRICS_AUTH_TOKEN set, a constant-time bearer check guards it; failures say nothing
+    about the expected token.
+    """
+    token = request.app.state.settings.metrics_auth_token
+    if token is not None:
+        expected = f"Bearer {token.get_secret_value()}".encode()
+        provided = request.headers.get("authorization", "").encode()
+        if not hmac.compare_digest(provided, expected):
+            return JSONResponse(
+                error_body(ErrorCode.UNAUTHORIZED, "Authentication required."),
+                status_code=401,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     return PlainTextResponse(render_prometheus(), media_type="text/plain; version=0.0.4")
 
 
@@ -462,11 +482,14 @@ def _default_profile() -> FamilyProfileInput:
     )
 
 
-@api_router.post("/chat", response_model=Envelope[ChatResponse], tags=["chat"])
-async def post_chat(
-    req: ChatRequest, request: Request, agent: AgentDep, aq_client: AqClientDep
+async def _run_chat(
+    req: ChatRequest,
+    request: Request,
+    agent: HawaKhataAgent,
+    aq_client: AirQualityClient,
+    on_stage: Callable[[str], None] | None = None,
 ) -> Envelope[ChatResponse]:
-    """Execute conversational turn with tools, grounding gate, and fallback."""
+    """One grounded chat turn shared by the JSON and SSE endpoints (identical response schema)."""
     client_ip = str(getattr(request.state, "client_ip", "unknown"))  # set by RateLimitMiddleware
     session_id = req.session_id or f"sess_{uuid.uuid4().hex[:12]}"
     profile = req.profile or _default_profile()
@@ -482,6 +505,7 @@ async def post_chat(
         aq_client=aq_client,
         client_ip=client_ip,
         date_iso=date_iso,
+        on_stage=on_stage,
     )
 
     data = ChatResponse(
@@ -505,3 +529,58 @@ async def post_chat(
             degraded=result.fallback_used,
         ),
     )
+
+
+@api_router.post("/chat", response_model=Envelope[ChatResponse], tags=["chat"])
+async def post_chat(
+    req: ChatRequest, request: Request, agent: AgentDep, aq_client: AqClientDep
+) -> Envelope[ChatResponse]:
+    """Execute conversational turn with tools, grounding gate, and fallback."""
+    return await _run_chat(req, request, agent, aq_client)
+
+
+STAGE_LABELS = {
+    "aq": "Fetching live air quality...",
+    "gemini": "Drafting grounded guidance...",
+    "grounding": "Verifying every number...",
+}
+SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
+
+
+def _sse(event: str, payload: str) -> str:
+    return f"event: {event}\ndata: {payload}\n\n"
+
+
+@api_router.post("/chat/stream", response_class=StreamingResponse, tags=["chat"])
+async def post_chat_stream(
+    req: ChatRequest, request: Request, agent: AgentDep, aq_client: AqClientDep
+) -> StreamingResponse:
+    """Same turn as POST /chat, as Server-Sent Events: ``stage`` x N, ``final``, ``done``.
+
+    Grounding-safe: stage events carry only fixed labels; model text leaves solely inside the
+    ``final`` envelope, after the grounding gate and output policy have run.
+    """
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    def on_stage(stage: str) -> None:
+        body = {"stage": stage, "label": STAGE_LABELS.get(stage, stage)}
+        queue.put_nowait(_sse("stage", json.dumps(body)))
+
+    async def events() -> AsyncIterator[str]:
+        task = asyncio.create_task(_run_chat(req, request, agent, aq_client, on_stage))
+        task.add_done_callback(lambda _: queue.put_nowait(None))
+        try:
+            while (item := await queue.get()) is not None:
+                yield item
+            try:
+                yield _sse("final", (await task).model_dump_json())
+            except Exception as exc:  # never hang or leak internals: typed error, then done
+                _log.error("chat_stream_failed", extra={"error": type(exc).__name__})
+                err = error_body(ErrorCode.INTERNAL_ERROR, "Chat turn failed.", retryable=True)
+                yield _sse("error", json.dumps(err))
+            yield _sse("done", "{}")
+        finally:
+            if not task.done():  # client went away mid-turn
+                task.cancel()
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers=SSE_HEADERS)

@@ -6,6 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 from fastapi import FastAPI, Request
@@ -16,10 +17,11 @@ from fastapi.templating import Jinja2Templates
 
 from hawakhata import version
 from hawakhata.agent.prompts import list_prompts, load_prompt
+from hawakhata.agent.sessions import build_session_store
 from hawakhata.api.dependencies import get_aq_client
 from hawakhata.api.routes import api_router, system_router
 from hawakhata.config import Settings, get_settings
-from hawakhata.core.cache import RedisCache, build_cache
+from hawakhata.core.cache import build_cache, build_redis_client
 from hawakhata.core.errors import register_exception_handlers
 from hawakhata.core.logging import configure_logging
 from hawakhata.core.middleware import (
@@ -28,14 +30,24 @@ from hawakhata.core.middleware import (
     RequestContextMiddleware,
     SecurityHeadersMiddleware,
 )
-from hawakhata.core.rate_limit import TokenBucketLimiter
+from hawakhata.core.rate_limit import build_rate_limiter
 from hawakhata.engine.cities import get_supported_cities
 
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """Build the app with middleware, shared clients and system routes."""
+
+def create_app(settings: Settings | None = None, *, redis_client: Redis | None = None) -> FastAPI:
+    """Build the app with middleware, shared clients and system routes.
+
+    With REDIS_URL set (or ``redis_client`` injected) the AQ cache, chat sessions and rate-limit
+    buckets live in Redis and are shared by every instance; each degrades to in-memory on a
+    transient Redis error. Without it everything is bounded in-memory.
+    """
     cfg = settings or get_settings()
     configure_logging(cfg.log_level, cfg.gcp_project_id)
+    owns_redis = redis_client is None
+    redis = redis_client or build_redis_client(cfg)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -44,6 +56,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             await app.state.http.aclose()
+            if redis is not None and owns_redis:
+                await redis.aclose()
 
     app = FastAPI(
         title="HawaKhata API",
@@ -53,14 +67,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.settings = cfg
-    app.state.cache = build_cache(cfg)
+    app.state.redis = redis
+    app.state.cache = build_cache(cfg, redis)
+    app.state.sessions = build_session_store(cfg, redis)
 
     # GZip innermost: it must see the whole body for minimum_size to apply (outer
     # BaseHTTPMiddleware layers re-stream responses in chunks).
     app.add_middleware(GZipMiddleware, minimum_size=500)
     app.add_middleware(
         RateLimitMiddleware,
-        limiter=TokenBucketLimiter(cfg.rate_limit_per_min, cfg.rate_limit_max_clients),
+        limiter=build_rate_limiter(cfg, redis),
         trusted_proxy_hops=cfg.trusted_proxy_hops,
     )
     app.add_middleware(BodySizeLimitMiddleware, max_body_bytes=cfg.max_body_bytes)
@@ -109,9 +125,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             checks["prompts"] = "ok" if list_prompts() else "fail"
         except (OSError, ValueError):
             checks["prompts"] = "fail"
-        if cfg.redis_url and isinstance(app.state.cache, RedisCache):
+        if app.state.redis is not None:
             try:
-                ok = await asyncio.wait_for(app.state.cache.ping(), timeout=1.0)
+                ok = await asyncio.wait_for(app.state.redis.ping(), timeout=1.0)
                 checks["redis"] = "ok" if ok else "fail"
             except Exception:  # any Redis/network/timeout error means "not ready"
                 checks["redis"] = "fail"
@@ -122,7 +138,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/v1/meta", tags=["system"])
     async def meta(request: Request) -> dict[str, object]:
         runtime = {  # read-only operational telemetry; never includes keys or URLs
-            "cache_backend": "redis" if isinstance(app.state.cache, RedisCache) else "memory",
+            "cache_backend": "redis" if app.state.redis is not None else "memory",
+            "state_backend": "redis" if app.state.redis is not None else "memory",
             "provider_chain": ["open_meteo_live", "google_aq_live", "fixture"],
             "circuit_breakers": get_aq_client(request).breaker_states(),
             "grounding_gate": True,

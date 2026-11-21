@@ -81,7 +81,13 @@ def get_geo_client(request: Request) -> GeocodingClient:
 def get_agent(request: Request) -> HawaKhataAgent:
     agent = getattr(request.app.state, "agent", None)
     if agent is None:
-        agent = HawaKhataAgent(get_gemini_client(request))
+        cfg: Settings = request.app.state.settings
+        agent = HawaKhataAgent(
+            get_gemini_client(request),
+            request.app.state.sessions,
+            history_turns=cfg.chat_history_turns,
+            history_max_chars=cfg.chat_history_max_chars,
+        )
         request.app.state.agent = agent
     return agent
 

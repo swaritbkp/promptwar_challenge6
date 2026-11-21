@@ -374,6 +374,7 @@ class AirQualityClient:
                         "open_meteo_live",
                         PROVIDER_LABELS["open_meteo_live"],
                     )
+                UPSTREAM_ERRORS.inc(provider="open_meteo")  # non-200 is a failed call too
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
                 UPSTREAM_ERRORS.inc(provider="open_meteo")
                 logger.info("Open-Meteo AQ attempt %d failed: %s", attempt, type(exc).__name__)
@@ -411,6 +412,8 @@ class AirQualityClient:
                     headers=headers,
                     timeout=self._settings.aq_timeout_s,
                 )
+                if resp.status_code != 200:
+                    UPSTREAM_ERRORS.inc(provider="google_aq")
                 raw = resp.json().get("hourlyForecasts", []) if resp.status_code == 200 else []
                 if raw:
                     self._breaker.record_success()

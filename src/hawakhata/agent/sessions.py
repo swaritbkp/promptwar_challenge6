@@ -1,11 +1,23 @@
-"""Bounded session store for multi-turn conversational agents."""
+"""Bounded conversation memory: in-memory LRU, Redis (multi-instance) and a failover wrapper."""
 
 from __future__ import annotations
 
 import collections
+import hashlib
+import json
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, Protocol
+
+from hawakhata.core.cache import REDIS_ERRORS, record_redis_error
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
+    from hawakhata.config import Settings
+
+HistoryEntry = dict[str, str]
 
 
 @dataclass
@@ -22,6 +34,31 @@ class ChatSession:
     created_at: float = field(default_factory=time.time)
     last_active_at: float = field(default_factory=time.time)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class SessionBackend(Protocol):
+    """Async conversation-memory contract shared by every store the agent can use."""
+
+    async def history(self, session_id: str) -> list[HistoryEntry]:
+        """Return the stored turns, oldest first."""
+        ...
+
+    async def append_turns(self, session_id: str, turns: Sequence[tuple[str, str]]) -> None:
+        """Append ``(role, content)`` turns, keeping only the newest ``max_turns``."""
+        ...
+
+
+def bounded_history(
+    entries: Sequence[HistoryEntry], max_turns: int, max_chars: int
+) -> list[HistoryEntry]:
+    """Keep the newest ``max_turns`` entries, then drop oldest until rendered size <= max_chars."""
+    kept = list(entries[-max_turns:]) if max_turns > 0 else []
+    sizes = [len(e["role"]) + len(e["content"]) + 3 for e in kept]  # "role: content" + newline
+    total = sum(sizes)
+    while kept and total > max_chars:
+        kept.pop(0)
+        total -= sizes.pop(0)
+    return kept
 
 
 class SessionStore:
@@ -98,3 +135,99 @@ class SessionStore:
     def clear(self) -> None:
         """Clear all active sessions."""
         self._sessions.clear()
+
+    async def history(self, session_id: str) -> list[HistoryEntry]:
+        """Async view of :meth:`get_history` (SessionBackend contract)."""
+        return self.get_history(session_id)
+
+    async def append_turns(self, session_id: str, turns: Sequence[tuple[str, str]]) -> None:
+        """Async batch of :meth:`add_message` calls (SessionBackend contract)."""
+        for role, content in turns:
+            self.add_message(session_id, role, content)
+
+
+def _decode_turns(raw: bytes | str | None) -> list[HistoryEntry]:
+    """Parse a stored JSON turn list; anything malformed reads as an empty history."""
+    if raw is None:
+        return []
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [
+        {"role": t["role"], "content": t["content"]}
+        for t in data
+        if isinstance(t, dict)
+        and isinstance(t.get("role"), str)
+        and isinstance(t.get("content"), str)
+    ]
+
+
+class RedisSessionStore:
+    """Session turns as one JSON list per session in Redis, refreshed with ``SETEX`` (sliding TTL).
+
+    Every Cloud Run instance sharing the Redis sees the same conversation for a ``session_id``.
+    Keys are a SHA-256 of the session id, so client-supplied ids never become raw key names.
+    """
+
+    def __init__(self, client: Redis, ttl_s: int, max_turns: int, prefix: str = "hk:sess:") -> None:
+        if ttl_s <= 0 or max_turns <= 0:
+            raise ValueError("ttl_s and max_turns must be positive")
+        self._client, self._ttl_s, self._max_turns, self._prefix = client, ttl_s, max_turns, prefix
+
+    def _key(self, session_id: str) -> str:
+        return self._prefix + hashlib.sha256(session_id.encode("utf-8")).hexdigest()[:32]
+
+    async def history(self, session_id: str) -> list[HistoryEntry]:
+        """Return stored turns and slide the TTL forward."""
+        key = self._key(session_id)
+        turns = _decode_turns(await self._client.get(key))
+        if turns:
+            await self._client.expire(key, self._ttl_s)
+        return turns
+
+    async def append_turns(self, session_id: str, turns: Sequence[tuple[str, str]]) -> None:
+        """Append turns, trim to ``max_turns`` and rewrite with ``SETEX`` (TTL refresh)."""
+        key = self._key(session_id)
+        stored = _decode_turns(await self._client.get(key))
+        stored += [{"role": role, "content": content} for role, content in turns]
+        payload = json.dumps(stored[-self._max_turns :], ensure_ascii=False)
+        await self._client.setex(key, self._ttl_s, payload)
+
+
+class FailoverSessionStore:
+    """Use the primary (Redis) store; on a transient Redis error degrade to in-memory, never 500."""
+
+    def __init__(self, primary: SessionBackend, fallback: SessionStore) -> None:
+        self.primary, self.fallback = primary, fallback
+
+    async def history(self, session_id: str) -> list[HistoryEntry]:
+        """Primary history, or this instance's in-memory history during an outage."""
+        try:
+            return await self.primary.history(session_id)
+        except REDIS_ERRORS as exc:
+            record_redis_error(exc, "session_get")
+            return await self.fallback.history(session_id)
+
+    async def append_turns(self, session_id: str, turns: Sequence[tuple[str, str]]) -> None:
+        """Write to the primary, or to in-memory during an outage."""
+        try:
+            await self.primary.append_turns(session_id, turns)
+        except REDIS_ERRORS as exc:
+            record_redis_error(exc, "session_set")
+            await self.fallback.append_turns(session_id, turns)
+
+
+def build_session_store(settings: Settings, client: Redis | None) -> SessionBackend:
+    """Redis-backed (with in-memory failover) when a client exists, else bounded in-memory."""
+    memory = SessionStore(
+        max_sessions=settings.session_max,
+        session_ttl_s=settings.session_ttl_s,
+        max_turns=settings.session_max_turns,
+    )
+    if client is None:
+        return memory
+    redis_store = RedisSessionStore(client, settings.session_ttl_s, settings.session_max_turns)
+    return FailoverSessionStore(redis_store, memory)

@@ -10,12 +10,26 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast
 
+from redis.exceptions import RedisError
+
+from hawakhata.core.logging import get_logger
+from hawakhata.core.metrics import UPSTREAM_ERRORS
+
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
     from hawakhata.config import Settings
 
 JsonValue = dict[str, object] | list[object] | str | int | float | bool | None
+# Transient Redis failures every Redis-backed component degrades on (never a 500).
+REDIS_ERRORS: tuple[type[Exception], ...] = (RedisError, OSError, TimeoutError)
+_log = get_logger(__name__)
+
+
+def record_redis_error(exc: BaseException, op: str) -> None:
+    """Count a degraded Redis call (``provider="redis"``) and log its type, never its payload."""
+    UPSTREAM_ERRORS.inc(provider="redis")
+    _log.warning("redis_degraded", extra={"op": op, "error": type(exc).__name__})
 
 
 @dataclass(slots=True)
@@ -102,8 +116,12 @@ class RedisCache:
         self._stats = CacheStats()
 
     async def get(self, key: str) -> JsonValue:
-        """Return the decoded value or None."""
-        raw = await self._client.get(self._prefix + key)
+        """Return the decoded value or None (a Redis outage is a cache miss)."""
+        try:
+            raw = await self._client.get(self._prefix + key)
+        except REDIS_ERRORS as exc:
+            record_redis_error(exc, "cache_get")
+            raw = None
         if raw is None:
             self._stats.misses += 1
             return None
@@ -111,10 +129,13 @@ class RedisCache:
         return cast(JsonValue, json.loads(raw))
 
     async def set(self, key: str, value: JsonValue, ttl_s: int | None = None) -> None:
-        """Store value with expiry."""
-        await self._client.set(
-            self._prefix + key, json.dumps(value), ex=ttl_s or self._default_ttl_s
-        )
+        """Store value with expiry (best effort: a Redis outage skips the write)."""
+        try:
+            await self._client.set(
+                self._prefix + key, json.dumps(value), ex=ttl_s or self._default_ttl_s
+            )
+        except REDIS_ERRORS as exc:
+            record_redis_error(exc, "cache_set")
 
     async def ping(self) -> bool:
         """Round-trip to Redis (readiness probe)."""
@@ -125,10 +146,20 @@ class RedisCache:
         return CacheStats(hits=self._stats.hits, misses=self._stats.misses)
 
 
-def build_cache(settings: Settings) -> CacheBackend:
-    """Choose the cache backend from configuration (Redis if REDIS_URL is set)."""
-    if settings.redis_url:
-        from redis.asyncio import Redis  # noqa: PLC0415
+def build_redis_client(settings: Settings) -> Redis | None:
+    """One shared async Redis client when REDIS_URL is set; short timeouts so outages fail fast."""
+    if not settings.redis_url:
+        return None
+    from redis.asyncio import Redis  # noqa: PLC0415
 
-        return RedisCache(Redis.from_url(settings.redis_url), settings.aq_cache_ttl_s)
+    return Redis.from_url(
+        settings.redis_url, socket_timeout=0.5, socket_connect_timeout=0.5, health_check_interval=30
+    )
+
+
+def build_cache(settings: Settings, client: Redis | None = None) -> CacheBackend:
+    """Choose the cache backend: Redis when a client (or REDIS_URL) exists, else TTL-LRU."""
+    client = client or build_redis_client(settings)
+    if client is not None:
+        return RedisCache(client, settings.aq_cache_ttl_s)
     return TTLCache(settings.cache_max_entries, settings.aq_cache_ttl_s)

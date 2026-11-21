@@ -107,7 +107,7 @@ Also: `/api/v1/air/forecast`, `/passbook`, `/plan`, `/indoor/simulate`, `/swaps/
 | `tests/unit/test_ui_contrast.py` | 52 token pairs (26 × Light/Dark) all ≥ 4.5:1; weakest is 5.31:1 |
 | `pip-audit` | 0 known vulnerabilities in pinned deps |
 | `eval/run_eval.py` | 16/16 golden cases: grounding (`agent/grounding.py: check_numeric_grounding()`) and guardrails 100% (fake LLM) |
-| `scripts/repo_audit.py` | Banned patterns, digest ≤ 760k chars, every Code Map citation resolves via AST |
+| `scripts/repo_audit.py` | Banned patterns, digest ≤ 900k chars, every Code Map citation resolves via AST |
 
 Security posture (full rules R1–R12 in [docs/SECURITY.md](docs/SECURITY.md), audit in [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md)): no login and no server-side PII; coordinates rounded to ~1 km; strict CSP (`default-src 'self'`, no inline scripts, no CDNs); AI output via `textContent` only; canary token; per-IP minute and daily AI limits. Accessibility: WCAG 2.2 AA landmarks, skip links, reduced motion, Light/Dark toggle.
 

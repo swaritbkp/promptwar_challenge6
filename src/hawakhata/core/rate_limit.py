@@ -1,13 +1,30 @@
-"""Bounded abuse limits: a per-minute token bucket and a per-day usage quota."""
+"""Bounded abuse limits: per-minute token buckets (in-memory or Redis) and a per-day quota."""
 
 from __future__ import annotations
 
 import hashlib
 import ipaddress
+import math
 import time
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol
+
+from hawakhata.core.cache import REDIS_ERRORS, record_redis_error
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
+    from hawakhata.config import Settings
+
+
+class RateLimiter(Protocol):
+    """Async limiter contract used by RateLimitMiddleware."""
+
+    async def acquire(self, client: str) -> tuple[bool, int]:
+        """Consume one token: ``(allowed, retry_after_s)``; retry is 0 when allowed."""
+        ...
 
 
 def _valid_ip(raw: str) -> str | None:
@@ -85,10 +102,85 @@ class TokenBucketLimiter:
             return 0
         return max(1, int((1.0 - bucket.tokens) / self._refill_per_s + 0.999))
 
+    async def acquire(self, client: str) -> tuple[bool, int]:
+        """RateLimiter contract over :meth:`allow`."""
+        allowed = self.allow(client)
+        return allowed, 0 if allowed else self.retry_after_s(client)
+
     @property
     def tracked_clients(self) -> int:
         """Number of clients currently tracked."""
         return len(self._buckets)
+
+
+# Atomic refill-and-take on one hash; Redis TIME is the single clock for every instance, so
+# there is no read-modify-write window (TOCTOU) and no cross-instance clock skew.
+RATE_BUCKET_LUA = """
+local capacity = tonumber(ARGV[1])
+local refill = tonumber(ARGV[2])
+local ttl = tonumber(ARGV[3])
+local t = redis.call('TIME')
+local now = tonumber(t[1]) + tonumber(t[2]) / 1000000
+local state = redis.call('HMGET', KEYS[1], 'tokens', 'ts')
+local tokens = tonumber(state[1]) or capacity
+local ts = tonumber(state[2]) or now
+tokens = math.min(capacity, tokens + math.max(0, now - ts) * refill)
+local allowed = 0
+local retry = 0
+if tokens >= 1 then
+  tokens = tokens - 1
+  allowed = 1
+else
+  retry = math.ceil((1 - tokens) / refill)
+end
+redis.call('HSET', KEYS[1], 'tokens', tostring(tokens), 'ts', tostring(now))
+redis.call('EXPIRE', KEYS[1], ttl)
+return {allowed, retry}
+"""
+
+
+class RedisTokenBucketLimiter:
+    """Token bucket shared by every instance via one atomic Lua script per request."""
+
+    def __init__(self, client: Redis, per_minute: int, prefix: str = "hk:rl:") -> None:
+        if per_minute <= 0:
+            raise ValueError("per_minute must be positive")
+        self._capacity = float(per_minute)
+        self._refill_per_s = per_minute / 60.0
+        # An idle bucket is full again after capacity/refill s, so expiring then loses nothing.
+        self._ttl_s = math.ceil(self._capacity / self._refill_per_s) + 1
+        self._prefix = prefix
+        self._script = client.register_script(RATE_BUCKET_LUA)
+
+    async def acquire(self, client: str) -> tuple[bool, int]:
+        """Run the script for ``client`` (already a hashed key)."""
+        allowed, retry = await self._script(
+            keys=[self._prefix + client], args=[self._capacity, self._refill_per_s, self._ttl_s]
+        )
+        return bool(int(allowed)), int(retry)
+
+
+class FailoverRateLimiter:
+    """Shared Redis bucket; on a transient Redis error fall back to this instance's own bucket."""
+
+    def __init__(self, primary: RateLimiter, fallback: TokenBucketLimiter) -> None:
+        self.primary, self.fallback = primary, fallback
+
+    async def acquire(self, client: str) -> tuple[bool, int]:
+        """Primary decision, or the in-memory one during an outage (never fail closed/500)."""
+        try:
+            return await self.primary.acquire(client)
+        except REDIS_ERRORS as exc:
+            record_redis_error(exc, "rate_limit")
+            return await self.fallback.acquire(client)
+
+
+def build_rate_limiter(settings: Settings, client: Redis | None) -> RateLimiter:
+    """Redis-shared limiter (with in-memory failover) when a client exists, else in-memory."""
+    memory = TokenBucketLimiter(settings.rate_limit_per_min, settings.rate_limit_max_clients)
+    if client is None:
+        return memory
+    return FailoverRateLimiter(RedisTokenBucketLimiter(client, settings.rate_limit_per_min), memory)
 
 
 class DailyQuota:

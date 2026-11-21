@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -27,7 +28,7 @@ from hawakhata.agent.guardrails import (
     sanitize_input,
 )
 from hawakhata.agent.prompts import render_prompt
-from hawakhata.agent.sessions import SessionStore
+from hawakhata.agent.sessions import SessionBackend, SessionStore, bounded_history
 from hawakhata.agent.tools import (
     ALL_TOOLS,
     ToolContext,
@@ -112,10 +113,16 @@ class HawaKhataAgent:
     """Multi-turn ADK agent coordinating tools, grounding verification, and fallback."""
 
     def __init__(
-        self, gemini_client: GeminiCascadeClient, session_store: SessionStore | None = None
+        self,
+        gemini_client: GeminiCascadeClient,
+        session_store: SessionBackend | None = None,
+        *,
+        history_turns: int = 8,
+        history_max_chars: int = 6_000,
     ) -> None:
         self.client = gemini_client
-        self.sessions = session_store or SessionStore()
+        self.sessions: SessionBackend = session_store or SessionStore()
+        self.history_turns, self.history_max_chars = history_turns, history_max_chars
         self._adk_agent: Agent | None = None
 
     def _get_adk_agent(self, instruction: str) -> Agent:
@@ -200,7 +207,11 @@ class HawaKhataAgent:
                 if isinstance(out, dict) and "result" in out and isinstance(out["result"], dict):
                     facts.update(out["result"])
             facts_str = json.dumps(facts)
-            history_entries = self.sessions.get_history(session_id)[-4:]
+            history_entries = bounded_history(
+                await self.sessions.history(session_id),
+                self.history_turns,
+                self.history_max_chars,
+            )
             hist_str = "\n".join(f"{h['role']}: {h['content']}" for h in history_entries)
 
             prompt = (
@@ -244,9 +255,14 @@ class HawaKhataAgent:
         aq_client: AirQualityClient,
         client_ip: str = "127.0.0.1",
         date_iso: str = "2026-11-18",
+        on_stage: Callable[[str], None] | None = None,
     ) -> AgentTurnResult:
-        """Run an end-to-end conversation turn through guardrails, tools, and grounding."""
-        tel = TurnTelemetry("chat_turn")
+        """Run an end-to-end conversation turn through guardrails, tools, and grounding.
+
+        ``on_stage`` is told each pipeline stage (aq, gemini, grounding) as it starts; it never
+        sees model text, so nothing unverified can leave before the grounding gate.
+        """
+        tel = TurnTelemetry("chat_turn", listener=on_stage)
         cleaned = sanitize_input(user_message)
         lang = detect_language(cleaned)
 
@@ -339,8 +355,9 @@ class HawaKhataAgent:
                     final_reply,
                 ).strip()
             nums = [n.value for n in extract_numbers(final_reply)]
-            self.sessions.add_message(session_id, "user", user_message)
-            self.sessions.add_message(session_id, "model", final_reply)
+            await self.sessions.append_turns(
+                session_id, [("user", user_message), ("model", final_reply)]
+            )
             return tel.finish(
                 AgentTurnResult(
                     final_reply,

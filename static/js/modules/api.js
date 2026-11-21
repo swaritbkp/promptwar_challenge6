@@ -12,6 +12,24 @@ async function request(url, options = {}) {
   return resp.json();
 }
 
+function chatBody({ message, sessionId, language, profile }) {
+  const body = { message, language };
+  if (sessionId) body.session_id = sessionId;
+  if (profile) body.profile = profile;
+  return JSON.stringify(body);
+}
+
+/** Parse one SSE block ("event: x\ndata: {...}") into { event, data }. */
+export function parseSseBlock(block) {
+  let event = "message";
+  const data = [];
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) data.push(line.slice(5).trim());
+  }
+  return { event, data: data.join("\n") };
+}
+
 export const api = {
   async fetchMeta() {
     const json = await request("/api/v1/meta");
@@ -89,15 +107,55 @@ export const api = {
   },
 
   async postChat({ message, sessionId = null, language = "en", profile = null }) {
-    const body = { message, language };
-    if (sessionId) body.session_id = sessionId;
-    if (profile) body.profile = profile;
     const json = await request("/api/v1/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: chatBody({ message, sessionId, language, profile }),
     });
     return json.data || {};
+  },
+
+  /**
+   * Same turn as postChat over SSE: onStage({stage, label}) per pipeline phase, then resolves
+   * with the verified `final` payload. Stage events never carry model text.
+   */
+  async postChatStream({ message, sessionId = null, language = "en", profile = null, onStage = null }) {
+    if (typeof ReadableStream === "undefined" || typeof TextDecoder === "undefined") {
+      throw new Error("streaming unsupported");
+    }
+    const resp = await fetch("/api/v1/chat/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: chatBody({ message, sessionId, language, profile }),
+    });
+    if (!resp.ok || !resp.body) {
+      const err = new Error(`HTTP ${resp.status}`);
+      err.status = resp.status;
+      throw err;
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let final = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+      let cut;
+      while ((cut = buffer.indexOf("\n\n")) !== -1) {
+        const { event, data } = parseSseBlock(buffer.slice(0, cut));
+        buffer = buffer.slice(cut + 2);
+        if (event === "stage" && onStage) onStage(JSON.parse(data));
+        else if (event === "final") final = JSON.parse(data).data || null;
+        else if (event === "error") throw new Error("stream error");
+        else if (event === "done") {
+          if (final) return final;
+          throw new Error("stream ended without a verified reply");
+        }
+      }
+    }
+    if (final) return final;
+    throw new Error("stream closed early");
   },
 
   async postMaskedActivity({ location, ageBand, activity, durationMin, startHour, mask }) {

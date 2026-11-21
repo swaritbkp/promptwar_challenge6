@@ -37,9 +37,9 @@ Format: **Context → Decision → Consequences** (with the rejected alternative
 - **Decision:** Explicit `now` and `data_source`; story mode uses a fixed clock and fixtures; `APP_ENV=test` forces fixtures.
 - **Consequences:** Identical numbers every run. Rejected: hardcoded numbers in code.
 
-## ADR-008 — Repo digest ceiling (400k → 760k chars)
+## ADR-008 — Repo digest ceiling (400k → 900k chars)
 - **Context:** `scripts/repo_audit.py` caps the reviewable digest; features grew (pan-India, pets, 4 SVG infographics, WCAG tests).
-- **Decision:** Raised stepwise to 500k, 560k, 700k, 750k and now 760k (`MAX_DIGEST_CHARS`); the last +10k is an explicit, owner-approved exception for the Sprint 1 SRE/AppSec hardening (ADR-010) after its own additions were compacted. Do not raise again; tighten docs instead.
+- **Decision:** Raised stepwise to 500k, 560k, 700k, 750k, 760k (Sprint 1, ADR-010) and now 900k (`MAX_DIGEST_CHARS`): an explicit, owner-approved cap for the `feat/faang-hardening` track (Sprints 2–3: Redis state, SSE, chaos tests, `loadtests/`), which stay counted in the digest rather than excluded. Do not raise again; tighten docs instead.
 - **Consequences:** Docstrings, tests and CSS stay unminified. Rejected: stripping docstrings, comments, tests or minifying CSS.
 
 ## ADR-009 — Desktop top-nav, innermost GZip, `/api/v1/meta` telemetry
@@ -50,3 +50,7 @@ Format: **Context → Decision → Consequences** (with the rejected alternative
 ## ADR-010 — Spoof-proof client IP, liveness vs readiness, stdlib metrics
 - **Decision:** Client IP = the `TRUSTED_PROXY_HOPS`-th `X-Forwarded-For` entry from the right (Cloud Run GFE = 1), `ipaddress`-validated, else the peer. `/healthz` (Docker `HEALTHCHECK`) has no dependencies; `/readyz` checks config, prompts and a 1 s Redis ping, never upstream APIs. Logs carry `X-Cloud-Trace-Context`; `/metrics` is a stdlib Prometheus exporter with bounded labels.
 - **Rejected:** leftmost XFF (spoofable), `prometheus-client` (a dependency for six series), upstream calls in `/readyz` (blips would restart healthy containers).
+
+## ADR-011 — Redis-shared state with in-memory failover; stage-only SSE
+- **Decision:** With `REDIS_URL` set, one shared client backs the AQ cache, chat sessions (JSON turn list, `SETEX` sliding TTL, bounded turns) and rate-limit buckets (one atomic Lua script, Redis `TIME` as the single clock). Any transient Redis error degrades that call to in-memory and counts `hawakhata_upstream_errors_total{provider="redis"}`; `/readyz` reports 503 so traffic drains, but no request fails. `POST /api/v1/chat/stream` streams only fixed stage labels (`aq`, `gemini`, `grounding`) and then the same verified envelope as `POST /api/v1/chat`; `/metrics` takes an optional constant-time bearer token.
+- **Rejected:** token-by-token LLM streaming (would show numbers before the grounding gate), failing closed on a Redis outage (a cache blip would become user-facing 429/500s), WATCH/MULTI retries for sessions (two-key race is harmless; one write per turn).

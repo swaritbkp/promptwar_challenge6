@@ -18,14 +18,14 @@ from hawakhata.core.logging import (
     parse_cloud_trace_context,
 )
 from hawakhata.core.metrics import HTTP_DURATION, HTTP_REQUESTS, RATE_LIMIT_REJECTIONS
-from hawakhata.core.rate_limit import resolve_client_ip
+from hawakhata.core.rate_limit import TokenBucketLimiter, resolve_client_ip
 
 if TYPE_CHECKING:
     from starlette.requests import Request
     from starlette.responses import Response
     from starlette.types import ASGIApp
 
-    from hawakhata.core.rate_limit import TokenBucketLimiter
+    from hawakhata.core.rate_limit import RateLimiter
 
 _log = get_logger(__name__)
 
@@ -46,12 +46,15 @@ SECURITY_HEADERS: dict[str, str] = {
 
 STATIC_CACHE_CONTROL = "public, max-age=3600"
 NO_STORE_PATHS = ("/api/v1/chat", "/metrics", "/readyz")
+SSE_PATH = "/api/v1/chat/stream"
 
 
 def cache_control_for(path: str) -> str | None:
     """Cache policy: static assets cache for 1 h; chat turns are never stored."""
     if path.startswith("/static/"):
         return STATIC_CACHE_CONTROL
+    if path == SSE_PATH:
+        return "no-cache"  # SSE convention; the stream is per-request and never reused
     if path.startswith(NO_STORE_PATHS):
         return "no-store"
     return None
@@ -137,9 +140,7 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Apply the token-bucket limiter to /api/ routes, keyed on the spoof-proof client IP."""
 
-    def __init__(
-        self, app: ASGIApp, limiter: TokenBucketLimiter, trusted_proxy_hops: int = 1
-    ) -> None:
+    def __init__(self, app: ASGIApp, limiter: RateLimiter, trusted_proxy_hops: int = 1) -> None:
         super().__init__(app)
         self._limiter = limiter
         self._hops = trusted_proxy_hops
@@ -153,10 +154,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             self._hops,
         )
         request.state.client_ip = client_ip
-        client = self._limiter.client_key(client_ip)
-        if not self._limiter.allow(client):
+        allowed, retry_after = await self._limiter.acquire(TokenBucketLimiter.client_key(client_ip))
+        if not allowed:
             RATE_LIMIT_REJECTIONS.inc()
-            headers = {"Retry-After": str(self._limiter.retry_after_s(client))}
+            headers = {"Retry-After": str(retry_after)}
             return JSONResponse(
                 error_body(ErrorCode.RATE_LIMITED, "Too many requests.", retryable=True),
                 status_code=429,

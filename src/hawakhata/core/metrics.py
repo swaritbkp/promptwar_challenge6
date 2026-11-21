@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
@@ -136,10 +136,15 @@ class TurnTelemetry:
     outcome: str = "deterministic_route"
     stages: dict[str, float] = field(default_factory=dict)
     started: float = field(default_factory=time.perf_counter)
+    # Called once per stage name as it first starts (drives SSE stage-progress events).
+    listener: Callable[[str], None] | None = None
 
     @contextmanager
     def stage(self, name: str) -> Iterator[None]:
         """Accumulate wall time spent in ``name`` (aq, gemini, grounding)."""
+        if self.listener is not None and name not in self.stages:
+            self.stages[name] = 0.0
+            self.listener(name)
         t0 = time.perf_counter()
         try:
             yield

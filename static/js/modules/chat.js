@@ -59,6 +59,26 @@ function appendFormattedText(container, text) {
   });
 }
 
+// Live stage indicator (server sends English labels; Hindi UI shows these instead).
+const STAGE_HI = {
+  aq: "लाइव वायु गुणवत्ता ला रहे हैं...",
+  gemini: "सत्यापित मार्गदर्शन तैयार हो रहा है...",
+  grounding: "हर संख्या की जाँच हो रही है...",
+};
+
+/** Ask over SSE (live stage status); fall back to POST /api/v1/chat if streaming fails. */
+export async function askWithStages(payload, onStatus) {
+  const hi = payload.language === "hi";
+  const onStage = (s) => onStatus((hi && STAGE_HI[s.stage]) || s.label || "...");
+  try {
+    return await api.postChatStream({ ...payload, onStage });
+  } catch (err) {
+    // 4xx (rate limit, validation) would fail identically on /chat: surface it instead.
+    if (err && err.status && err.status < 500) throw err;
+    return api.postChat(payload);
+  }
+}
+
 /** Turn status pill: guardrail refusals never claim a live Gemini proposal. */
 export function statusPill(data, hi) {
   let cls = "saved";
@@ -149,14 +169,18 @@ export function initChatDrawer({ getSessionId, setSessionId, getLanguage, getPro
     input.value = "";
     collapseSamples();
     const aMsg = addMsg("assistant", "...");
+    aMsg.setAttribute("role", "status");
+    aMsg.setAttribute("aria-busy", "true");
 
     try {
-      const data = await api.postChat({
-        message: msg,
-        sessionId: getSessionId(),
-        language: getLanguage(),
-        profile: getProfile(),
-      });
+      const data = await askWithStages(
+        { message: msg, sessionId: getSessionId(), language: getLanguage(), profile: getProfile() },
+        (label) => {
+          aMsg.textContent = label;
+        },
+      );
+      aMsg.removeAttribute("aria-busy");
+      aMsg.removeAttribute("role");
 
       if (data && data.reply) {
         if (data.session_id) setSessionId(data.session_id);
@@ -182,6 +206,7 @@ export function initChatDrawer({ getSessionId, setSessionId, getLanguage, getPro
         aMsg.textContent = "Unable to process request.";
       }
     } catch {
+      aMsg.removeAttribute("aria-busy");
       aMsg.textContent = "Offline. Showing local verified air recommendations.";
     }
     log.scrollTop = log.scrollHeight;

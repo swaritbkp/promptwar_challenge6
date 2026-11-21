@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     session_max: int = Field(default=1000, ge=10, le=100_000)
     session_ttl_s: int = Field(default=3600, ge=60, le=86_400)
     session_max_turns: int = Field(default=20, ge=2, le=100)
+    # Prompt memory: newest N stored turns, then oldest dropped until within the char budget.
+    chat_history_turns: int = Field(default=8, ge=0, le=100)
+    chat_history_max_chars: int = Field(default=6_000, ge=0, le=50_000)
 
     rate_limit_per_min: int = Field(default=60, ge=1, le=10_000)
     rate_limit_max_clients: int = Field(default=5000, ge=10, le=1_000_000)
@@ -58,6 +61,8 @@ class Settings(BaseSettings):
     planner_robust_lambda: float = Field(default=0.5, ge=0, le=5)
     forecast_shift_replan_threshold_ug_m3: float = Field(default=40.0, ge=1, le=500)
     demo_clock_iso: str | None = None
+    # When set, GET /metrics requires "Authorization: Bearer <token>" (unset = open, local dev).
+    metrics_auth_token: SecretStr | None = None
 
     @field_validator(
         "google_maps_api_key",
@@ -65,6 +70,7 @@ class Settings(BaseSettings):
         "redis_url",
         "gcp_project_id",
         "demo_clock_iso",
+        "metrics_auth_token",
         mode="before",
     )
     @classmethod

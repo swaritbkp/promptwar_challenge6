@@ -73,7 +73,7 @@ def test_readyz_and_healthz(client: TestClient, monkeypatch: pytest.MonkeyPatch)
 
 def test_readyz_503_when_redis_ping_fails() -> None:
     app = create_app(Settings(_env_file=None, redis_url="redis://127.0.0.1:1/0"))
-    app.state.cache.ping = AsyncMock(side_effect=ConnectionError("down"))
+    app.state.redis.ping = AsyncMock(side_effect=ConnectionError("down"))
     with TestClient(app) as client:
         res = client.get("/readyz")
         assert client.get("/healthz").status_code == 200
